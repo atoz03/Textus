@@ -411,7 +411,10 @@ export type FontFile = {
 	italic: boolean,
 };
 
-/**  A stylesheet fetched to install the theme, which counts the install. */
+/**
+ *  A stylesheet fetched to install the theme, which counts the install.
+ *  backend/themegallery.go GalleryInstall.
+ */
 export type GalleryInstall = {
 	/**  The catalog's `updated`, which stands for a theme's version. */
 	version: string,
@@ -428,7 +431,10 @@ export type GalleryText_Deserialize = {
 	description?: string | null,
 };
 
-/**  A theme's words in one UI language; what is missing stays English. */
+/**
+ *  A theme's words in one UI language; what is missing stays English.
+ *  backend/themegallery.go GalleryText.
+ */
 export type GalleryText_Serialize = {
 	name: string | null,
 	description: string | null,
@@ -469,7 +475,10 @@ export type GalleryTheme_Deserialize = {
 	l10n?: { [key in string]: GalleryText_Deserialize },
 };
 
-/**  One theme of the catalog, as the frontend gets it. */
+/**
+ *  One theme of the catalog, as the frontend gets it.
+ *  backend/themegallery.go GalleryTheme.
+ */
 export type GalleryTheme_Serialize = {
 	id: string,
 	name: string,
@@ -573,6 +582,7 @@ export type PandocOptions_Serialize = {
 /**
  *  The sheet a PDF is printed on, in points: the paper, and the band left
  *  at its top and bottom (the sides are the page's own padding).
+ *  backend/export_pdf.go PdfSheet.
  */
 export type PdfSheet = {
 	width: number | null,

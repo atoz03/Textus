@@ -501,6 +501,7 @@ export type Found_Serialize = {
  */
 export type HistoryKind = "chat" | "clipboard";
 
+/**  The image host Settings chooses: backend/imagehost.go imageHosts. */
 export type ImageHost = "picgo" | "smms" | "imgur" | "custom";
 
 export type ImageMigration = ImageMigration_Serialize | ImageMigration_Deserialize;
@@ -695,6 +696,7 @@ export type TemplateFormats_Serialize = {
 	time: string | null,
 };
 
+/**  Where an uploaded picture is now: backend/imagehost.go UploadedImage. */
 export type UploadedImage = {
 	src: string,
 };
