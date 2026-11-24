@@ -68,6 +68,7 @@ func newApp(shared Shared, dirs Dirs) *App {
 	if err := json.Unmarshal(shared.BackendDefaults, &a.defaults); err != nil {
 		log.Printf("textus: backend-defaults.json: %v", err)
 	}
+	appVersion = shared.Version
 	loadErrorTable(shared.ErrorTable)
 	loadImageTypes(shared.ImageTypes)
 	a.menu = newMenuState(shared.MenuTable, shared.ExportFormats)
@@ -79,6 +80,7 @@ func newApp(shared Shared, dirs Dirs) *App {
 func (a *App) load() {
 	a.stores = loadStores(a.dirs)
 	a.drafts = loadDrafts(a.dirs)
+	a.proxyChanged()
 }
 
 // Run starts Textus and returns when it quits.
@@ -170,8 +172,13 @@ func Run(shared Shared) error {
 	return app.Run()
 }
 
-// exit ends the app once its windows are gone.
+// exit ends the app once its windows are gone, or starts the version an
+// update installed.
 func (a *App) exit() {
+	if relaunchAfterQuit.Load() {
+		mygo.App.Relaunch()
+		return
+	}
 	mygo.App.Quit()
 }
 

@@ -2,7 +2,6 @@ package backend
 
 import (
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -64,7 +63,7 @@ func (b *menuBuilder) submenu(title string, nodes []menuNode) *mygo.MenuItem {
 			children = append(children, b.submenu(b.text("menu:"+n.Menu, n.En), n.Items))
 		case n.isSection():
 			children = append(children, b.section(n.Section)...)
-		case here(n.On) && !slices.Contains(notYetInMenu, n.ID):
+		case here(n.On):
 			children = append(children, b.item(n))
 		}
 	}

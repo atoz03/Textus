@@ -188,7 +188,11 @@ func init() {
 		return map[string]bool{"supported": false, "isDefault": false, "chooseInSettings": false}, nil
 	})
 	command("release_instance", func(c *Call, _ none) (nothing, error) { return nil, nil })
+	// After an update is installed: every window closes as at Quit (an
+	// unsaved document asks, or is kept as a draft), then the new version
+	// starts.
 	command("quit_and_relaunch", func(c *Call, _ none) (nothing, error) {
+		relaunchAfterQuit.Store(true)
 		c.app.quit()
 		return nil, nil
 	})

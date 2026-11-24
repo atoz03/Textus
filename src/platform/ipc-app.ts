@@ -393,16 +393,26 @@ export const distribution = {
 // Update (desktop only)
 
 export const updater = {
-  /** A newer version on `channel`'s endpoints. `backToStable` offers a
-   *  beta install the newest stable release, only when the user asks.
-   *  The MyGo backend installs no updates yet (canAutoUpdate is off): it
-   *  answers null, and so does this. */
+  /** A newer version on `channel`'s manifests. `backToStable` offers a
+   *  beta install the newest stable release, only when the user asks. */
   check: async (
     channel: UpdateChannel,
     backToStable = false,
   ): Promise<Update | null> => {
-    await desktopQueryCommand("check_for_update", null, channel, backToStable);
-    return null;
+    const found = await desktopQueryCommand(
+      "check_for_update",
+      null,
+      channel,
+      backToStable,
+    );
+    if (!found) return null;
+    const { rid, version } = found;
+    return {
+      version,
+      rid,
+      downloadAndInstall: () =>
+        desktopActionCommand("download_and_install_update", rid),
+    };
   },
   /** Right before the relaunch that applies an update, so the new process
    *  is the running Textus. */

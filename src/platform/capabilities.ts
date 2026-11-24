@@ -56,13 +56,13 @@ export const canDetachChat = false;
 /** Toggling OS fullscreen (zen mode, View > Toggle Full Screen). */
 export const canToggleFullscreen = isDesktopApp;
 
-/** The self-updater. Not yet on the desktop; iOS updates come from the
- *  App Store. */
-export const canAutoUpdate = false;
+/** The self-updater (backend/updater.go). iOS updates come from the App
+ *  Store. */
+export const canAutoUpdate = isDesktopApp;
 
-/** File > Export as PDF, through the webview's PDF backend: iOS's own.
- *  Not yet on the desktop. */
-export const canExportPdf = isIOSApp;
+/** File > Export as PDF, through each webview's PDF backend: MyGo's
+ *  PrintToPDF on the desktop (backend/export_pdf.go), iOS's own. */
+export const canExportPdf = isDesktopApp || isIOSApp;
 
 /** Export through pandoc, an external process iOS can't spawn. */
 export const canExportWithPandoc = isDesktopApp;

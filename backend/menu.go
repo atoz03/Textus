@@ -31,10 +31,6 @@ const (
 	maxRecentFolders   = 5
 )
 
-// notYetInMenu are the items of what this build can't do yet, left off
-// the bar: src/platform/capabilities.ts leaves them out of the drawn menu.
-var notYetInMenu = []string{"export-pdf", "check-updates"}
-
 // menuPlatform is how menu.json names this platform.
 var menuPlatform = map[string]string{"darwin": "mac", "windows": "windows"}[runtime.GOOS]
 

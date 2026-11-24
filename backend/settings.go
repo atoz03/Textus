@@ -79,6 +79,9 @@ func init() {
 		if theme || themeID {
 			c.app.themeChanged()
 		}
+		if proxyKeysChanged(a.Patch) {
+			c.app.proxyChanged()
+		}
 		c.app.emitAll("settings-changed", settingsChanged{Rev: rev, Patch: a.Patch, From: c.Label()})
 		return rev, nil
 	})

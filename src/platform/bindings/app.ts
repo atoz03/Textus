@@ -245,7 +245,17 @@ export const commands = {
 	app_distribution: () => __INVOKE<string>("app_distribution"),
 	/**  The memory state now, for a window as it starts. */
 	memory_state: () => __INVOKE<MemoryState>("memory_state"),
+	/**
+	 *  The newest version on `channel` (textus-latest.json, or textus-beta.json
+	 *  first), if it is newer; with `backToStable`, the stable release a beta
+	 *  goes back to. backend/updater.go UpdateMetadata.
+	 */
 	check_for_update: (channel: string, backToStable: boolean) => __INVOKE<UpdateMetadata_Serialize | null>("check_for_update", { channel, backToStable }),
+	/**
+	 *  Downloads the update a check found as `rid`, checks its signature and
+	 *  replaces the app with it; the new version runs after quit_and_relaunch.
+	 */
+	download_and_install_update: (rid: number) => __INVOKE<null>("download_and_install_update", { rid }),
 	/**
 	 *  Just before the relaunch that applies an update: gives up the single-instance
 	 *  claim, which the plugin only drops on a clean exit, or the new process would
@@ -258,8 +268,9 @@ export const commands = {
 	 */
 	quit_and_relaunch: () => __INVOKE<void>("quit_and_relaunch"),
 	/**
-	 *  Windows: downloads `rid`'s update, then every window closes as at Quit
-	 *  (an unsaved document asks, or is kept as a draft) before it installs.
+	 *  Windows: installs `rid`'s update, then every window closes as at Quit
+	 *  (an unsaved document asks, or is kept as a draft) and the new version
+	 *  starts.
 	 */
 	install_after_quit: (rid: number) => __INVOKE<null>("install_after_quit", { rid }),
 };

@@ -37,7 +37,7 @@ var unsupportedCommands = []string{
 	"theme_gallery_catalog", "theme_gallery_css", "theme_gallery_preview",
 	"open_word_document", "upload_image", "image_host_key_id",
 	// the command-line tool, the default editor, updates
-	"install_cli_command", "set_default_editor", "install_after_quit",
+	"install_cli_command", "set_default_editor",
 	// plugins and what they reach
 	"plugin_fs_list", "plugin_fs_documents", "plugin_fs_search", "plugin_fs_write", "plugin_fs_rename",
 	"plugin_fs_trash", "plugin_fs_trash_path", "plugin_fs_mkdir", "plugin_fs_stat", "plugin_fs_create",
@@ -93,7 +93,6 @@ var emptyAnswers = map[string]string{
 	"list_window_bounds":          `[]`,
 	"start_window_drag_tracking":  `false`,
 	"cli_command_status":          `"missing"`,
-	"check_for_update":            `null`,
 	// told, and nothing to do with it
 	"set_plugin_menu":            `null`,
 	"set_plugin_exports":         `null`,

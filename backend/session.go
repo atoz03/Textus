@@ -426,6 +426,8 @@ func init() {
 	command("cancel_session_quit", func(c *Call, _ none) (nothing, error) {
 		app := c.app
 		app.quitting.Store(false)
+		// A window's prompt cancelled the quit: no relaunch either.
+		relaunchAfterQuit.Store(false)
 		app.mu.Lock()
 		merged := mergeWindows(app.sessions)
 		app.mu.Unlock()

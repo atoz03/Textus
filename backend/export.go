@@ -224,7 +224,4 @@ func init() {
 	command("export_via_pandoc", func(c *Call, a pandocExport) (nothing, error) {
 		return nil, exportViaPandoc(a)
 	})
-	command("export_pdf_native", func(c *Call, _ none) (nothing, error) {
-		return nil, codeError("pdfUnsupported")
-	})
 }
