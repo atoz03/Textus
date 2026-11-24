@@ -28,7 +28,6 @@ var unsupportedCommands = []string{
 	"set_skill_modes", "set_skill_off", "save_written_skill", "delete_global_skill",
 	"ai_grammar_check",
 	"codex_login", "codex_logout", "claude_login", "claude_logout",
-	"ai_records_export", "ai_records_import",
 	// windows of other kinds, web pages
 	"start_floating_tab_drag", "open_floating_window", "resize_floating_window", "floating_window_position",
 	"show_floating_owner", "detach_chat_window",

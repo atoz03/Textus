@@ -268,6 +268,7 @@ export const MARKDOWN_EXTENSIONS = ["md","markdown","mdx"] as const;
 export const TEXT_DOCUMENT_EXTENSIONS = ["md","markdown","mdx","txt","text"] as const;
 
 /* Types */
+/**  A settings file's conversations and memories: backend/ai_records.go AiRecords. */
 export type AiRecords = {
 	/**  Whole conversations, turns included, as the chat history keeps them. */
 	conversations: Value[],
@@ -524,7 +525,7 @@ export type ImageMigration_Serialize = {
 	new: string | null,
 };
 
-/**  How many of each an import added. */
+/**  How many of each an import added: backend/ai_records.go Imported. */
 export type Imported = {
 	conversations: number,
 	memories: number,
@@ -540,7 +541,8 @@ export type IndexedFile = {
 
 /**
  *  A memory by its path under the global folder: `memory/<name>.md`, or
- *  `projects/<key>/memory/<name>.md` for a project's.
+ *  `projects/<key>/memory/<name>.md` for a project's: backend/ai_records.go
+ *  MemoryFile.
  */
 export type MemoryFile = {
 	path: string,
