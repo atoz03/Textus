@@ -27,7 +27,7 @@ var unsupportedCommands = []string{
 	"open_global_agent_dir", "import_agent_skill", "customize_builtin_skill", "reset_builtin_skill",
 	"set_skill_modes", "set_skill_off", "save_written_skill", "delete_global_skill",
 	"ai_complete", "ai_grammar_check", "fetch_agent_models", "suggest_next_message", "suggest_doc_title",
-	"codex_login", "codex_logout", "claude_login", "claude_logout", "set_provider_api_key", "clear_provider_api_key",
+	"codex_login", "codex_logout", "claude_login", "claude_logout",
 	"set_custom_endpoint", "clear_custom_endpoint", "fetch_custom_models", "ai_records_export", "ai_records_import",
 	// windows of other kinds, web pages
 	"start_floating_tab_drag", "open_floating_window", "resize_floating_window", "floating_window_position",
@@ -35,7 +35,7 @@ var unsupportedCommands = []string{
 	"web_page_show", "web_page_navigate", "web_page_reload",
 	// the theme gallery, Word, image hosts
 	"theme_gallery_catalog", "theme_gallery_css", "theme_gallery_preview",
-	"open_word_document", "upload_image", "image_host_key_id",
+	"open_word_document",
 	// the command-line tool, the default editor, updates
 	"install_cli_command", "set_default_editor",
 	// plugins and what they reach
@@ -79,7 +79,6 @@ var emptyAnswers = map[string]string{
 	"notify_take_open":            `null`,
 	"claude_auth_status":          `{"configured":false}`,
 	"codex_auth_status":           `{"configured":false}`,
-	"provider_api_key_status":     `false`,
 	"custom_endpoints_status":     `[]`,
 	"ai_can_think_deeper":         `false`,
 	"web_search_status":           `{"native":false,"service":null}`,

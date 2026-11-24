@@ -1,0 +1,61 @@
+package backend
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestKeysAreKeptForTheirOwnerOnly(t *testing.T) {
+	a := &App{dirs: Dirs{Config: t.TempDir()}}
+	set := func(id, key string) {
+		t.Helper()
+		if err := a.changeKeys(func(keys map[string]string) bool { keys[id] = key; return true }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set("anthropic", "sk-ant")
+	set("__image_host", "tok")
+	if key, err := a.providerKey("anthropic"); err != nil || key != "sk-ant" {
+		t.Errorf("%q %v", key, err)
+	}
+	if key, _ := a.providerKey("openai"); key != "" {
+		t.Errorf("openai: %q", key)
+	}
+	info, err := os.Stat(a.keysPath())
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("%v %v", info.Mode(), err)
+	}
+	// Clearing one keeps the other.
+	if err := a.changeKeys(func(keys map[string]string) bool { delete(keys, "anthropic"); return true }); err != nil {
+		t.Fatal(err)
+	}
+	if key, _ := a.providerKey("__image_host"); key != "tok" {
+		t.Errorf("%q", key)
+	}
+}
+
+func TestAKeyFileThatDoesNotParseIsMovedAside(t *testing.T) {
+	a := &App{dirs: Dirs{Config: t.TempDir()}}
+	if err := os.WriteFile(a.keysPath(), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if key, err := a.providerKey("anthropic"); err != nil || key != "" {
+		t.Errorf("%q %v", key, err)
+	}
+	matches, _ := filepath.Glob(a.keysPath() + "*")
+	if len(matches) != 1 || matches[0] == a.keysPath() {
+		t.Errorf("%v", matches)
+	}
+}
+
+func TestAKeyFileThatCannotBeReadIsNotWrittenOver(t *testing.T) {
+	a := &App{dirs: Dirs{Config: t.TempDir()}}
+	// A folder where the file should be: reading fails, so a save must too.
+	if err := os.Mkdir(a.keysPath(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.changeKeys(func(keys map[string]string) bool { keys["x"] = "y"; return true }); err == nil {
+		t.Error("saved over what couldn't be read")
+	}
+}
