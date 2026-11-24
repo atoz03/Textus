@@ -742,7 +742,7 @@ export type WindowSession_Serialize = {
 	opened?: string[],
 };
 
-/**  What `open_word_document` hands the frontend. */
+/**  What `open_word_document` hands the frontend: backend/word.go WordDocument. */
 export type WordDocument = {
 	markdown: string,
 };

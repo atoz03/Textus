@@ -33,8 +33,6 @@ var unsupportedCommands = []string{
 	"start_floating_tab_drag", "open_floating_window", "resize_floating_window", "floating_window_position",
 	"show_floating_owner", "detach_chat_window",
 	"web_page_show", "web_page_navigate", "web_page_reload",
-	// Word
-	"open_word_document",
 	// the command-line tool, the default editor, updates
 	"install_cli_command", "set_default_editor",
 	// plugins and what they reach
