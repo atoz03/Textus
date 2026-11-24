@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./native/core";
 import { isDesktopApp } from "./capabilities";
 import { aiRequestsAllowed } from "./ai-gate";
 import { TEXTUS_AI_OFF as AI_OFF } from "./bindings/ai";

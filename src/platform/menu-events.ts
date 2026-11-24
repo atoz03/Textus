@@ -22,11 +22,8 @@ export function emitMenuEvent(id: NativeMenuId): void {
 
 /** A menu event sent to this window only, as its own menu item would. */
 export function emitToThisWindow(event: string, payload?: unknown): void {
-  // Addressed to the WebviewWindow: a bare label is AnyLabel, which on iOS
-  // delivered the event twice, so every toggle undid itself.
-  // A window's one webview carries the window's label.
   const { label } = thisWindow();
-  void emitToWindow({ kind: "WebviewWindow", label }, event, payload);
+  void emitToWindow(label, event, payload);
 }
 
 /**

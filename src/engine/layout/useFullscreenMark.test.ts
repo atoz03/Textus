@@ -11,7 +11,7 @@ const listen = vi.fn(
     return Promise.resolve(unlisten);
   },
 );
-vi.mock("@tauri-apps/api/window", () => ({
+vi.mock("../../platform/native/window", () => ({
   getCurrentWindow: () => ({
     isFullscreen,
     isMaximized: () => Promise.resolve(false),

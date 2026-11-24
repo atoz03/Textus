@@ -1,4 +1,4 @@
-import { Channel } from "@tauri-apps/api/core";
+import { Channel } from "./native/core";
 import type { ImageModel, ImageProviderEntry } from "../ai/image-models";
 import type { SentBlock } from "../editor/markdown/doc-blocks";
 import type { AgentTurn, ImageAttachment, ThinkingLevel } from "../ai/types";

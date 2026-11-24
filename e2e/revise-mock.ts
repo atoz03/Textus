@@ -15,13 +15,13 @@ export async function streamRevise(
     ({ calls, chunk, every, hold }) => {
       type Send = (event: unknown) => void;
       const w = window as unknown as {
-        __TAURI_INTERNALS__: {
+        __TEXTUS_HOST__: {
           invoke: (cmd: string, args?: unknown) => Promise<unknown>;
         };
         __devNameCall: (blocks: unknown, args: object) => object;
         __devSettle: (blocks: unknown, name: string, args: string) => string;
       };
-      const internals = w.__TAURI_INTERNALS__;
+      const internals = w.__TEXTUS_HOST__;
       const original = internals.invoke;
       let cancel: (() => void) | null = null;
       internals.invoke = (cmd, args) => {

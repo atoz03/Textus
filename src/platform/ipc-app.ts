@@ -1,5 +1,4 @@
-import type { Update } from "@tauri-apps/plugin-updater";
-import { lazyModule } from "../lazy/lazy-module";
+import type { Update } from "./app-info";
 import type { UpdateChannel } from "./update-channel";
 import type {
   ChatHandoff,
@@ -393,31 +392,17 @@ export const distribution = {
 
 // Update (desktop only)
 
-/** What the updater plugin's `Update` is made from. */
-type UpdateMetadata = ConstructorParameters<typeof Update>[0];
-
-/** The updater plugin: an update is looked for after startup. */
-const updaterPlugin = lazyModule(
-  "updater",
-  () => import("@tauri-apps/plugin-updater"),
-);
-
 export const updater = {
-  /** The plugin's `check()` on `channel`'s endpoints. `backToStable` offers
-   *  a beta install the newest stable release, only when the user asks. */
+  /** A newer version on `channel`'s endpoints. `backToStable` offers a
+   *  beta install the newest stable release, only when the user asks.
+   *  The MyGo backend installs no updates yet (canAutoUpdate is off): it
+   *  answers null, and so does this. */
   check: async (
     channel: UpdateChannel,
     backToStable = false,
   ): Promise<Update | null> => {
-    const metadata = (await desktopQueryCommand(
-      "check_for_update",
-      null,
-      channel,
-      backToStable,
-    )) as UpdateMetadata | null;
-    if (!metadata) return null;
-    const { Update } = await updaterPlugin.load();
-    return new Update(metadata);
+    await desktopQueryCommand("check_for_update", null, channel, backToStable);
+    return null;
   },
   /** Right before the relaunch that applies an update, so the new process
    *  is the running Textus. */

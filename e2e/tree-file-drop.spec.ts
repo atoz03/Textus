@@ -3,7 +3,7 @@ import { emit, openApp, sourceOf } from "./helpers";
 
 /*
  * Files and folders dragged from a file manager onto the sidebar's file
- * tree (Tauri's drag events, emitted here as Rust sends them): with a
+ * tree (the window's drag events, emitted here as the app sends them): with a
  * folder open, the folder under the pointer lights up and, after asking,
  * they are copied into it; with none, they open as before.
  */
@@ -31,15 +31,15 @@ async function openFolder(page: Page) {
 }
 
 /** Files from a file manager dragged over the point (x, y) and let go
- *  there, as Tauri sends them. */
+ *  there, as the app's window tells them. */
 async function systemDrop(
   page: Page,
   paths: string[],
   at: { x: number; y: number },
 ) {
-  await emit(page, "tauri://drag-enter", { paths, position: at });
-  await emit(page, "tauri://drag-over", { position: at });
-  await emit(page, "tauri://drag-drop", { paths, position: at });
+  await emit(page, "native://drag-enter", { paths, position: at });
+  await emit(page, "native://drag-over", { position: at });
+  await emit(page, "native://drag-drop", { paths, position: at });
 }
 
 const centre = async (page: Page, name: string) => {
@@ -63,14 +63,14 @@ test("files from a file manager let go on a folder of the tree are copied in, af
   await openFolder(page);
   const assets = await centre(page, "assets");
   const paths = ["/downloads/tickets.pdf", "/downloads/notes.md"];
-  await emit(page, "tauri://drag-enter", { paths, position: assets });
-  await emit(page, "tauri://drag-over", { position: assets });
+  await emit(page, "native://drag-enter", { paths, position: assets });
+  await emit(page, "native://drag-over", { position: assets });
   // The folder under the pointer lit, as for a row dragged onto it.
   await expect(
     page.locator(".tree-row.tx-drop-into", { hasText: "assets" }),
   ).toBeVisible();
   await expect(page.locator(".file-drop-room")).toHaveCount(0);
-  await emit(page, "tauri://drag-drop", { paths, position: assets });
+  await emit(page, "native://drag-drop", { paths, position: assets });
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("Copy 2 items to “assets”?");
   await expect(dialog).toContainText("tickets.pdf");
@@ -126,14 +126,14 @@ test("let go on a file's row the tree copies into its folder; Don't Ask Again st
   await openApp(page, { settings: { language: "en" } });
   await emit(page, "menu-open-folder");
   const plan = await centre(page, "plan.md");
-  await emit(page, "tauri://drag-enter", {
+  await emit(page, "native://drag-enter", {
     paths: ["/downloads/todo.md"],
     position: plan,
   });
-  await emit(page, "tauri://drag-over", { position: plan });
+  await emit(page, "native://drag-over", { position: plan });
   // A file's row: its folder, here the open folder itself, is lit.
   await expect(page.locator(".tree-body.tx-drop-into")).toHaveCount(1);
-  await emit(page, "tauri://drag-drop", {
+  await emit(page, "native://drag-drop", {
     paths: ["/downloads/todo.md"],
     position: plan,
   });

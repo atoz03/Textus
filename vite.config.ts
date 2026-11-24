@@ -6,10 +6,11 @@ import { colorMixFallback } from "./vite.color-mix-fallback";
 import { chromeScale } from "./vite.chrome-scale";
 import { devPlugins } from "./vite.dev-plugins";
 import { startupBudget } from "./vite.startup-budget";
-import { devServerCsp } from "./vite.csp";
+import { devServerCsp, windowCspMeta } from "./vite.csp";
 import { thirdPartyNotices } from "./vite.third-party-notices";
 
-const host = process.env.TAURI_DEV_HOST;
+// A device on the network loading the dev server (mobile development).
+const host = process.env.TEXTUS_DEV_HOST;
 
 export default defineConfig(async () => ({
   plugins: [
@@ -18,6 +19,7 @@ export default defineConfig(async () => ({
     devPlugins(),
     startupBudget(),
     thirdPartyNotices(),
+    windowCspMeta(),
   ],
   css: { postcss: { plugins: [chromeScale(), colorMixFallback()] } },
   // The oldest engines Textus runs in. Newer syntax is lowered; APIs and
@@ -34,14 +36,13 @@ export default defineConfig(async () => ({
       "**/node_modules/**",
       "**/dist/**",
       "e2e/**",
-      "src-tauri/**",
       ".claude/**",
       ".cache/**",
       "textus-plugins/**",
     ],
   },
 
-  // Keep Vite from obscuring Rust errors.
+  // Keep Vite from obscuring the Go build's errors under `mygo dev`.
   clearScreen: false,
   // Scanned from the app's own pages only. A plugin checkout inside the
   // project (CI's textus-plugins/) has pages that import textus-resource:
@@ -50,7 +51,7 @@ export default defineConfig(async () => ({
   optimizeDeps: {
     entries: ["index.html", "playground.html"],
   },
-  // Tauri expects a fixed port; fail if it is taken.
+  // mygo.json's devUrl names this port; fail if it is taken.
   server: {
     port: 1420,
     strictPort: true,
@@ -64,7 +65,8 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      ignored: ["**/src-tauri/**"],
+      // Where `mygo dev` and `mygo build` write the app.
+      ignored: ["**/.mygo/**", "**/dist-app/**"],
     },
   },
 }));

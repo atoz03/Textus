@@ -1,4 +1,4 @@
-import { Channel } from "@tauri-apps/api/core";
+import { Channel } from "./native/core";
 import type { ImageHost } from "../prefs/SettingsContext";
 import type { CustomEndpointStatus } from "./bindings/auth";
 import { aiCommand, command } from "./ipc-call";

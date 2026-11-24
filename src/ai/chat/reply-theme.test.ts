@@ -7,7 +7,7 @@ import { isSelfContained, themeName, themesInReply } from "./reply-theme";
 // What the theme skill produced for "a calm dark theme for night writing,
 // teal accent, a serif", as a reply the chat offers "Use this theme" for.
 const reply = readFileSync("src/theme/fixtures/theme-skill-reply.md", "utf8");
-const skill = readFileSync("src-tauri/src/ai/skills/theme.md", "utf8");
+const skill = readFileSync("backend/ai/skills/theme.md", "utf8");
 
 const fence = (css: string) => "```css\n" + css + "\n```";
 

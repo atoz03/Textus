@@ -1,4 +1,4 @@
-import { documentDir } from "@tauri-apps/api/path";
+import { documentDir } from "./native/path";
 
 /**
  * iOS Documents paths as stored between launches. The app container moves on
@@ -64,7 +64,7 @@ export function ownFolderMoved(stored: string, docs: string): string {
 let known: string | null = null;
 let loading: Promise<string> | null = null;
 
-/** The app's Documents folder, with a trailing slash. Asked of Tauri once. */
+/** The app's Documents folder, with a trailing slash. Asked of the backend once. */
 export function documentsDir(): Promise<string> {
   loading ??= documentDir().then(
     (dir) => (known = withSlash(dir)),

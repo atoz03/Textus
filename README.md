@@ -2,7 +2,7 @@
      structure section by section (scripts/check-readmes.mjs). -->
 
 <p align="center">
-  <img src="src-tauri/icons/icon.png" alt="Textus" width="120" height="120" />
+  <img src="packaging/icons/icon.png" alt="Textus" width="120" height="120" />
 </p>
 
 <h1 align="center">Textus</h1>

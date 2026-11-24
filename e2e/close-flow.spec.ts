@@ -25,7 +25,7 @@ test("closing a window with unsaved changes on the first launch shows the prompt
   await openApp(page, { settings: { language: "en", languageChosen: false } });
   await expect(page.locator(".language-welcome")).toBeVisible();
   await pasteMarkdown(page, "unsaved words");
-  await emit(page, "tauri://close-requested", null);
+  await emit(page, "native://close-requested", null);
 
   const prompt = page.getByRole("dialog", {
     name: "This document has unsaved changes.",
@@ -49,7 +49,7 @@ test("the unsaved-changes prompt stays in front of Settings", async ({
   await expect(
     page.getByRole("heading", { name: "Settings", level: 2 }),
   ).toBeVisible();
-  await emit(page, "tauri://close-requested", null);
+  await emit(page, "native://close-requested", null);
   await expect(page.locator(".close-prompt")).toBeVisible();
   expect(await onTop(page, ".close-prompt-primary")).toBe(true);
 });
@@ -66,7 +66,7 @@ test("File › Close Window in the app-drawn menu closes this window (#345)", as
   });
   await openApp(page, { settings: { language: "en", menuBarShown: true } });
   await mockInvoke(page, {
-    "plugin:window|close": null,
+    window_close: null,
     trigger_menu_item: null,
   });
   await page.getByRole("menuitem", { name: "File" }).click();
@@ -79,7 +79,7 @@ test("File › Close Window in the app-drawn menu closes this window (#345)", as
   );
   // This window closes itself, as its close button does - not through the
   // backend, which may find no window focused (Windows, Linux).
-  expect(asked).toContain("plugin:window|close");
+  expect(asked).toContain("window_close");
   expect(asked).not.toContain("trigger_menu_item");
 });
 
@@ -91,7 +91,7 @@ test("with Keep unsaved changes on, closing keeps them as a draft and asks nothi
   });
   await pasteMarkdown(page, "kept words");
   await mockInvoke(page, { save_draft_snapshot: null });
-  await emit(page, "tauri://close-requested", null);
+  await emit(page, "native://close-requested", null);
 
   const saved = () =>
     page.evaluate(() =>
@@ -115,13 +115,13 @@ async function openFiles(page: Page, names: string[]) {
   for (const name of names) {
     await page.evaluate((path) => {
       const w = window as unknown as Record<string, unknown> & {
-        __devEmitTauriEvent: (name: string, payload: unknown) => void;
+        __devEmitEvent: (name: string, payload: unknown) => void;
       };
       w.__devFiles = {
         ...(w.__devFiles as Record<string, string> | undefined),
         [path]: `# ${path}`,
       };
-      w.__devEmitTauriEvent("tauri://drag-drop", {
+      w.__devEmitEvent("native://drag-drop", {
         paths: [path],
         position: { x: 0, y: 0 },
       });
@@ -246,13 +246,13 @@ function drop(page: Page, path: string, text: string) {
   return page.evaluate(
     ({ path, text }) => {
       const w = window as unknown as Record<string, unknown> & {
-        __devEmitTauriEvent: (name: string, payload: unknown) => void;
+        __devEmitEvent: (name: string, payload: unknown) => void;
       };
       w.__devFiles = {
         ...(w.__devFiles as Record<string, string> | undefined),
         [path]: text,
       };
-      w.__devEmitTauriEvent("tauri://drag-drop", {
+      w.__devEmitEvent("native://drag-drop", {
         paths: [path],
         position: { x: 0, y: 0 },
       });

@@ -52,7 +52,7 @@ export const RESERVED_SCHEMES: readonly string[] = [
   "data",
   "blob",
   "asset",
-  "tauri",
+  "mygo",
   "textus",
   "mailto",
 ];

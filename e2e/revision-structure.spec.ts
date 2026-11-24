@@ -49,10 +49,10 @@ test("a whole-document rewrite shows its structure and saves as proposed", async
   });
   await page.evaluate((text) => {
     const w = window as unknown as Record<string, unknown> & {
-      __devEmitTauriEvent: (name: string, payload: unknown) => void;
+      __devEmitEvent: (name: string, payload: unknown) => void;
     };
     w.__devFiles = { "/notes/note.md": text };
-    w.__devEmitTauriEvent("tauri://drag-drop", {
+    w.__devEmitEvent("native://drag-drop", {
       paths: ["/notes/note.md"],
       position: { x: 0, y: 0 },
     });

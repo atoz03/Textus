@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fails on code copied instead of shared: a run of 80 tokens or more found
-// twice in src/ or src-tauri/src/ (jscpd), tests, tables and generated
+// twice in src/ or backend/ (jscpd), tests, tables and generated
 // files aside. The copies there today are listed; they may go, not grow.
 // `--list` prints every copy found and exits 0.
 import { execFileSync } from "node:child_process";
@@ -14,23 +14,17 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const IGNORE = [
   "**/*.test.ts",
   "**/*.test.tsx",
-  "**/tests.rs",
-  "**/tests/**",
-  "**/*_tests.rs",
-  "**/live_eval/**",
+  "**/*_test.go",
+  "**/testdata/**",
   "src/i18n/locales/**",
   "src/platform/bindings/**",
   "src/dev/**",
   "**/node_modules/**",
 ];
 
-/** Copies there today, as "a | b" (sorted, from src/ or src-tauri/src/):
- *  how many each pair of files has. */
+/** Copies there today, as "a | b" (sorted, from src/ or backend/): how
+ *  many each pair of files has. */
 const COPIES_NOW = {
-  "ai/rules/en/spelling.rs | ai/rules/shared.rs": 1,
-  "ai/rules/ja/notation.rs | ai/rules/zh/spacing.rs": 1,
-  "ai/rules/ru.rs | ai/rules/tw.rs": 1,
-  "ai/rules/tw.rs | ai/rules/zh/wording.rs": 1,
   "editor/marks/enclosure-moves.ts | editor/marks/enclosure-moves.ts": 1,
 };
 
@@ -41,9 +35,9 @@ try {
     join(root, "node_modules/.bin/jscpd"),
     [
       "src",
-      "src-tauri/src",
+      "backend",
       "--format",
-      "typescript,tsx,rust",
+      "typescript,tsx,go",
       "--min-tokens",
       "80",
       "--ignore",

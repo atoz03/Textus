@@ -108,9 +108,9 @@ export async function openPath(page: Page, path: string) {
     (p) =>
       (
         window as unknown as {
-          __devEmitTauriEvent: (n: string, payload: unknown) => void;
+          __devEmitEvent: (n: string, payload: unknown) => void;
         }
-      ).__devEmitTauriEvent("menu-open-recent", p),
+      ).__devEmitEvent("menu-open-recent", p),
     path,
   );
 }

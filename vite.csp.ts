@@ -1,9 +1,7 @@
-import tauriConfig from "./src-tauri/tauri.conf.json";
+import type { Plugin } from "vite";
+import windowCsp from "./src/platform/window-csp.json";
 
 type Directives = Record<string, string[]>;
-
-/** The window's Content Security Policy, as tauri.conf.json has it. */
-const windowCsp: Directives = tauriConfig.app.security.csp;
 
 /** A policy as the header and the `<meta>` write it. */
 function cspString(directives: Directives): string {
@@ -13,14 +11,38 @@ function cspString(directives: Directives): string {
 }
 
 /**
- * The window's policy for the Vite dev server. A desktop `tauri dev` loads
- * the dev server's page as it is, without the policy Tauri adds to the
- * built app's pages, so the server sends it - and the e2e flows run under it
- * too. Plus the dev server's own HMR socket.
+ * The window's policy for the Vite dev server. `mygo dev` loads the dev
+ * server's page as it is, and the e2e flows run under it too: the server
+ * sends it, with its own HMR socket.
  */
 export function devServerCsp(): string {
   return cspString({
     ...windowCsp,
     "connect-src": [...windowCsp["connect-src"], "ws://localhost:*"],
   });
+}
+
+/**
+ * The window's policy in the built app's pages. MyGo serves them with no
+ * policy of its own, so each carries it in a `<meta>`, ahead of anything
+ * it guards.
+ */
+export function windowCspMeta(): Plugin {
+  return {
+    name: "textus-window-csp",
+    apply: "build",
+    transformIndexHtml: {
+      order: "pre",
+      handler: () => [
+        {
+          tag: "meta",
+          attrs: {
+            "http-equiv": "Content-Security-Policy",
+            content: cspString(windowCsp),
+          },
+          injectTo: "head-prepend",
+        },
+      ],
+    },
+  };
 }

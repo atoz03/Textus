@@ -16,7 +16,7 @@ const { DOCS, OLD } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../platform/capabilities", () => ({ isIOSApp: true }));
-vi.mock("@tauri-apps/api/path", () => ({
+vi.mock("../../platform/native/path", () => ({
   documentDir: () => Promise.resolve(DOCS),
 }));
 vi.mock("../../prefs/SettingsContext", () => ({

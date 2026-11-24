@@ -3,8 +3,8 @@ import { emit, MAC, mockInvoke, openApp, settled, sourceOf } from "./helpers";
 
 /*
  * Files dragged into a document: from the sidebar (the app's own pointer
- * drag) and from a file manager (Tauri's drag events, emitted here as Rust
- * sends them). Pictures and other files go in between blocks where they
+ * drag) and from a file manager (the window's drag events, emitted here
+ * as the app sends them). Pictures and other files go in between blocks where they
  * are let go; a note, Shift, an edge or a tab row opens them.
  */
 
@@ -150,14 +150,14 @@ test("a file splits off only close by a document's side, never at its foot", asy
   await expect(page.locator('[role="tab"]', { hasText: "plan" })).toBeVisible();
   await expect(page.locator("section.island")).toHaveCount(1);
   // Near the foot, where a tab would stack one below.
-  await emit(page, "tauri://drag-enter", {
+  await emit(page, "native://drag-enter", {
     paths: ["/downloads/todo.md"],
     position: {
       x: island.x + island.width / 2,
       y: island.y + island.height - 20,
     },
   });
-  await emit(page, "tauri://drag-drop", {
+  await emit(page, "native://drag-drop", {
     paths: ["/downloads/todo.md"],
     position: {
       x: island.x + island.width / 2,
@@ -173,13 +173,13 @@ test("a file from a file manager is copied beside the document and linked; Shift
 }) => {
   await openFolder(page);
   const at = await betweenDays(page);
-  await emit(page, "tauri://drag-enter", {
+  await emit(page, "native://drag-enter", {
     paths: ["/downloads/tickets.pdf"],
     position: at,
   });
-  await emit(page, "tauri://drag-over", { position: at });
+  await emit(page, "native://drag-over", { position: at });
   await expect(page.locator(".file-drop-room-link")).toBeVisible();
-  await emit(page, "tauri://drag-drop", {
+  await emit(page, "native://drag-drop", {
     paths: ["/downloads/tickets.pdf"],
     position: at,
   });
@@ -199,14 +199,14 @@ test("a file from a file manager is copied beside the document and linked; Shift
   await page.evaluate(() => {
     (window as unknown as Record<string, unknown>).__devDragShift = true;
   });
-  await emit(page, "tauri://drag-enter", {
+  await emit(page, "native://drag-enter", {
     paths: ["/downloads/tickets.pdf"],
     position: at,
   });
-  await emit(page, "tauri://drag-over", { position: at });
+  await emit(page, "native://drag-over", { position: at });
   await settled(page);
   await expect(page.locator(".file-drop-room")).toHaveCount(0);
-  await emit(page, "tauri://drag-drop", {
+  await emit(page, "native://drag-drop", {
     paths: ["/downloads/tickets.pdf"],
     position: at,
   });
@@ -223,11 +223,11 @@ test("a file from a file manager let go on a document's edge opens beside it", a
     x: island.x + island.width - 12,
     y: island.y + island.height / 2,
   };
-  await emit(page, "tauri://drag-enter", {
+  await emit(page, "native://drag-enter", {
     paths: ["/trip/plan.md"],
     position: edge,
   });
-  await emit(page, "tauri://drag-drop", {
+  await emit(page, "native://drag-drop", {
     paths: ["/trip/plan.md"],
     position: edge,
   });
@@ -356,10 +356,10 @@ test("a picture from a file manager goes in where it is let go, stored as a past
   });
   const at = await betweenDays(page);
   const paths = ["/downloads/boat 1.png"];
-  await emit(page, "tauri://drag-enter", { paths, position: at });
-  await emit(page, "tauri://drag-over", { position: at });
+  await emit(page, "native://drag-enter", { paths, position: at });
+  await emit(page, "native://drag-over", { position: at });
   await expect(page.locator(".file-drop-room-image")).toBeVisible();
-  await emit(page, "tauri://drag-drop", { paths, position: at });
+  await emit(page, "native://drag-drop", { paths, position: at });
   await expect(page.locator(".ProseMirror p.image-paragraph")).toHaveCount(1);
   // As a picture pasted or dropped before: the path the store gave.
   expect(await sourceOf(page)).toMatch(
@@ -387,8 +387,8 @@ test("a note from a file manager let go on another island opens there, the draft
   const left = (await islands.nth(0).boundingBox())!;
   const at = { x: left.x + left.width / 2, y: left.y + left.height / 2 };
   const paths = ["/downloads/notes.md", "/downloads/todo.md"];
-  await emit(page, "tauri://drag-enter", { paths, position: at });
-  await emit(page, "tauri://drag-drop", { paths, position: at });
+  await emit(page, "native://drag-enter", { paths, position: at });
+  await emit(page, "native://drag-drop", { paths, position: at });
   // Both open where they were let go, in the order dropped.
   const tabs = rows.nth(0).locator('[role="tab"]');
   await expect(tabs).toHaveText([/log/, /notes/, /todo/]);
@@ -419,8 +419,8 @@ test("a note from a file manager let go on an untouched draft in another island 
   const right = (await islands.nth(1).boundingBox())!;
   const at = { x: right.x + right.width / 2, y: right.y + right.height / 2 };
   const paths = ["/downloads/notes.md"];
-  await emit(page, "tauri://drag-enter", { paths, position: at });
-  await emit(page, "tauri://drag-drop", { paths, position: at });
+  await emit(page, "native://drag-enter", { paths, position: at });
+  await emit(page, "native://drag-drop", { paths, position: at });
   await expect(rows.nth(1).locator('[role="tab"]')).toHaveText([
     /plan/,
     /notes/,

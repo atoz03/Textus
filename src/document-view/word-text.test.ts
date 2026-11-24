@@ -2,8 +2,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { editorViewCtx, type Editor } from "@milkdown/kit/core";
 import { createTestEditor } from "./editor-test-harness";
-import fixture from "../../src-tauri/src/extract/testdata/word-text.json";
-import markdown from "../../src-tauri/src/extract/testdata/word-text.md?raw";
+import fixture from "../../backend/extract/testdata/word-text.json";
+import markdown from "../../backend/extract/testdata/word-text.md?raw";
 
 // A Word document opens as the backend's escaped Markdown of it. This reads
 // that Markdown with the editor itself, whose own syntax (==highlight==,

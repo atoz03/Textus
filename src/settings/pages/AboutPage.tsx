@@ -12,7 +12,7 @@ import {
 } from "../../platform/capabilities";
 import { emitMenuEvent } from "../../platform/menu-events";
 import { links } from "../../platform/ipc";
-import appIcon from "../../../src-tauri/icons/128x128@2x.png";
+import appIcon from "../../../packaging/icons/128x128@2x.png";
 
 /** About: Textus and its version, checking for updates and which ones to
  *  take; help; and, last, where Textus lives and who made it. */

@@ -3,7 +3,7 @@ import type * as Access from "./bindings/plugin-access";
 
 /** A plugin file as text. */
 export type PluginFile = Generated.PluginFile;
-import { Channel } from "@tauri-apps/api/core";
+import { Channel } from "./native/core";
 import { call, command, desktopActionCommand } from "./ipc-call";
 import { isFarUrl } from "./far-files";
 import { canPickPluginFolder, trashesNatively } from "./capabilities";

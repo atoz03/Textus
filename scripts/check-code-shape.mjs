@@ -18,7 +18,7 @@ const LINES_NOW = {};
 const TABLES = [
   /^src\/i18n\/locales\//,
   /^src\/engine\/controls\/icons\.tsx$/,
-  // Written by src-tauri/src/bindings.rs.
+  // The backend's command list, one line per command.
   /^src\/platform\/bindings\//,
 ];
 
@@ -34,18 +34,14 @@ function walk(dir, out = []) {
 
 const isTest = (path) =>
   /\.(test|spec)\.tsx?$/.test(path) ||
-  /(^|\/)tests?(\.rs|\/)/.test(path) ||
-  /_tests\.rs$/.test(path) ||
-  // The live evals are test code (#[cfg(test)]).
-  path.includes("/live_eval/") ||
+  /_test\.go$/.test(path) ||
   path.startsWith("src/dev/");
 
 const sources = [
   ...walk("src").filter((p) => /\.tsx?$/.test(p)),
   // Plain scripts put into a plugin's frames as text.
   ...walk("src/plugins/host/runtime").filter((p) => p.endsWith(".js")),
-  ...walk("src-tauri/src").filter((p) => p.endsWith(".rs")),
-  ...walk("src-tauri/crates").filter((p) => p.endsWith(".rs")),
+  ...walk("backend").filter((p) => p.endsWith(".go")),
 ].filter((p) => !isTest(p));
 
 const problems = [];
@@ -87,28 +83,29 @@ for (const path of sources.filter((p) => /\.tsx?$/.test(p))) {
   });
 }
 
-// Provider ids compared in code. The ids are the catalog's; "custom" is
-// the user's own endpoint, not a provider.
-const catalog = readFileSync(join(root, "src-tauri/src/ai/catalog.rs"), "utf8");
-const ids = [...catalog.matchAll(/^\s+id: "([a-z0-9-]+)"/gm)]
-  .map((m) => m[1])
+// Provider ids compared in code. The ids are the catalog's (one line of
+// JSON in the bindings); "custom" is the user's own endpoint, not a
+// provider.
+const catalog = readFileSync(join(root, "src/platform/bindings/ai.ts"), "utf8");
+const catalogJson =
+  /^export const PROVIDER_CATALOG = (\[.*\]) as const;$/m.exec(catalog)?.[1];
+if (!catalogJson) throw new Error("bindings/ai.ts: no PROVIDER_CATALOG");
+const ids = JSON.parse(catalogJson)
+  .map((entry) => entry.id)
   .filter((id) => id !== "custom");
 const alt = ids.map((id) => id.replace(/-/g, "\\-")).join("|");
 const TS_COMPARE = new RegExp(
   `(?:===|!==)\\s*["'](?:${alt})["']|["'](?:${alt})["']\\s*(?:===|!==)|case\\s+["'](?:${alt})["']\\s*:`,
 );
-const RS_COMPARE = new RegExp(
-  `(?:==|!=)\\s*"(?:${alt})"|"(?:${alt})"\\s*(?:=>|\\|)`,
+const GO_COMPARE = new RegExp(
+  `(?:==|!=)\\s*"(?:${alt})"|"(?:${alt})"\\s*(?:==|!=)|case\\s+(?:"[^"]*",\\s*)*"(?:${alt})"`,
 );
-// A provider's own adapter is where its differences are written down.
-const ADAPTERS = [
-  /^src-tauri\/crates\/aicompat\/src\/(providers|images)\//,
-  /^src-tauri\/crates\/aicompat\/src\/capabilities/,
-  /^src-tauri\/src\/ai\/catalog/,
-];
+// A provider's own adapter is where its differences are written down: the
+// Go backend has none yet (its AI is not ported).
+const ADAPTERS = [/^backend\/ai\//];
 for (const path of sources) {
   if (ADAPTERS.some((re) => re.test(path))) continue;
-  const compare = path.endsWith(".rs") ? RS_COMPARE : TS_COMPARE;
+  const compare = path.endsWith(".go") ? GO_COMPARE : TS_COMPARE;
   readFileSync(join(root, path), "utf8")
     .split("\n")
     .forEach((line, i) => {

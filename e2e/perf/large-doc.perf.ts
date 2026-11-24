@@ -246,11 +246,11 @@ async function jumpToEnd(page: Page) {
 async function switchTabs(page: Page, count: number) {
   await page.evaluate(() => {
     const w = window as unknown as Record<string, unknown> & {
-      __devEmitTauriEvent: (name: string, payload: unknown) => void;
+      __devEmitEvent: (name: string, payload: unknown) => void;
     };
     (w.__devFiles as Record<string, string>)["/bench/small.md"] =
       "# Small\n\nA short note.\n";
-    w.__devEmitTauriEvent("tauri://drag-drop", {
+    w.__devEmitEvent("native://drag-drop", {
       paths: ["/bench/small.md"],
       position: { x: 0, y: 0 },
     });
@@ -300,15 +300,15 @@ async function saveAfterEdit(page: Page, path: string) {
     times.push(
       await page.evaluate(async (path) => {
         const w = window as unknown as Record<string, unknown> & {
-          __TAURI_INTERNALS__: {
+          __TEXTUS_HOST__: {
             invoke: (cmd: string, args?: Record<string, unknown>) => unknown;
           };
-          __devEmitTauriEvent: (name: string) => void;
+          __devEmitEvent: (name: string) => void;
         };
-        const original = w.__TAURI_INTERNALS__.invoke;
+        const original = w.__TEXTUS_HOST__.invoke;
         const start = performance.now();
         const written = new Promise<number>((resolve) => {
-          w.__TAURI_INTERNALS__.invoke = (cmd, args = {}) => {
+          w.__TEXTUS_HOST__.invoke = (cmd, args = {}) => {
             if (cmd === "write_text_file" && args.path === path) {
               resolve(performance.now() - start);
               return Promise.resolve(null);
@@ -318,9 +318,9 @@ async function saveAfterEdit(page: Page, path: string) {
             return original(cmd, args);
           };
         });
-        w.__devEmitTauriEvent("menu-save-file");
+        w.__devEmitEvent("menu-save-file");
         const ms = await written;
-        w.__TAURI_INTERNALS__.invoke = original;
+        w.__TEXTUS_HOST__.invoke = original;
         return ms;
       }, path),
     );

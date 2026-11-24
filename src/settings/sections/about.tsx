@@ -5,7 +5,7 @@ import type { Strings } from "../../i18n/strings";
 import { links } from "../../platform/ipc";
 import { isMobileApp } from "../../platform/capabilities";
 import { UpdateButton } from "./general";
-import appIcon from "../../../src-tauri/icons/128x128@2x.png";
+import appIcon from "../../../packaging/icons/128x128@2x.png";
 
 /** Settings › General › About Textus: the app, its version and updates,
  *  its code, where to talk with us, and who made it. */

@@ -26,7 +26,7 @@ function apiNames(): string[] {
 }
 
 it("Create mode's plugin guide names everything textus.d.ts offers", () => {
-  const guide = read("src-tauri/src/ai/skills/plugin.md");
+  const guide = read("backend/ai/skills/plugin.md");
   const names = apiNames();
   expect(names.length).toBeGreaterThan(100);
   expect(

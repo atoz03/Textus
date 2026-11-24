@@ -13,7 +13,7 @@ import { documentMarkdown, serializeBlocks } from "./markdown/doc-markdown";
 
 // Resolved from the repository root (where vitest runs): import.meta.url
 // is not a file URL under the jsdom environment.
-const dir = join(process.cwd(), "src-tauri/src/ai/live_eval/docs");
+const dir = join(process.cwd(), "backend/ai/live_eval/docs");
 const docs = readdirSync(dir).filter((name) => name.endsWith(".md"));
 
 // The diagram preview renders asynchronously and would dispatch into a

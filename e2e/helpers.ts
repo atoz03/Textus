@@ -129,7 +129,7 @@ export async function mockInvoke(page: Page, results: Record<string, unknown>) {
 }
 
 type DevWindow = {
-  __devEmitTauriEvent: (name: string, payload?: unknown) => void;
+  __devEmitEvent: (name: string, payload?: unknown) => void;
   __devInvokeCalls?: ({ cmd: string } & Record<string, unknown>)[];
   __devHeld?: Record<string, unknown[]>;
   __devRelease: (cmd: string) => void;
@@ -138,8 +138,7 @@ type DevWindow = {
 /** Sends a backend event, as a menu item or the OS would. */
 export function emit(page: Page, name: string, payload?: unknown) {
   return page.evaluate(
-    ([n, p]) =>
-      (window as unknown as DevWindow).__devEmitTauriEvent(n as string, p),
+    ([n, p]) => (window as unknown as DevWindow).__devEmitEvent(n as string, p),
     [name, payload] as const,
   );
 }

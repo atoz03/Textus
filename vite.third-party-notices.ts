@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { Plugin } from "vite";
 
 /** The file Settings › About opens (src/help/licenses.ts). */
@@ -10,8 +10,8 @@ export const LICENSES_FILE = "open-source-licenses.md";
 
 // The licenses of everything third-party that ships inside Textus, written
 // into the build as third-party-notices.md (Settings › About › Open-source
-// licenses). npm packages are the ones the bundle really holds; Rust crates
-// are the ones compiled for the platform Tauri builds for.
+// licenses). npm packages are the ones the bundle really holds; Go modules
+// are the ones compiled into the backend (backend/, on MyGo).
 
 export interface ThirdParty {
   name: string;
@@ -135,91 +135,58 @@ function npmPackage(dir: string): ThirdParty | null {
   };
 }
 
-interface CargoMeta {
-  packages: {
-    id: string;
-    name: string;
-    version: string;
-    license: string | null;
-    license_file: string | null;
-    repository: string | null;
-    authors: string[];
-    manifest_path: string;
-    targets: { kind: string[] }[];
-  }[];
-  workspace_members: string[];
-  resolve: {
-    root: string;
-    nodes: {
-      id: string;
-      deps: { pkg: string; dep_kinds: { kind: string | null }[] }[];
-    }[];
-  };
-}
+/** `go list -deps` of the app's main package, one line per package:
+ *  `<module>\t<version>\t<module dir>`, blank for the standard library's
+ *  packages and the app's own. */
+const GO_LIST_FORMAT =
+  '{{with .Module}}{{if not .Main}}{{.Path}}{{"\\t"}}{{.Version}}{{"\\t"}}{{.Dir}}{{end}}{{end}}';
 
-/** The crates compiled into the app for `triple`: normal dependencies of
- *  the app, without build scripts' and proc macros' (they only run while
- *  building) or the workspace's own. */
-export function shippedCrates(meta: CargoMeta): ThirdParty[] {
-  const packages = new Map(meta.packages.map((p) => [p.id, p]));
-  const nodes = new Map(meta.resolve.nodes.map((n) => [n.id, n]));
-  const own = new Set(meta.workspace_members);
-  const seen = new Set<string>();
-  const stack = [meta.resolve.root];
-  while (stack.length) {
-    const id = stack.pop()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    for (const dep of nodes.get(id)?.deps ?? []) {
-      if (!dep.dep_kinds.some((k) => k.kind === null)) continue;
-      const crate = packages.get(dep.pkg);
-      if (crate?.targets.some((t) => t.kind.includes("proc-macro"))) continue;
-      stack.push(dep.pkg);
-    }
-  }
-  return [...seen]
-    .filter((id) => !own.has(id))
-    .map((id) => packages.get(id)!)
-    .map((p) => {
-      const dir = dirname(p.manifest_path);
-      const files = filesIn(dir);
-      if (p.license_file && !files.texts.length)
-        files.texts.push(readFileSync(join(dir, p.license_file), "utf8"));
-      return {
-        name: p.name,
-        version: p.version,
-        license: p.license ?? (p.license_file ? "SEE LICENSE FILE" : ""),
-        url: p.repository ?? undefined,
-        authors: p.authors.length ? p.authors : undefined,
-        ...files,
-      };
+/** The Go modules in a `go list` of GO_LIST_FORMAT, each once. */
+export function goModules(listing: string): ThirdParty[] {
+  const modules = new Map<string, ThirdParty>();
+  for (const line of listing.split("\n")) {
+    const [path, version = "", dir] = line.trim().split("\t");
+    if (!path || !dir || modules.has(path)) continue;
+    modules.set(path, {
+      name: path,
+      version,
+      license: "",
+      url: `https://pkg.go.dev/${path}`,
+      ...filesIn(dir),
     });
+  }
+  return [...modules.values()];
 }
 
-function cargoMetadata(triple: string): CargoMeta {
-  const args = [
-    "metadata",
-    "--format-version",
-    "1",
-    "--locked",
-    "--filter-platform",
-    triple,
-    "--manifest-path",
-    "src-tauri/Cargo.toml",
-  ];
-  const run = (extra: string[]) =>
-    execFileSync("cargo", [...args, ...extra], {
+/** What the backend compiles in, for the GOOS and GOARCH the environment
+ *  names (`mygo build` builds the page first, then the Go): its modules
+ *  and Go's standard library. None where Go isn't installed, as a build of
+ *  the page alone ships no Go. */
+function goPackages(): ThirdParty[] {
+  const go = (args: string[]) =>
+    execFileSync("go", args, {
       encoding: "utf8",
-      maxBuffer: 256 * 1024 * 1024,
+      maxBuffer: 64 * 1024 * 1024,
       stdio: ["ignore", "pipe", "pipe"],
     });
-  let out: string;
+  let env: string[];
   try {
-    out = run(["--offline"]);
-  } catch {
-    out = run([]);
+    env = go(["env", "GOROOT", "GOVERSION"]).trim().split("\n");
+  } catch (err) {
+    if ((err as { code?: string }).code === "ENOENT") return [];
+    throw err;
   }
-  return JSON.parse(out);
+  const [root = "", version = ""] = env;
+  return [
+    {
+      name: "Go standard library",
+      version: version.replace(/^go/, ""),
+      license: "BSD-3-Clause",
+      url: "https://go.dev",
+      ...filesIn(root),
+    },
+    ...goModules(go(["list", "-deps", "-f", GO_LIST_FORMAT, "."])),
+  ];
 }
 
 type Standard = (id: string) => string | undefined;
@@ -235,7 +202,7 @@ function spdxText(): Standard {
  *  what it declares when it ships none. */
 function textsOf(p: ThirdParty, standard: Standard): string[] {
   if (p.texts.length) {
-    // A dual-licensed crate ships both texts; the one taken is enough.
+    // A dual-licensed package ships both texts; the one taken is enough.
     const taken = chosenLicenses(p.license);
     if (p.texts.length > 1 && taken.length === 1) {
       const id = taken[0].split(/\s+WITH\s+/i)[0];
@@ -330,8 +297,8 @@ export function noticesMarkdown(
   );
 }
 
-/** Writes the notices into the build. Tauri's builds add the Rust crates;
- *  a build for the web (tests, the playground) has only the npm side. */
+/** Writes the notices into the build: the npm side, and the Go side
+ *  where Go is installed. */
 export function thirdPartyNotices(): Plugin {
   return {
     name: "textus-third-party-notices",
@@ -343,8 +310,7 @@ export function thirdPartyNotices(): Plugin {
         if (dir && existsSync(join(dir, "package.json"))) dirs.add(dir);
       }
       const packages = [...dirs].map(npmPackage).filter((p) => p !== null);
-      const triple = process.env.TAURI_ENV_TARGET_TRIPLE;
-      if (triple) packages.push(...shippedCrates(cargoMetadata(triple)));
+      packages.push(...goPackages());
       const handCopied = readFileSync("THIRD-PARTY-NOTICES.md", "utf8");
       this.emitFile({
         type: "asset",

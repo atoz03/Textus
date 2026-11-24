@@ -64,14 +64,14 @@ describe("the fixed shortcuts in Settings", () => {
     expect(fixedCombos("windows")).toEqual(expect.arrayContaining(fromMenu));
   });
 
-  it("match the macOS menu bar's accelerators in menu.rs", () => {
+  it("match the macOS menu bar's accelerators", () => {
     const native = [...nativeAccelerators("macos").keys()];
     expect(native).toContain("mod+shift+t");
     const mac = fixedCombos("macos");
-    // Both ways. The rest are muda's predefined Edit items, the editor's own
+    // Both ways. The rest are the predefined Edit items, the editor's own
     // keys and the tab keys.
     expect(mac).toEqual(expect.arrayContaining(native));
-    const outsideMenuRs = new Set([
+    const outsideTheBar = new Set([
       "mod+x",
       "mod+c",
       "mod+v",
@@ -99,7 +99,7 @@ describe("the fixed shortcuts in Settings", () => {
       "mod+alt+]",
       "mod+]",
     ]);
-    expect(mac.filter((combo) => !outsideMenuRs.has(combo)).sort()).toEqual(
+    expect(mac.filter((combo) => !outsideTheBar.has(combo)).sort()).toEqual(
       [...new Set(native)].sort(),
     );
   });

@@ -9,11 +9,10 @@
     <title>Textus</title>
     <!-- Painted before any script or stylesheet loads, so a new window opens
          in the system's colours instead of flashing white (base.css's
-         --doc-bg). An appearance pinned in Settings wins: Rust's boot script
-         (src-tauri/src/boot.js) has set data-theme before this is parsed,
+         --doc-bg). An appearance pinned in Settings wins: the backend's boot
+         script (backend/boot.js) has set data-theme before this is parsed,
          and --boot-bg to the theme's own page colour where it is known
-         (window_background in src-tauri/src/settings/window_background.rs, whose test
-         checks these colours against base.css). -->
+         (windowBackground in backend/boot.go). -->
     <style>
       html {
         background: var(--boot-bg, #ffffff);

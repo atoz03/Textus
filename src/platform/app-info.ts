@@ -1,7 +1,15 @@
-import { getVersion } from "@tauri-apps/api/app";
+import { getVersion } from "./native/app";
 import { inBrowser } from "./runtime";
 
-export type { Update } from "@tauri-apps/plugin-updater";
+/** A newer version of the app, ready to install. */
+export interface Update {
+  /** The new version. */
+  version: string;
+  /** The update's handle, for the backend to install it after a quit. */
+  rid: number;
+  /** Downloads and installs it; the running app keeps running. */
+  downloadAndInstall: () => Promise<void>;
+}
 
 /** The app's version; empty in the browser. */
 export function appVersion(): Promise<string> {

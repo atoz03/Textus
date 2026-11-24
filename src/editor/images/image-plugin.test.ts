@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveImageSrc } from "./image-plugin";
 import { imageStemForMode, safeImageStem } from "./image-store";
 
-// Tauri's own convertFileSrc percent-encodes the whole path the same way.
-vi.mock("@tauri-apps/api/core", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tauri-apps/api/core")>()),
+// The bridge's own convertFileSrc percent-encodes the whole path the same way.
+vi.mock("../../platform/native/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../platform/native/core")>()),
   convertFileSrc: (path: string) =>
     `asset://localhost/${encodeURIComponent(path)}`,
 }));

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { join, tempDir } from "@tauri-apps/api/path";
+import { invoke } from "./native/core";
+import { join, tempDir } from "./native/path";
 import { type DirEntryInfo } from "./bindings/files";
 import { isIOSApp, isMobileApp } from "./capabilities";
 import { basename, nameContentUrl } from "../utils/path";

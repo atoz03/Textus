@@ -1,42 +1,50 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it, vi } from "vitest";
-import { listenToThisWindow, unlistenAll } from "./events";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { emitToWindow, listenToThisWindow, unlistenAll } from "./events";
+import type { HostEventMessage } from "./native/core";
 
-interface ListenArgs {
-  event: string;
-  target: { kind: string; label?: string };
-}
-
-/** Stand-in for the Tauri IPC globals, capturing event registrations. */
-function installFakeRuntime(label: string): ListenArgs[] {
-  const calls: ListenArgs[] = [];
-  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
-    metadata: {
-      currentWindow: { label },
-      currentWebview: { label, windowLabel: label },
+/** A stand-in backend (as the dev shim is) for the window `label`: what is
+ *  sent to it, or to every window, reaches its listeners. */
+function installFakeHost(label: string) {
+  const listeners = new Map<string, ((e: HostEventMessage) => void)[]>();
+  window.__TEXTUS_HOST__ = {
+    label,
+    invoke: () => Promise.reject(new Error("no commands here")),
+    listen(event, handler) {
+      listeners.set(event, [...(listeners.get(event) ?? []), handler]);
+      return () =>
+        listeners.set(
+          event,
+          (listeners.get(event) ?? []).filter((h) => h !== handler),
+        );
     },
-    invoke: (cmd: string, args: ListenArgs) => {
-      if (cmd === "plugin:event|listen") calls.push(args);
-      return Promise.resolve(1);
+    emit(target, event, payload) {
+      if (target === label || target === "*")
+        for (const handler of listeners.get(event) ?? [])
+          handler({ event, id: 0, payload });
+      return Promise.resolve();
     },
-    transformCallback: () => 1,
-    unregisterCallback: () => {},
-    plugins: {},
   };
-  return calls;
+  return { listening: (event: string) => listeners.get(event)?.length ?? 0 };
 }
+
+afterEach(() => {
+  delete window.__TEXTUS_HOST__;
+});
 
 describe("listenToThisWindow", () => {
-  it("registers for this window's label, never the app-wide catch-all", async () => {
-    // A bare `listen()` registers `{ kind: "Any" }`, which also receives
-    // events emit_to'd at another window.
-    const calls = installFakeRuntime("window-3");
-    await listenToThisWindow("open-paths-as-tabs", () => {});
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].event).toBe("open-paths-as-tabs");
-    expect(calls[0].target).toEqual({ kind: "AnyLabel", label: "window-3" });
+  it("gets what is sent to this window, not another's, until unlistened", async () => {
+    const host = installFakeHost("window-3");
+    const got = vi.fn();
+    const off = await listenToThisWindow<string>("open-paths-as-tabs", (e) =>
+      got(e.payload),
+    );
+    await emitToWindow("window-3", "open-paths-as-tabs", "a.md");
+    await emitToWindow("window-4", "open-paths-as-tabs", "b.md");
+    expect(got.mock.calls).toEqual([["a.md"]]);
+    off();
+    expect(host.listening("open-paths-as-tabs")).toBe(0);
   });
 });
 

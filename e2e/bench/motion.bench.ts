@@ -30,9 +30,9 @@ async function emit(page: Page, name: string) {
     (event) =>
       (
         window as unknown as {
-          __devEmitTauriEvent: (name: string, payload?: unknown) => void;
+          __devEmitEvent: (name: string, payload?: unknown) => void;
         }
-      ).__devEmitTauriEvent(event),
+      ).__devEmitEvent(event),
     name,
   );
 }
@@ -326,12 +326,12 @@ test("diagram build-up", async ({ page }) => {
     type Send = (event: unknown) => void;
     const w = window as unknown as {
       __nextLine?: () => void;
-      __TAURI_INTERNALS__: {
+      __TEXTUS_HOST__: {
         invoke: (cmd: string, args?: unknown) => Promise<unknown>;
       };
     };
-    const original = w.__TAURI_INTERNALS__.invoke;
-    w.__TAURI_INTERNALS__.invoke = (cmd, args) => {
+    const original = w.__TEXTUS_HOST__.invoke;
+    w.__TEXTUS_HOST__.invoke = (cmd, args) => {
       if (cmd !== "ai_agent_message") return original(cmd, args);
       const { request, onEvent } = args as {
         request: { message: string };

@@ -65,10 +65,7 @@ export function ChatWindowHeader({
   );
   if (tabs)
     return (
-      <div
-        className="chat-window-header chat-window-tabs"
-        data-tauri-drag-region
-      >
+      <div className="chat-window-header chat-window-tabs" data-drag-region>
         {/* The traffic lights' room, for the row to clear. */}
         <span className="window-bar-lead chat-window-lights" aria-hidden />
         <IslandRow ui>

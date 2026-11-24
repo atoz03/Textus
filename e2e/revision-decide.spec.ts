@@ -53,10 +53,10 @@ async function propose(page: Page, path?: string) {
     await page.evaluate(
       ({ path, text }) => {
         const w = window as unknown as Record<string, unknown> & {
-          __devEmitTauriEvent: (name: string, payload: unknown) => void;
+          __devEmitEvent: (name: string, payload: unknown) => void;
         };
         w.__devFiles = { [path]: text };
-        w.__devEmitTauriEvent("tauri://drag-drop", {
+        w.__devEmitEvent("native://drag-drop", {
           paths: [path],
           position: { x: 0, y: 0 },
         });

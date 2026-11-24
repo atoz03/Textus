@@ -11,8 +11,8 @@ import { fnv1a as hashString } from "../utils/hash";
 vi.mock("mermaid", () => ({
   default: { initialize() {}, render: () => new Promise(() => {}) },
 }));
-// An image at an absolute path is shown through Tauri's asset protocol.
-vi.mock("@tauri-apps/api/core", async (original) => ({
+// An image at an absolute path is shown through the backend's asset scheme.
+vi.mock("../platform/native/core", async (original) => ({
   ...(await original<object>()),
   convertFileSrc: (path: string) => `asset://localhost/${path}`,
 }));

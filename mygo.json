@@ -1,0 +1,32 @@
+{
+  "name": "Textus",
+  "slug": "textus",
+  "identifier": "com.catvinci.textus",
+  "version": "1.4.7-rc.4",
+  "copyright": "© 2026 CatVinci Studio",
+  "license": "MIT",
+  "icon": "packaging/icons/icon.png",
+  "devUrl": "http://localhost:1420",
+  "devCommand": "npm run dev",
+  "buildCommand": "npm run build",
+  "frontendDist": "dist",
+  "bindings": "src/platform/native/host-client.ts",
+  "out": "dist-app",
+  "fileAssociations": [
+    {
+      "ext": ["md", "markdown"],
+      "name": "Markdown document",
+      "mimeType": "text/markdown",
+      "role": "Editor"
+    },
+    {
+      "ext": ["mdx"],
+      "name": "MDX document",
+      "mimeType": "text/mdx",
+      "role": "Editor"
+    }
+  ],
+  "macos": {
+    "icon": "packaging/icons/icon.icns"
+  }
+}

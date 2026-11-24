@@ -15,7 +15,7 @@ async function openMemoryFolder(page: Page, files: Record<string, string>) {
     w.__memDisk = disk;
     // Every backend call carrying a remote path, which it would take for a
     // relative one.
-    const internals = w.__TAURI_INTERNALS__ as {
+    const internals = w.__TEXTUS_HOST__ as {
       invoke: (cmd: string, args?: unknown) => Promise<unknown>;
     };
     const invoke = internals.invoke;

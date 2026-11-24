@@ -11,7 +11,7 @@ import { readBoot } from "../storage/boot";
 /**
  * How much of the window frame this app draws itself. macOS keeps its native
  * frame under an overlay title bar; Windows and Linux drop it, so the caption
- * buttons and menu entry are ours. Must agree with the Rust window builder.
+ * buttons and menu entry are ours. Must agree with backend/windows.go.
  */
 
 /**
@@ -22,23 +22,23 @@ export const appDrawsWindowFrame =
   hasAppMenu && (isWindowsPlatform() || isLinuxPlatform());
 
 /**
- * Whether the frontend must handle the native menu's accelerators. Linux
- * only: GTK fires them only while the menu bar is drawable, and Windows still
- * fires them with it hidden, so handling them there would run each twice.
+ * Whether the frontend must handle the menu's accelerators: wherever the
+ * app draws the frame, Windows and Linux, the windows have no native menu
+ * bar to fire them (backend/menu.go installs one on macOS only).
  */
-export const ownsMenuAccelerators = isLinuxPlatform();
+export const ownsMenuAccelerators = appDrawsWindowFrame;
 
 /**
- * Whether the app draws inner resize edges. Linux only: GTK's frame resizes
- * only from outside the window, Windows from its own edge.
+ * Whether the app draws inner resize edges. No: a MyGo window keeps the
+ * system's resize edges with its title bar hidden.
  */
-export const drawsWindowEdges = isLinuxPlatform();
+export const drawsWindowEdges = false;
 
 /**
  * Whether the page draws the window's outline: Windows 10, whose undecorated
- * window is built without its shadow (editor_windows.rs), the shadow's
- * accent-coloured border with it. Rust says which Windows in the boot
- * snapshot, so the first frame already has it.
+ * window is built without its shadow, the shadow's accent-coloured border
+ * with it. The backend says which Windows in the boot snapshot, so the
+ * first frame already has it.
  */
 export function drawsWindowOutline(): boolean {
   return (

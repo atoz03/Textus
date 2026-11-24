@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import tauriConfig from "../../../src-tauri/tauri.conf.json";
+import windowPolicy from "../../platform/window-csp.json";
 import { webviewCsp } from "./frames";
 import { hostDocument } from "./host-document";
 
-const security = tauriConfig.app.security;
-const windowCsp: Record<string, string[]> = security.csp;
+const windowCsp: Record<string, string[]> = windowPolicy;
 
 function parse(policy: string): Record<string, string[]> {
   return Object.fromEntries(
@@ -87,9 +86,11 @@ describe("the window's Content Security Policy", () => {
     expect(windowSources("frame-src")).not.toContain("http:");
   });
 
-  it("is not given hashes, which would switch 'unsafe-inline' off in plugin frames", () => {
-    expect(security.dangerousDisableAssetCspModification).toEqual(
-      expect.arrayContaining(["script-src", "style-src"]),
-    );
+  it("has no hashes or nonces, which would switch 'unsafe-inline' off in plugin frames", () => {
+    for (const directive of ["script-src", "style-src"])
+      for (const source of windowSources(directive))
+        expect(source, `${directive} ${source}`).not.toMatch(
+          /^'(sha256|sha384|sha512|nonce)-/,
+        );
   });
 });

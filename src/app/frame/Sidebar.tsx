@@ -107,7 +107,7 @@ export function Sidebar({
             <div
               className="sidebar-header"
               inert={closing || undefined}
-              data-tauri-drag-region={titleShown || undefined}
+              data-drag-region={titleShown || undefined}
             >
               {/* With the rail holding the tabs, the header is the panel's
                   name, on the window bar's line; the panel's own first row
@@ -117,7 +117,7 @@ export function Sidebar({
                   end the name's line: no row of their own. */}
               <h2
                 className="tx-pane-title sidebar-title"
-                data-tauri-drag-region={titleShown || undefined}
+                data-drag-region={titleShown || undefined}
               >
                 {shown.label(t)}
               </h2>

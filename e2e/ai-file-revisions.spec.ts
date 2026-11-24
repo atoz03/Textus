@@ -16,11 +16,11 @@ const invoke = (page: Page, cmd: string, args: object) =>
     ({ cmd, args }) =>
       (
         window as unknown as {
-          __TAURI_INTERNALS__: {
+          __TEXTUS_HOST__: {
             invoke: (cmd: string, args: object) => Promise<unknown>;
           };
         }
-      ).__TAURI_INTERNALS__.invoke(cmd, args),
+      ).__TEXTUS_HOST__.invoke(cmd, args),
     { cmd, args },
   );
 

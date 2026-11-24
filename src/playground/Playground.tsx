@@ -35,7 +35,7 @@ import { Presence } from "../engine/motion/usePresence";
 import { ChevronIcon } from "../engine/controls/icons";
 import { LANGS, LANG_NAMES } from "../i18n/langs";
 import { Select } from "../engine/controls/Select";
-import mark from "../../src-tauri/icons/128x128.png";
+import mark from "../../packaging/icons/128x128.png";
 
 const DOWNLOAD_URL = "https://textus.md/#download";
 

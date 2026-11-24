@@ -1,0 +1,10 @@
+/* The window's chrome that moves the window when pressed and dragged: the
+   elements marked data-drag-region themselves, not what they hold. MyGo
+   starts the drag on a press where --app-region is "drag", and leaves
+   inputs, buttons and links alone on its own; a double press maximizes. */
+[data-drag-region] * {
+  --app-region: no-drag;
+}
+[data-drag-region] {
+  --app-region: drag;
+}

@@ -1,4 +1,4 @@
-import { Channel } from "@tauri-apps/api/core";
+import { Channel } from "./native/core";
 import type {
   DraftRequest,
   Outline,

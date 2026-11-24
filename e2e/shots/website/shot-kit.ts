@@ -677,42 +677,16 @@ function fontFacesFor(lang: string): StandInFont[] {
 export const MAC_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 
-/** The provider catalog as the backend serves it: the dev shim answers null
- *  and the frontend's fallback names only three providers. */
+/** The provider catalog the frontend is built with (PROVIDER_CATALOG in
+ *  src/platform/bindings/ai.ts, one line of JSON). */
 function providerCatalog() {
-  const source = readFileSync("src-tauri/src/ai/catalog.rs", "utf8");
-  const start = source.indexOf("pub const PROVIDER_CATALOG");
-  const table = source.slice(start, source.indexOf("\n];", start));
-  const entries = table.split("ProviderCatalogEntry {").slice(1);
-  const text = (block: string, field: string) =>
-    block.match(new RegExp(`\\b${field}: "([^"]*)"`))?.[1] ?? null;
-  const optional = (block: string, field: string) =>
-    block.match(new RegExp(`\\b${field}: Some\\("([^"]*)"\\)`))?.[1] ?? null;
-  const flag = (block: string, field: string) =>
-    new RegExp(`\\b${field}: true`).test(block);
-  const list = (block: string, field: string) =>
-    (
-      (
-        block.match(new RegExp(`\\b${field}: &\\[([^\\]]*)\\]`))?.[1] ?? ""
-      ).match(/"[^"]*"/g) ?? []
-    ).map((quoted) => quoted.slice(1, -1));
-  const catalog = entries.map((block) => ({
-    id: text(block, "id"),
-    label: text(block, "label"),
-    dialect: text(block, "dialect"),
-    auth: list(block, "auth"),
-    baseUrl: optional(block, "base_url"),
-    defaultModel: optional(block, "default_model"),
-    agentDefaultModel: optional(block, "agent_default_model"),
-    keyOptional: flag(block, "key_optional"),
-    oauthUnofficial: flag(block, "oauth_unofficial"),
-    supportsVision: flag(block, "supports_vision"),
-    modelsListable: flag(block, "models_listable"),
-    knownModels: list(block, "known_models"),
-  }));
-  if (catalog.length < 3 || catalog.some((entry) => !entry.id || !entry.label))
-    throw new Error("catalog.rs: PROVIDER_CATALOG no longer parses");
-  return catalog;
+  const source = readFileSync("src/platform/bindings/ai.ts", "utf8");
+  const json = /^export const PROVIDER_CATALOG = (\[.*\]) as const;$/m.exec(
+    source,
+  )?.[1];
+  if (!json)
+    throw new Error("bindings/ai.ts: PROVIDER_CATALOG no longer parses");
+  return JSON.parse(json) as unknown[];
 }
 const PROVIDERS = providerCatalog();
 
@@ -751,7 +725,7 @@ export async function launch(page: Page, options: Launch) {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "platform", { get: () => "MacIntel" });
   });
-  // The sample's illustration, as Tauri's asset protocol would serve it.
+  // The sample's illustration, as the backend's asset scheme would serve it.
   await page.route(/^http:\/\/asset\.localhost\//, (route) => {
     const file = decodeURIComponent(new URL(route.request().url()).pathname);
     const picture = path.join(
@@ -896,9 +870,9 @@ export async function emit(page: Page, event: string, payload?: unknown) {
     ([name, data]) =>
       (
         window as unknown as {
-          __devEmitTauriEvent: (name: string, payload?: unknown) => void;
+          __devEmitEvent: (name: string, payload?: unknown) => void;
         }
-      ).__devEmitTauriEvent(name as string, data),
+      ).__devEmitEvent(name as string, data),
     [event, payload] as const,
   );
 }

@@ -10,32 +10,15 @@ import { unreleasedProblems } from "./release-notes.mjs";
 const ownRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const reader = (root) => (file) => readFileSync(join(root, file), "utf8");
 
-/** The `version = "..."` line of the first TOML table matching `header`
- *  (a regex source for the lines that open it). */
-function tomlVersion(text, header) {
-  const table = text.match(
-    new RegExp(`${header}([\\s\\S]*?)(?=^\\[|(?![\\s\\S]))`, "m"),
-  );
-  return table?.[1].match(/^version\s*=\s*"([^"]+)"/m)?.[1];
-}
-
 export function collectVersions(readFile = reader(ownRoot)) {
   const pkg = JSON.parse(readFile("package.json"));
   const lock = JSON.parse(readFile("package-lock.json"));
-  const tauri = JSON.parse(readFile("src-tauri/tauri.conf.json"));
+  const mygo = JSON.parse(readFile("mygo.json"));
   return {
     "package.json": pkg.version,
     "package-lock.json (version)": lock.version,
     'package-lock.json (packages[""].version)': lock.packages?.[""]?.version,
-    "src-tauri/Cargo.toml": tomlVersion(
-      readFile("src-tauri/Cargo.toml"),
-      "^\\[package\\]\\s*$",
-    ),
-    "src-tauri/Cargo.lock (textus)": tomlVersion(
-      readFile("src-tauri/Cargo.lock"),
-      '^\\[\\[package\\]\\]\\s*\\nname = "textus"\\s*$',
-    ),
-    "src-tauri/tauri.conf.json": tauri.version,
+    "mygo.json": mygo.version,
   };
 }
 

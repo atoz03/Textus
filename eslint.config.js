@@ -6,20 +6,21 @@ import tseslint from "typescript-eslint";
 // The layers of src/, lowest first: a folder imports from its own layer and
 // the ones below, never above (docs/dev/architecture.md). Type-only imports are
 // allowed across layers - they leave nothing behind at runtime.
-// Only src/platform/ (and the dev shim) talk to Tauri: everything else goes
-// through it, so the same code can run in the browser build.
-const TAURI = {
-  group: ["@tauri-apps/*"],
+// Only src/platform/ (and the dev shim) talk to the desktop runtime (MyGo):
+// everything else goes through it, so the same code can run in the browser
+// build.
+const DESKTOP = {
+  group: ["mygo-runtime", "mygo-runtime/*"],
   allowTypeImports: true,
-  message: "Tauri is reached through src/platform/ only.",
+  message: "The desktop runtime is reached through src/platform/ only.",
 };
-const above = (folders, { tauri = false } = {}) => ({
+const above = (folders, { desktop = false } = {}) => ({
   "@typescript-eslint/no-restricted-imports": [
     "error",
     {
       patterns: [
         ...folders.map((folder) => ({
-          // Relative paths only: "@tauri-apps/api/app" is a package.
+          // Relative paths only: "mygo-runtime" is a package.
           group: [".", "..", "../..", "../../.."].flatMap((up) => [
             `${up}/${folder}`,
             `${up}/${folder}/**`,
@@ -37,7 +38,7 @@ const above = (folders, { tauri = false } = {}) => ({
           message:
             "plugins/host/ is inside the plugin system; use plugins/manager.ts or plugins/app-bridge.ts.",
         },
-        ...(tauri ? [] : [TAURI]),
+        ...(desktop ? [] : [DESKTOP]),
       ],
     },
   ],
@@ -66,7 +67,10 @@ export default tseslint.config(
       "dist/**",
       "dist-playground/**",
       "node_modules/**",
-      "src-tauri/target/**",
+      // MyGo's build output and its generated client.
+      ".mygo/**",
+      "dist-app/**",
+      "src/platform/native/host-client.ts",
       // The official plugins checked out for the plugin flows.
       "textus-plugins/**",
       // Local git worktrees (.claude/worktrees) are other checkouts.
@@ -106,7 +110,7 @@ export default tseslint.config(
   {
     files: ["src/platform/**/*.{ts,tsx}"],
     ignores: ["**/*.test.*"],
-    rules: above([...SHELL, ...FEATURES, "engine"], { tauri: true }),
+    rules: above([...SHELL, ...FEATURES, "engine"], { desktop: true }),
   },
   {
     // The settings model: what every layer above reads.
@@ -232,21 +236,21 @@ export default tseslint.config(
     },
   },
   {
-    // The entry files aren't layered, but they still reach Tauri only
-    // through src/platform/.
+    // The entry files aren't layered, but they still reach the desktop
+    // runtime only through src/platform/.
     files: ["src/*.{ts,tsx}"],
     ignores: ["**/*.test.*"],
     rules: {
       "@typescript-eslint/no-restricted-imports": [
         "error",
-        { patterns: [TAURI] },
+        { patterns: [DESKTOP] },
       ],
     },
   },
   {
     files: ["src/dev/**/*.{ts,tsx}"],
     ignores: ["**/*.test.*"],
-    rules: above([], { tauri: true }),
+    rules: above([], { desktop: true }),
   },
   {
     // Plugin code: the runtimes put into a plugin's sandboxed frames

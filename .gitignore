@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 dist-playground
+# What mygo dev and mygo build write (mygo.json's out).
+.mygo/
+dist-app/
 # Live-eval runs (scripts/live-eval.mjs).
 /tmp/
 *.local

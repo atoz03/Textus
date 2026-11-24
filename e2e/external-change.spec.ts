@@ -58,9 +58,9 @@ test("with unsaved changes, saving over a file changed elsewhere offers to take 
     w.__devFsTimes = { ...w.__devFsTimes, "/work/rain.md": 99 };
     (
       window as unknown as {
-        __devEmitTauriEvent: (name: string) => void;
+        __devEmitEvent: (name: string) => void;
       }
-    ).__devEmitTauriEvent("menu-save-file");
+    ).__devEmitEvent("menu-save-file");
   });
   const dialog = page.locator(".app-dialog");
   await expect(dialog.getByRole("button")).toHaveText([
@@ -100,12 +100,12 @@ test("coming back from another app leaves the document where it was read", async
   await scroller.evaluate((el) => (el.scrollTop = 600));
   // Away, then back: the webview scrolls to the caret as it gives the
   // editor its focus back.
-  type Dev = { __devEmitTauriEvent(name: string, payload?: unknown): void };
+  type Dev = { __devEmitEvent(name: string, payload?: unknown): void };
   await page.evaluate(() =>
-    (window as unknown as Dev).__devEmitTauriEvent("tauri://blur"),
+    (window as unknown as Dev).__devEmitEvent("native://blur"),
   );
   await page.evaluate(() => {
-    (window as unknown as Dev).__devEmitTauriEvent("tauri://focus");
+    (window as unknown as Dev).__devEmitEvent("native://focus");
     const el = document.querySelector<HTMLElement>(
       '[data-active-tab="true"] .editor-scroll',
     )!;

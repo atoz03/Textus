@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { showProposalPictures } from "./pending-doc-pictures";
 import { probeMissing } from "../../editor/images/missing-image";
 
-// A file is shown through Tauri's asset protocol.
-vi.mock("@tauri-apps/api/core", async (original) => ({
+// A file is shown through the backend's asset scheme.
+vi.mock("../../platform/native/core", async (original) => ({
   ...(await original<object>()),
   convertFileSrc: (path: string) => `asset://localhost/${path}`,
 }));

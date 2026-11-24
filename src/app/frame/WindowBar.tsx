@@ -93,7 +93,7 @@ export function WindowBar({
   useFitSteps(header, BAR_FOLDS, barRowsHaveRoom);
   return (
     <>
-      <header ref={header} className="window-bar" data-tauri-drag-region>
+      <header ref={header} className="window-bar" data-drag-region>
         {bar.lead.map((item) => {
           switch (item) {
             case "lights":

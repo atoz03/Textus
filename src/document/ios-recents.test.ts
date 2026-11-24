@@ -13,8 +13,8 @@ vi.mock("../platform/capabilities", () => ({
   isMobileApp: true,
   isIOSApp: true,
 }));
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("@tauri-apps/api/path", () => ({
+vi.mock("../platform/native/core", () => ({ invoke: vi.fn() }));
+vi.mock("../platform/native/path", () => ({
   documentDir: async () => {
     await new Promise((resolve) => setTimeout(resolve, 1));
     return "/app/Documents";
@@ -41,7 +41,7 @@ const {
   rememberIOSDocument,
   renameIOSDocument,
 } = await import("./ios-recents");
-const { invoke } = await import("@tauri-apps/api/core");
+const { invoke } = await import("../platform/native/core");
 
 beforeEach(() => {
   stored.list = [];

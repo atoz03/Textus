@@ -14,7 +14,7 @@ import {
 } from "../engine/controls/icons";
 import { Tooltip } from "../engine/controls/Tooltip";
 import type { Strings } from "../i18n/strings";
-import mark from "../../src-tauri/icons/128x128.png";
+import mark from "../../packaging/icons/128x128.png";
 import { openingDocuments } from "./start-project";
 import "./start-page.css";
 import { StartActions } from "./StartActions";

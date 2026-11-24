@@ -6,7 +6,7 @@ import { loadSettings, SettingsProvider } from "./prefs/SettingsContext";
 import { AppearanceSync } from "./theme/apply-appearance";
 import { loadLocale } from "./i18n/strings";
 import { lazyModule, startWarming } from "./lazy/lazy-module";
-import { installDevTauriShim } from "./dev/tauri-shim";
+import { installDevHostShim } from "./dev/host-shim";
 import { installPolyfills } from "./utils/polyfills";
 import { watchMemory } from "./app/watch-memory";
 import { publishWindowChrome } from "./platform/window-chrome";
@@ -32,7 +32,7 @@ import { watchInput } from "./app/report/input-trail";
 import { AppErrorBoundary } from "./app/report/AppErrorBoundary";
 
 installPolyfills();
-installDevTauriShim();
+installDevHostShim();
 installWebviewGuards();
 installLinkGuard();
 installTextFieldMenu();

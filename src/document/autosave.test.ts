@@ -13,7 +13,7 @@ import type { DocTab } from "./doc-tabs";
 const focus = vi.hoisted(() => ({
   handler: null as null | ((e: { payload: boolean }) => void),
 }));
-vi.mock("@tauri-apps/api/window", () => ({
+vi.mock("../platform/native/window", () => ({
   getCurrentWindow: () => ({
     onFocusChanged: (h: (e: { payload: boolean }) => void) => {
       focus.handler = h;

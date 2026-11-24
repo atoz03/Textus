@@ -2,14 +2,14 @@
 //
 // Every fixed keyboard shortcut in one table, with who answers it on each
 // platform, checked against the places that claim keys: the native menu
-// (src-tauri/src/menu.rs, menu/build.rs), the window's handler
-// (useGlobalShortcuts.ts, and the configurable defaults) and the editor's
-// keymaps (a real editor, asked key by key).
+// (src/registry/menu/menu.json, dispatched by backend/menu_dispatch.go),
+// the window's handler (useGlobalShortcuts.ts, and the configurable
+// defaults) and the editor's keymaps (a real editor, asked key by key).
 //
 // Who gets a key first differs by platform. macOS: the native menu, before
-// the page sees it. Windows: the page; a key it doesn't take goes on to the
-// hidden menu's accelerators. Linux: the page only, as GTK's hidden menu bar
-// fires none.
+// the page sees it. Windows and Linux: the page only, as the backend puts
+// up no menu bar there; the page runs the menu's keys itself
+// (LINUX_MENU_ACCELERATORS).
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -18,6 +18,7 @@ import { closeViews, openView } from "../editor/editor-view-kit";
 import { defaultShortcuts } from "../prefs/shortcut-defaults";
 import {
   eventOf,
+  leftOffBar,
   nativeAccelerators,
   predefinedOnMac,
   type Platform,
@@ -241,10 +242,9 @@ describe("the key table", () => {
       }
       for (const [key, row] of Object.entries(KEYS)) {
         const owner = row[platform];
-        if (owner?.startsWith("menu:"))
-          expect(native.get(key), `${key} on ${platform}`).toBe(
-            owner.slice("menu:".length),
-          );
+        const id = owner?.startsWith("menu:") && owner.slice("menu:".length);
+        if (id && !leftOffBar(id))
+          expect(native.get(key), `${key} on ${platform}`).toBe(id);
       }
     },
   );
@@ -263,12 +263,13 @@ describe("the key table", () => {
     const mac = nativeAccelerators("macos");
     const linux = nativeAccelerators("linux");
     const ids = new Set(mac.values());
+    // Less what the bar leaves out for now (the page checks those too).
     for (const [key, id] of Object.entries(LINUX_MENU_ACCELERATORS))
       // Another spelling of a key is fine (mod++ for mod+=), another item not.
       if (linux.has(key)) expect(linux.get(key), key).toBe(id);
-      else expect(ids, key).toContain(id);
+      else if (!leftOffBar(id)) expect(ids, key).toContain(id);
     for (const [key, id] of Object.entries(WEBVIEW_FILE_COMMANDS))
-      expect(mac.get(key), key).toBe(id);
+      if (!leftOffBar(id)) expect(mac.get(key), key).toBe(id);
   });
 
   it("leaves no Linux menu key unanswered: GTK's hidden menu bar fires none", async () => {

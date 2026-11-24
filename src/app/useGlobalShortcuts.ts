@@ -53,8 +53,9 @@ const HEADING_KINDS: [HeadingAction, string][] = [
   ["setParagraph", "paragraph"],
 ];
 
-/** The native menu's fixed accelerators, for Linux, where the hidden menu
- *  bar doesn't fire them. Keep in step with the Rust menu. */
+/** The menu's fixed accelerators, for Windows and Linux, whose windows
+ *  have no native menu bar to fire them. Keep in step with the menu table
+ *  (src/registry/menu/menu.json). */
 export const LINUX_MENU_ACCELERATORS: Record<string, string> = {
   "mod+shift+s": "save-file-as",
   "mod+=": "zoom-in",
@@ -173,7 +174,7 @@ export function useGlobalShortcuts(opts: {
         return;
       }
 
-      // Linux: the hidden GTK menu bar's accelerators don't fire.
+      // Windows and Linux: no native menu bar fires the menu's keys.
       if (ownsMenuAccelerators) {
         const menuId = LINUX_MENU_ACCELERATORS[combo];
         if (menuId) {

@@ -2,10 +2,10 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 
-// The boot script Rust injects before the app: what it puts on the first
+// The boot script the backend injects before the app: what it puts on the first
 // frame for an imported theme.
 
-const BOOT_JS = readFileSync("src-tauri/src/boot.js", "utf8");
+const BOOT_JS = readFileSync("backend/boot.js", "utf8");
 const THEME_CSS = "#write { color: rgb(1, 2, 3); }";
 const CHROME = ":root { --ui-subtle: rgb(10, 20, 30) !important; }";
 

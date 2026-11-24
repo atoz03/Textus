@@ -2,14 +2,13 @@ import {
   isAndroidPlatform,
   isDesktop,
   isIOSPlatform,
-  isLinuxPlatform,
   isMacPlatform,
-  isWindowsPlatform,
 } from "./os";
 
 /**
  * What this build can do: the one place the desktop/iOS split is decided on
- * the frontend. Flags false on iOS stand for Rust APIs behind `#[cfg(desktop)]`.
+ * the frontend. Flags false on the desktop stand for what the Go backend
+ * (backend/, on MyGo) doesn't do yet; see docs/dev/architecture.md.
  */
 
 /** macOS, Windows or Linux - Rust's `cfg(desktop)`. */
@@ -43,28 +42,27 @@ export const hasAppMenu = isDesktopApp;
 export const hasNativeMenuBar = isDesktopApp && isMacPlatform();
 
 /** Tabs dragged out of one window into another, or into a new one, with
- *  the window following the pointer: macOS and Windows give the global
- *  cursor and window positions this needs. Linux, Wayland above all,
- *  doesn't. */
-export const canDragTabsBetweenWindows =
-  isDesktopApp && (isMacPlatform() || isWindowsPlatform());
+ *  the window following the pointer. Not yet: the backend tracks no
+ *  pointer outside its windows. */
+export const canDragTabsBetweenWindows = false;
 
-/** Web page tabs as a native webview over the tab. GTK can't place a second
- *  webview, so Linux keeps the framed page. */
-export const hasNativeWebPages = isDesktopApp && !isLinuxPlatform();
+/** Web page tabs as a native webview over the tab. Not yet: every
+ *  platform keeps the framed page. */
+export const hasNativeWebPages = false;
 
-/** The Agent conversation popped out into its own OS window. */
-export const canDetachChat = canUseWindows;
+/** The Agent conversation popped out into its own OS window. Not yet. */
+export const canDetachChat = false;
 
 /** Toggling OS fullscreen (zen mode, View > Toggle Full Screen). */
 export const canToggleFullscreen = isDesktopApp;
 
-/** The self-updater. iOS updates come from the App Store. */
-export const canAutoUpdate = isDesktopApp;
+/** The self-updater. Not yet on the desktop; iOS updates come from the
+ *  App Store. */
+export const canAutoUpdate = false;
 
-/** File > Export as PDF, through each webview's PDF backend: iOS's is the
- *  Mac's WebKit one. */
-export const canExportPdf = isDesktopApp || isIOSApp;
+/** File > Export as PDF, through the webview's PDF backend: iOS's own.
+ *  Not yet on the desktop. */
+export const canExportPdf = isIOSApp;
 
 /** Export through pandoc, an external process iOS can't spawn. */
 export const canExportWithPandoc = isDesktopApp;
@@ -100,8 +98,8 @@ export const canPickFolder = isDesktopApp || isIOSApp;
  *  plugin, platform/scoped-folder.ts). */
 export const canOpenFolder = isDesktopApp || isMobileApp;
 
-/** Settings' "install the `textus` terminal command". */
-export const canInstallCliCommand = isDesktopApp;
+/** Settings' "install the `textus` terminal command". Not yet. */
+export const canInstallCliCommand = false;
 
 /** Moving files to the Trash: iOS's is the Files app's Recently Deleted. */
 export const canTrashFiles = isDesktopApp || isIOSApp;
@@ -109,8 +107,9 @@ export const canTrashFiles = isDesktopApp || isIOSApp;
 /** The Trash reached through the native plugin, not Rust's. */
 export const trashesNatively = isIOSApp;
 
-/** Settings' "Default Markdown editor". iOS has no default app to set. */
-export const canSetDefaultEditor = isDesktopApp;
+/** Settings' "Default Markdown editor". Not yet on the desktop; iOS has
+ *  no default app to set. */
+export const canSetDefaultEditor = false;
 
 /** The phone menu's Documents list: iOS's own folder of documents; Android
  *  opens files and folders through the system's pickers instead. */

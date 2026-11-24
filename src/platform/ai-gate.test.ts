@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./native/core";
 import { gateAiRequests } from "./ai-gate";
 import { TEXTUS_AI_OFF as AI_OFF } from "./bindings/ai";
 import { ai, auth, IpcError } from "./ipc";
 
-vi.mock("@tauri-apps/api/core", () => ({
+vi.mock("./native/core", () => ({
   invoke: vi.fn().mockResolvedValue([]),
   Channel: class {
     onmessage: unknown = null;

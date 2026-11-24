@@ -146,11 +146,11 @@ export async function openDoc(page: Page, doc: LargeDoc, path: string) {
   return page.evaluate(
     async ({ path, markdown, firstText }) => {
       const w = window as unknown as Record<string, unknown> & {
-        __devEmitTauriEvent: (name: string, payload: unknown) => void;
+        __devEmitEvent: (name: string, payload: unknown) => void;
       };
       w.__devFiles = { [path]: markdown };
       const start = performance.now();
-      w.__devEmitTauriEvent("tauri://drag-drop", {
+      w.__devEmitEvent("native://drag-drop", {
         paths: [path],
         position: { x: 0, y: 0 },
       });

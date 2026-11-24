@@ -18,7 +18,7 @@ const DOCS = [
   "docs/dev/plugins/versions.md",
   "docs/dev/plugins/skill/SKILL.md",
   "docs/dev/textus.d.ts",
-  "src-tauri/src/ai/skills/plugin.md",
+  "backend/ai/skills/plugin.md",
 ];
 
 it("states the API version the runtime answers", () => {

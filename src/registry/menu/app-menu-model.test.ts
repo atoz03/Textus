@@ -333,7 +333,7 @@ describe("the Format menu's heading keys", () => {
       expect(accelOf(`Heading ${level}`)).toBe(`mod+${level}`);
   });
 
-  it("go to the macOS bar as muda reads them, only for bound levels", () => {
+  it("go to the macOS bar as the backend reads them, only for bound levels", () => {
     expect(
       nativeMenuAccelerators({
         ...shortcuts,
@@ -367,17 +367,15 @@ describe("menu bar", () => {
 });
 
 describe("the menu ids", () => {
-  it("each name an item the Rust menu dispatches", () => {
-    const source = [
-      "menu.rs",
-      ...readdirSync("src-tauri/src/menu").map((file) => `menu/${file}`),
-    ]
-      .filter((file) => file.endsWith(".rs"))
-      .map((file) => readFileSync(`src-tauri/src/${file}`, "utf8"))
+  it("each name an item the backend's menu dispatches", () => {
+    const source = readdirSync("backend")
+      .filter((file) => /^menu.*\.go$/.test(file) && !file.endsWith("_test.go"))
+      .map((file) => readFileSync(`backend/${file}`, "utf8"))
       .join("\n");
-    const prefixes = [...source.matchAll(/const \w+: &str = "([^"]+:)";/g)].map(
-      (match) => match[1],
+    const prefixes = [...source.matchAll(/^\s*\w+\s*=\s*"([^"]+:)"$/gm)].map(
+      (match) => match[1]!,
     );
+    expect(prefixes).toContain("recent:");
     const tableIds = new Set(
       Object.keys(nativeMenuLabels(t)).filter((key) => !key.includes(":")),
     );

@@ -5,6 +5,7 @@
 @import "../controls/controls.css";
 @import "../controls/progress.css";
 @import "../controls/bubble.css";
+@import "../controls/drag-region.css";
 
 :root {
   /* What a phone's home indicator or navigation bar takes at the bottom:

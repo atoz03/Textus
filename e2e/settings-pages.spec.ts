@@ -346,10 +346,10 @@ test("one newline in a paragraph breaks the line once the setting says so, its t
   // From a file: a paste would make two paragraphs of the two lines.
   await page.evaluate(() => {
     const w = window as unknown as Record<string, unknown> & {
-      __devEmitTauriEvent: (name: string, payload: unknown) => void;
+      __devEmitEvent: (name: string, payload: unknown) => void;
     };
     w.__devFiles = { "/notes/lines.md": "one\ntwo" };
-    w.__devEmitTauriEvent("tauri://drag-drop", {
+    w.__devEmitEvent("native://drag-drop", {
       paths: ["/notes/lines.md"],
       position: { x: 0, y: 0 },
     });

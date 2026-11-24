@@ -1,11 +1,13 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   LICENSES_FILE,
   chosenLicenses,
   noticesMarkdown,
   packageDirOf,
-  shippedCrates,
+  goModules,
   splitCopyright,
   type ThirdParty,
 } from "./vite.third-party-notices";
@@ -95,50 +97,24 @@ describe("third-party notices", () => {
     ).toThrow(/no license/);
   });
 
-  it("counts only the crates compiled into the app", () => {
-    const crate = (id: string, kind = "lib") => ({
-      id,
-      name: id,
-      version: "1.0.0",
-      license: "MIT",
-      license_file: null,
-      repository: null,
-      authors: [],
-      manifest_path: `/nowhere/${id}/Cargo.toml`,
-      targets: [{ kind: [kind] }],
-    });
-    const dep = (pkg: string, kind: string | null = null) => ({
-      pkg,
-      dep_kinds: [{ kind }],
-    });
-    const names = shippedCrates({
-      packages: [
-        crate("app"),
-        crate("own"),
-        crate("lib"),
-        crate("deep"),
-        crate("macro", "proc-macro"),
-        crate("builder"),
-        crate("tester"),
-      ],
-      workspace_members: ["app", "own"],
-      resolve: {
-        root: "app",
-        nodes: [
-          {
-            id: "app",
-            deps: [
-              dep("own"),
-              dep("lib"),
-              dep("macro"),
-              dep("builder", "build"),
-              dep("tester", "dev"),
-            ],
-          },
-          { id: "lib", deps: [dep("deep")] },
-        ],
+  it("takes each Go module once, with its license file", () => {
+    const dir = mkdtempSync(join(tmpdir(), "go-module-"));
+    writeFileSync(join(dir, "LICENSE"), MIT("The Go Authors"));
+    const listing = [
+      "",
+      `golang.org/x/image\tv0.30.0\t${dir}`,
+      `golang.org/x/image\tv0.30.0\t${dir}`,
+      "",
+    ].join("\n");
+    expect(goModules(listing)).toEqual([
+      {
+        name: "golang.org/x/image",
+        version: "v0.30.0",
+        license: "",
+        url: "https://pkg.go.dev/golang.org/x/image",
+        texts: [MIT("The Go Authors")],
+        notices: [],
       },
-    }).map((c) => c.name);
-    expect(names.sort()).toEqual(["deep", "lib"]);
+    ]);
   });
 });

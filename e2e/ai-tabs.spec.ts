@@ -544,7 +544,7 @@ test("however many tabs, the bar keeps bare room before its controls to move the
       ([x, y]) => {
         const hit = document.elementFromPoint(x, y);
         return (
-          !!hit?.closest("[data-tauri-drag-region]") &&
+          !!hit?.closest("[data-drag-region]") &&
           !hit.closest(".tab-pill, button, .tab-bar")
         );
       },
@@ -565,9 +565,7 @@ test("however many tabs, the bar keeps bare room before its controls to move the
     page.evaluate(
       ([x, y]) => {
         const hit = document.elementFromPoint(x, y);
-        return (
-          !!hit?.closest("[data-tauri-drag-region]") && !hit.closest("button")
-        );
+        return !!hit?.closest("[data-drag-region]") && !hit.closest("button");
       },
       [x, y],
     );

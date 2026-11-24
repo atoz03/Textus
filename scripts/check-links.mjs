@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Every relative link in the repository's documentation leads to a file
 // that is there: `[text](../dev/guide.md#part)` and `![](pictures/a.png)`.
-// Markdown under src/, e2e/ and src-tauri/ is the app's content (prompts,
+// Markdown under src/, e2e/ and backend/ is the app's content (prompts,
 // guides, test input), not documentation. Links to the web, mail and
 // anchors in the same page are not followed.
 //
 // The developer and design docs also name source files in code spans
-// (`src/app/App.tsx`, `lib.rs:42`); each must still be a file in the
+// (`src/app/App.tsx`, `host.go:42`); each must still be a file in the
 // repository, so a moved or deleted file takes its docs along.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -70,7 +70,7 @@ const EXAMPLE_NAMES = new Set([
   "PascalCase.tsx",
   "name.test.ts",
   "name.spec.ts",
-  "snake_case.rs",
+  "snake_case.go",
   "verb-noun.mjs",
   ".d.ts",
   // A theme file in the user's data folder (storage.md).
@@ -113,7 +113,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       .split("\n")
       .filter(Boolean);
   const files = listed("*.md").filter(
-    (file) => !/^(src|e2e|src-tauri)\//.test(file),
+    (file) => !/^(src|e2e|backend)\//.test(file),
   );
   // Files about to be added count as there: the check runs before a commit,
   // when a new file and the doc naming it are not yet staged.

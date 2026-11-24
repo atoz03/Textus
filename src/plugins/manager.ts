@@ -4,6 +4,8 @@ import { explainError } from "../utils/error-explain";
 import { logPluginError } from "./store/plugin-log";
 import { version as APP_VERSION } from "../../package.json";
 import { plugins as pluginsIpc, type PluginsState } from "../platform/ipc";
+import { listenToThisWindow } from "../platform/events";
+import { hasBackend } from "../platform/runtime";
 import { runCommand } from "../registry/commands";
 import { showMessage } from "../engine/controls/app-dialog";
 import { commandRegistered, commandUnregistered } from "./dynamic-commands";
@@ -161,12 +163,10 @@ export function loadPlugins(reload = false): Promise<void> {
 }
 
 // Another window changed which plugins are on: read them again.
-if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window)
-  void import("@tauri-apps/api/event").then(({ listen }) =>
-    listen("plugins-changed", () => {
-      if (loading) void loadPlugins(true);
-    }),
-  );
+if (hasBackend())
+  void listenToThisWindow("plugins-changed", () => {
+    if (loading) void loadPlugins(true);
+  });
 
 // ---------------------------------------------------------------------------
 // Running

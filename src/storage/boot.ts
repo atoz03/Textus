@@ -1,16 +1,16 @@
 import { isRecord } from "../utils/is-record";
 import type { DetachedTabDoc } from "../document/doc-tabs";
 
-/** The snapshot Rust hands every webview before the page loads (boot_script
- *  in src-tauri/src/settings/app.rs), so settings and UI state are there
+/** The snapshot the backend hands every webview before the page loads
+ *  (bootScript in backend/boot.go), so settings and UI state are there
  *  synchronously. A reload replays an old one, so stores
  *  re-read live values; with no snapshot they fall back to localStorage. */
 interface Boot {
   settings: Record<string, unknown>;
   rev: number;
   uiState: Record<string, unknown>;
-  /** settings.json didn't exist at launch: the settings hold only what Rust
-   *  seeds a new profile with, not a user's choices. */
+  /** settings.json didn't exist at launch: the settings hold only what the
+   *  backend seeds a new profile with, not a user's choices. */
   newProfile: boolean;
   /** This window's label, to recognise the events its own changes cause. */
   label: string;

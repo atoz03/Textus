@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const NEW = "/var/mobile/Containers/Data/Application/NEW/Documents";
 const OLD = "/var/mobile/Containers/Data/Application/OLD/Documents";
-vi.mock("@tauri-apps/api/path", () => ({
+vi.mock("../platform/native/path", () => ({
   documentDir: async () => NEW,
 }));
 

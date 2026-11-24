@@ -192,7 +192,7 @@ const exportDocument: Handler = async (request, window) => {
       ? [`menu-export-${format}`, undefined]
       : ["menu-export-pandoc", format];
   const { label } = thisWindow();
-  await emitToWindow({ kind: "WebviewWindow", label }, event, payload);
+  await emitToWindow(label, event, payload);
   return ok("");
 };
 

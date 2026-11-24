@@ -410,9 +410,9 @@ const emitTo = (page: Page, name: string, payload?: unknown) =>
     ([n, p]) =>
       (
         window as unknown as {
-          __devEmitTauriEvent: (name: string, payload?: unknown) => void;
+          __devEmitEvent: (name: string, payload?: unknown) => void;
         }
-      ).__devEmitTauriEvent(n as string, p),
+      ).__devEmitEvent(n as string, p),
     [name, payload] as const,
   );
 
@@ -717,9 +717,9 @@ for (const lang of LANGS) {
       await page.evaluate(() =>
         (
           window as unknown as {
-            __devEmitTauriEvent: (name: string) => void;
+            __devEmitEvent: (name: string) => void;
           }
-        ).__devEmitTauriEvent("menu-settings"),
+        ).__devEmitEvent("menu-settings"),
       );
       // Textus AI › Models: the model choice over the
       // providers, list and picked one side by side.

@@ -22,7 +22,7 @@ export function PanelHeader({
   return (
     <header
       className={`panel-header ${className}`}
-      data-tauri-drag-region={dragRegion || undefined}
+      data-drag-region={dragRegion || undefined}
     >
       {title}
       <div className={actionsClassName}>{children}</div>

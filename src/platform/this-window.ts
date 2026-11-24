@@ -1,32 +1,15 @@
-import { getCurrentWindow, type Window } from "@tauri-apps/api/window";
-import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
-import type { Event, UnlistenFn } from "@tauri-apps/api/event";
+import {
+  getCurrentWindow,
+  PhysicalPosition,
+  PhysicalSize,
+  type NativeWindow,
+} from "./native/window";
+import type { Event, UnlistenFn } from "./native/event";
 import { inBrowser } from "./runtime";
 import { windowBarIpc } from "./ipc-app";
 
 /** What the app asks of the window it runs in. */
-type ThisWindow = Pick<
-  Window,
-  | "label"
-  | "close"
-  | "destroy"
-  | "minimize"
-  | "toggleMaximize"
-  | "isMaximized"
-  | "isFullscreen"
-  | "setFullscreen"
-  | "setAlwaysOnTop"
-  | "startResizeDragging"
-  | "startDragging"
-  | "outerPosition"
-  | "outerSize"
-  | "scaleFactor"
-  | "onCloseRequested"
-  | "onFocusChanged"
-  | "onResized"
-  | "onMoved"
-  | "listen"
->;
+type ThisWindow = NativeWindow;
 
 const done = () => Promise.resolve();
 const never = (): Promise<UnlistenFn> => Promise.resolve(() => {});

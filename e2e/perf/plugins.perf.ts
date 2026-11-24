@@ -95,8 +95,8 @@ async function openPluginPanels(page: Page) {
   if (await page.locator(".sidebar.sidebar-collapsed").count())
     await page.evaluate(() =>
       (
-        window as unknown as { __devEmitTauriEvent: (n: string) => void }
-      ).__devEmitTauriEvent("menu-toggle-sidebar"),
+        window as unknown as { __devEmitEvent: (n: string) => void }
+      ).__devEmitEvent("menu-toggle-sidebar"),
     );
   const tabs = page.locator(".sidebar .sidebar-tab");
   const count = await tabs.count();
@@ -136,10 +136,10 @@ async function typeMiddle(page: Page) {
 async function openSmall(page: Page) {
   return page.evaluate(async (path) => {
     const w = window as unknown as {
-      __devEmitTauriEvent: (name: string, payload: unknown) => void;
+      __devEmitEvent: (name: string, payload: unknown) => void;
     };
     const start = performance.now();
-    w.__devEmitTauriEvent("tauri://drag-drop", {
+    w.__devEmitEvent("native://drag-drop", {
       paths: [path],
       position: { x: 0, y: 0 },
     });
@@ -182,9 +182,9 @@ for (const set of SETS) {
     await page.evaluate(() =>
       (
         window as unknown as {
-          __devEmitTauriEvent: (name: string) => void;
+          __devEmitEvent: (name: string) => void;
         }
-      ).__devEmitTauriEvent("menu-open-folder"),
+      ).__devEmitEvent("menu-open-folder"),
     );
     await page.waitForTimeout(1000);
     const opened = await openDoc(page, doc, docPath);
