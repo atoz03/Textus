@@ -40,7 +40,8 @@ export type AuthStatus = {
 /**
  *  What the settings page is told about one saved endpoint. The key never
  *  goes back to the webview; `has_api_key` says whether one is stored.
- *  Keep in step with `CustomEndpointConfig` in `src/platform/ipc-auth.ts`.
+ *  Keep in step with `CustomEndpointConfig` in `src/platform/ipc-auth.ts`,
+ *  and backend/ai_endpoints.go CustomEndpointStatus.
  */
 export type CustomEndpointStatus = {
 	id: string,
