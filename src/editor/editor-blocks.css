@@ -1,0 +1,396 @@
+/* GitHub-style alerts: a border and badge in the kind's colour, each kind a
+   colour of the palette (engine/tokens/base.css), so a theme's own colours
+   reach them; on the root, so plugin pages get them too. */
+:root {
+  --doc-alert-note: var(--doc-accent);
+  --doc-alert-tip: var(--tone-green);
+  --doc-alert-important: var(--tone-purple);
+  --doc-alert-warning: var(--doc-mark);
+  --doc-alert-caution: var(--tone-red);
+}
+
+.milkdown blockquote.md-alert-note {
+  --doc-alert-accent: var(--doc-alert-note);
+}
+.milkdown blockquote.md-alert-tip {
+  --doc-alert-accent: var(--doc-alert-tip);
+}
+.milkdown blockquote.md-alert-important {
+  --doc-alert-accent: var(--doc-alert-important);
+}
+.milkdown blockquote.md-alert-warning {
+  --doc-alert-accent: var(--doc-alert-warning);
+}
+.milkdown blockquote.md-alert-caution {
+  --doc-alert-accent: var(--doc-alert-caution);
+}
+.milkdown blockquote.md-alert-quote {
+  --doc-alert-accent: var(--doc-muted);
+}
+
+.milkdown blockquote.md-alert {
+  border-left-color: var(--doc-alert-accent);
+}
+
+.md-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-weight: 600;
+  /* As words, a step towards the text so a bright colour still reads. */
+  color: color-mix(in srgb, var(--doc-alert-accent) 50%, var(--doc-text));
+}
+
+.md-alert-title svg {
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
+.md-alert-marker-hidden {
+  display: none;
+}
+
+/* Obsidian's inline syntax, drawn while the caret is away. */
+.md-syntax-hidden {
+  display: none;
+}
+.md-comment,
+.md-block-id {
+  color: var(--doc-muted);
+}
+.md-block-id {
+  opacity: 0.6;
+}
+/* All comment: kept in the flow so the caret can still reach it. */
+.milkdown .md-comment-block {
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+.md-inline-footnote {
+  font-size: 0.8em;
+  vertical-align: super;
+  color: var(--doc-muted);
+}
+.milkdown mark.md-mark-red {
+  background: var(--tone-red-tint);
+}
+.milkdown mark.md-mark-orange {
+  background: var(--tone-orange-tint);
+}
+.milkdown mark.md-mark-yellow {
+  background: var(--tone-yellow-tint);
+}
+.milkdown mark.md-mark-green {
+  background: var(--tone-green-tint);
+}
+.milkdown mark.md-mark-blue {
+  background: var(--tone-blue-tint);
+}
+.milkdown mark.md-mark-purple {
+  background: var(--tone-purple-tint);
+}
+
+/* Obsidian's "-" / "+": the chevron folds the body away in the view only. */
+.md-alert-fold {
+  display: inline-flex;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-standard);
+}
+.md-alert-fold[data-folded="true"] {
+  transform: rotate(-90deg);
+}
+.milkdown blockquote.md-alert-folded > :not(:first-child) {
+  display: none;
+}
+
+.code-block-wrapper {
+  position: relative;
+}
+
+/* A block's tools (a code block's, a table's): over its top edge at its
+   right, never on its text, so a selection dragged along its first line
+   doesn't run into them; shown on hover, and while the block is in use. */
+.block-toolbar {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Hugging the pills at the block's right, at most as wide as the block:
+   what doesn't fit gives way (a table's fit steps) instead of running past
+   it. The gaps under and between them are theirs, so the pointer on its way
+   to them, or from one to the next, stays on them. */
+.block-toolbar-actions {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-standard);
+}
+/* Pushed right by an auto margin, not justify-content, so what doesn't fit
+   overflows where the fit steps can see it. */
+.block-toolbar-actions > :first-child {
+  margin-inline-start: auto;
+}
+.block-toolbar-actions > * {
+  flex-shrink: 0;
+}
+
+/* The strip, the gaps between and under its pills too, takes the pointer
+   while shown; hidden, only the pills themselves do (below). */
+.code-block-wrapper:is(:hover, :focus-within, .is-picking-language)
+  > .block-toolbar
+  > .block-toolbar-actions,
+/* A table's: with the pointer by its head row or on them (a mouse), the
+   caret in it (touch, below), or its size card open - not on every visit. */
+.table-wrapper:is([data-near~="top"]:hover, .is-sizing)
+  > .block-toolbar
+  > .block-toolbar-actions,
+.block-toolbar > .block-toolbar-actions:is(:hover, :focus-within) {
+  opacity: 1;
+}
+.code-block-wrapper:is(:hover, :focus-within, .is-picking-language)
+  > .block-toolbar
+  > .block-toolbar-actions,
+.table-wrapper:is([data-near~="top"]:hover, .is-sizing)
+  > .block-toolbar
+  > .block-toolbar-actions,
+.block-toolbar > .block-toolbar-actions:is(:hover, :focus-within) {
+  pointer-events: auto;
+}
+
+/* With a mouse they take it while hidden too: a pointer leaving the block
+   on its way up to them finds them there, and they show again. */
+@media (any-hover: hover) {
+  .block-toolbar > .block-toolbar-actions > * {
+    pointer-events: auto;
+  }
+}
+
+/* A code block's have no fit steps: on a narrow block they run left. */
+.code-block-actions {
+  max-width: none;
+}
+
+/* A finger leaves :hover and a tapped pill's focus stuck on the table it
+   touched: there its tools show only while the caret is in it. */
+@media (any-hover: none) {
+  .table-wrapper.is-table-caret > .block-toolbar > .block-toolbar-actions {
+    opacity: 1;
+  }
+  .table-wrapper.is-table-caret > .block-toolbar > .block-toolbar-actions {
+    pointer-events: auto;
+  }
+  .table-wrapper:is(:hover, :focus-within):not(.is-table-caret, .is-sizing)
+    > .block-toolbar
+    > .block-toolbar-actions,
+  /* The keyboard put away, the document lets go of the caret: so do they. */
+  .ProseMirror:not(.ProseMirror-focused)
+    .table-wrapper.is-table-caret:not(.is-sizing, :focus-within)
+    > .block-toolbar
+    > .block-toolbar-actions {
+    opacity: 0;
+  }
+  .table-wrapper:is(:hover, :focus-within):not(.is-table-caret, .is-sizing)
+    > .block-toolbar
+    > .block-toolbar-actions,
+  .ProseMirror:not(.ProseMirror-focused)
+    .table-wrapper.is-table-caret:not(.is-sizing, :focus-within)
+    > .block-toolbar
+    > .block-toolbar-actions {
+    pointer-events: none;
+  }
+}
+
+/* A button held in a box of its own (the size card hangs from it). */
+.block-toolbar-slot {
+  display: inline-flex;
+}
+
+.code-block-language {
+  display: flex;
+}
+
+/* A block's tool: a small pill in the document's colours. */
+.block-pill,
+.code-block-language-select {
+  font: inherit;
+  font-size: 0.72em;
+  line-height: 1.6;
+  color: var(--doc-muted);
+  /* Opaque: it lies over the code, or the text right below the block. */
+  background: var(--doc-bg, var(--ui-bg));
+  border: 1px solid var(--doc-border);
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  padding: 0.1em 0.5em;
+  cursor: pointer;
+}
+
+.code-block-language-select {
+  position: relative;
+  padding-right: 1.9em;
+}
+
+/* Its chevron as the app's selects draw theirs, in the document's muted
+   colour. */
+.code-block-language-select::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0.5em;
+  width: 0.8em;
+  height: 0.8em;
+  translate: 0 -50%;
+  background: var(--doc-muted);
+  -webkit-mask: var(--select-chevron) center / contain no-repeat;
+  mask: var(--select-chevron) center / contain no-repeat;
+  pointer-events: none;
+}
+
+.block-pill:focus-visible,
+.code-block-language-select:focus-visible,
+.code-block-language-select[aria-expanded="true"] {
+  color: var(--doc-text);
+}
+
+@media (any-hover: hover) {
+  .block-pill:is(button):hover,
+  .code-block-language-select:hover {
+    color: var(--doc-text);
+  }
+}
+
+.block-pill.is-copied {
+  color: var(--doc-accent-text);
+}
+
+/* Stays at the top as the list scrolls. */
+.code-language-search {
+  position: sticky;
+  /* Above the options, which are positioned too. */
+  z-index: 1;
+  top: -4px;
+  margin: -4px -4px 4px;
+  padding: 4px;
+  background: var(--ui-bg);
+}
+
+.code-language-search input {
+  width: 100%;
+  min-width: 9em;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--doc-border, var(--ui-border));
+  border-radius: var(--shape-s);
+  background: var(--doc-bg, var(--ui-bg));
+  color: var(--doc-text);
+  font: inherit;
+  font-size: var(--text-secondary);
+}
+
+/* Line numbers: the gutter floats, the code beside it is its own block, so
+   nothing paints over the code. The code shares the <pre>'s size and line
+   height, or the numbers drift. Screen only; id-weighted like Typora themes. */
+@media screen {
+  #write .code-block-numbered pre {
+    padding-left: 0;
+  }
+
+  #write .code-block-numbered pre code {
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: inherit;
+    line-height: inherit;
+  }
+}
+
+.code-line-gutter {
+  float: left;
+  margin-right: 0.9em;
+  padding: 0 0.6em 0 0.9em;
+  border-right: 1px solid var(--doc-border);
+  color: var(--doc-muted);
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  pointer-events: none;
+}
+
+.code-line-gutter > span {
+  display: block;
+}
+
+/* Typora themes' `#write code` would put a pill on every code block line;
+   unlayered, same id weight, one element more. A block box, or WebKit puts an
+   input method's text into an empty block's <pre>, outside the editable code. */
+#write pre > code {
+  display: block;
+  background: none;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* The wrapper is the block's box: a Typora theme's margin on its CodeMirror
+   box, mapped to this <pre>, would open bands inside it. */
+#write .md-fences > pre {
+  margin: 0;
+}
+
+/* "```" typed on a line of its own: the fence, not inline code
+   (md-span-autopair-plugin.ts). */
+#write code.is-fence {
+  background: none;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+}
+
+/* Syntax highlighting tokens (via refractor/Prism token classes), from the
+   palette's colours a step towards the page's text so they read on the code
+   block; the colour rules are in content-base.css's layer, so a theme's own
+   token rules win. */
+:root {
+  --doc-token-string: color-mix(
+    in srgb,
+    var(--tone-green) 72%,
+    var(--doc-text)
+  );
+  --doc-token-number: color-mix(in srgb, var(--doc-mark) 72%, var(--doc-text));
+  --doc-token-keyword: color-mix(
+    in srgb,
+    var(--tone-purple) 72%,
+    var(--doc-text)
+  );
+  --doc-token-function: var(--doc-accent-text);
+  --doc-token-tag: color-mix(in srgb, var(--tone-red) 72%, var(--doc-text));
+}
+
+/* A one-design theme keeps its light page in dark mode: the palette's light
+   colours there, or the dark ones would be pale on it. */
+:root[data-light-page] .milkdown {
+  --doc-mark: #ff9500;
+  --tone-green: #34c759;
+  --tone-purple: #af52de;
+  --tone-red: #ff3b30;
+}

@@ -1,0 +1,65 @@
+// @vitest-environment jsdom
+import { describe, expect, it } from "vitest";
+import { inElement, sandboxedFrame, webviewDocument } from "./frames";
+
+/** What the HTML parser makes of `<script>code</script>`: the text it hands
+ *  the script, and whether the element ended where it should. */
+function parsed(code: string): { text: string; ended: boolean } {
+  const doc = new DOMParser().parseFromString(
+    `<script>${inElement(code, "script")}</script><p id="after"></p>`,
+    "text/html",
+  );
+  const script = doc.querySelector("script");
+  return {
+    text: script?.textContent ?? "",
+    ended:
+      !!doc.getElementById("after") &&
+      doc.querySelectorAll("script").length === 1,
+  };
+}
+
+describe("code inside a script element", () => {
+  // jsdom's parser doesn't fall into the escaped states a browser's does;
+  // e2e/plugin-api.spec.ts loads such a plugin in Chromium.
+  it("ends where it should, and means what it did", () => {
+    const code = 'const a = "<!--", b = /<script\\b/i, c = "</script>";';
+    const { text, ended } = parsed(code);
+    expect(ended).toBe(true);
+    // Still the same program: the escapes read as what they replaced.
+    const [a, b, c] = new Function(`${text}; return [a, b, c];`)();
+    expect([a, b.test("<SCRIPT src>"), c]).toEqual(["<!--", true, "</script>"]);
+  });
+});
+
+describe("a sandboxed frame", () => {
+  it("may fill the screen only when it is a page, not a plugin's host", () => {
+    expect(
+      sandboxedFrame("", "page", { fullscreen: true }).getAttribute("allow"),
+    ).toBe("fullscreen");
+    expect(sandboxedFrame("", "host").getAttribute("allow")).toBeNull();
+  });
+});
+
+describe("a webview's page", () => {
+  const page = (html: string) =>
+    webviewDocument(html, {
+      themeCss: "",
+      dark: false,
+      frameHosts: [],
+      language: "de",
+      l10n: {},
+    });
+
+  it("is in the UI's language, a {{lang}} left in it too", () => {
+    expect(page("<html><body>x</body></html>")).toMatch(/<html lang="de"/);
+    expect(page('<html lang="{{lang}}"><body>x</body></html>')).toMatch(
+      /<html lang="de"/,
+    );
+  });
+
+  it("keeps a language the page names itself", () => {
+    expect(page('<html lang="ja"><body>x</body></html>')).toMatch(
+      /<html lang="ja"/,
+    );
+  });
+});

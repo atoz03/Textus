@@ -1,0 +1,118 @@
+import { Segmented } from "../../engine/controls/Segmented";
+import { requestCreate } from "../../ai/chat/create-request";
+import { Suspense, useEffect, useState, useSyncExternalStore } from "react";
+import type { SettingsPageProps } from "./types";
+import { PluginsPage } from "./PluginsPage";
+import { ExtensionsTabLayout } from "./ExtensionsTabLayout";
+import { ThemesTab } from "../sections/theme";
+import { OwnSkillsList, importSkill } from "../sections/skills";
+import { McpSection } from "../sections/mcp";
+import { CreateStudio } from "./create-chat-lazy";
+import { AvailableSkills } from "../sections/market-skills";
+import {
+  catalogSnapshot,
+  loadCatalog,
+  subscribeCatalog,
+} from "../../plugins/store/catalog";
+
+import {
+  extensionsStartTab,
+  extensionsTabs,
+  openExtensionsTab,
+  type ExtensionsTab,
+} from "./extensions-tab";
+import { explainError } from "../../utils/error-explain";
+
+const TABS = extensionsTabs();
+
+/**
+ * Settings › Extensions: themes, plugins, skills and MCP servers, a tab
+ * each, all laid out alike: what is installed, then what is available; and
+ * Create, where Textus AI makes one of them.
+ * Desktop only, as plugins are.
+ */
+export function ExtensionsPage(props: SettingsPageProps) {
+  const { t } = props;
+  const [tab, setTabState] = useState<ExtensionsTab>(extensionsStartTab);
+  const [skillError, setSkillError] = useState<string | null>(null);
+  const [skillQuery, setSkillQuery] = useState("");
+  const catalog = useSyncExternalStore(subscribeCatalog, catalogSnapshot);
+  useEffect(() => {
+    void loadCatalog();
+  }, []);
+  const setTab = (next: ExtensionsTab) => {
+    openExtensionsTab(next);
+    setTabState(next);
+  };
+  const label: Record<ExtensionsTab, string> = {
+    themes: t.extensionsTabThemes,
+    plugins: t.extensionsTabPlugins,
+    skills: t.extensionsTabSkills,
+    mcp: t.extensionsTabMcp,
+    create: t.extensionsTabCreate,
+  };
+  return (
+    <>
+      <Segmented
+        className="extensions-tabs"
+        label={t.navExtensions}
+        options={TABS.map((id) => ({ id, label: label[id] }))}
+        value={tab}
+        onChange={setTab}
+      />
+      {!props.indexing && (
+        <div
+          role="tabpanel"
+          aria-label={label[tab]}
+          className="extensions-panel"
+        >
+          {tab === "themes" && <ThemesTab t={t} />}
+          {tab === "plugins" && <PluginsPage {...props} />}
+          {tab === "skills" && (
+            <ExtensionsTabLayout
+              t={t}
+              intro={t.extensionsIntroSkills}
+              help={t.extensionsSkillsHelp}
+              primary={{
+                label: t.createMakeSkill,
+                onSelect: () => requestCreate("", "skill"),
+              }}
+              query={skillQuery}
+              onQuery={setSkillQuery}
+              actions={[
+                {
+                  label: t.agentSkillsImport,
+                  onSelect: () =>
+                    void importSkill().then(
+                      () => setSkillError(null),
+                      (err: unknown) => setSkillError(explainError(err, t)),
+                    ),
+                },
+              ]}
+              error={skillError}
+              installedTitle={t.pluginsInstalledGroup}
+              // Only the skills added here; each mode's own, always on,
+              // are under Textus AI.
+              installed={
+                <OwnSkillsList
+                  t={t}
+                  query={skillQuery}
+                  onFilesDeleted={props.onFilesDeleted}
+                />
+              }
+              available={
+                <AvailableSkills t={t} catalog={catalog} query={skillQuery} />
+              }
+            />
+          )}
+          {tab === "mcp" && <McpSection t={t} />}
+          {tab === "create" && (
+            <Suspense fallback={null}>
+              <CreateStudio t={t} />
+            </Suspense>
+          )}
+        </div>
+      )}
+    </>
+  );
+}

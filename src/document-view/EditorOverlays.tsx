@@ -1,0 +1,105 @@
+import { createPortal } from "react-dom";
+import { editorViewCtx } from "@milkdown/kit/core";
+import { isPhoneLayout } from "../platform/phone-layout";
+import { insertTable } from "../editor/tables/insert-table";
+import { EditorContextMenu } from "./EditorContextMenu";
+import type { EditorSetup } from "./useEditorSetup";
+import type { EditorChat } from "./useEditorChat";
+import type { EditorPopups } from "./useEditorPopups";
+import type { EditorReview } from "./useEditorReview";
+import { GrammarSuggestion } from "../ai/writing/GrammarSuggestion";
+import { InsertTableDialog } from "../editor/tables/InsertTableDialog";
+import { ImageNameDialog } from "../editor/images/ImageNameDialog";
+import { FindReplaceBar } from "../editor/find/FindReplaceBar";
+import { Presence } from "../engine/motion/usePresence";
+import type { Settings } from "../prefs/SettingsContext";
+import type { Strings } from "../i18n/strings";
+
+/** What opens over one tab's editor: the find bar, its menu, the AI notice,
+ *  dialogs and the grammar card. */
+export function EditorOverlays({
+  setup,
+  chat,
+  popups,
+  review,
+  phone,
+  inTour,
+  settings,
+  t,
+}: {
+  setup: EditorSetup;
+  chat: EditorChat;
+  popups: EditorPopups;
+  review: EditorReview;
+  phone: boolean;
+  inTour: boolean;
+  settings: Settings;
+  t: Strings;
+}) {
+  const { run, clipboard, notice } = setup;
+  const { imageNameRequest, closeImageNameDialog } = setup.imageName;
+  const { findReplace, tableDialogOpen, setTableDialogOpen } = popups;
+  const findBar = (
+    <Presence show={findReplace.open}>
+      {findReplace.open && (
+        <FindReplaceBar findReplace={findReplace} labels={t} />
+      )}
+    </Presence>
+  );
+  // Beside the scroller, as Source mode's: it stays put as the text scrolls.
+  const findHost = review.scrollEl?.parentElement;
+  return (
+    <>
+      {findHost ? createPortal(findBar, findHost) : findBar}
+      <EditorContextMenu
+        menu={popups.menu}
+        run={run}
+        t={t}
+        settings={settings}
+        inTour={inTour}
+        openAgentConversation={chat.controls.openAgentConversation}
+        illustrateParagraph={review.illustrateParagraph}
+        triggerCompletion={setup.triggerCompletion}
+        triggerGrammarCheck={setup.triggerGrammarCheck}
+        clipboard={clipboard}
+        openFindReplace={findReplace.show}
+        openTableDialog={() => setTableDialogOpen(true)}
+        own={review.notes.menu}
+        onClose={() => {
+          popups.setMenu(null);
+          // A phone's sheet (⋯) closed: the text takes the keys back, the
+          // keyboard staying up.
+          if (isPhoneLayout()) run((ctx) => ctx.get(editorViewCtx).focus());
+        }}
+      />
+      <Presence show={tableDialogOpen}>
+        {tableDialogOpen && (
+          <InsertTableDialog
+            t={t}
+            onInsert={(rows, cols) => insertTable(run, rows, cols)}
+            onClose={() => setTableDialogOpen(false)}
+          />
+        )}
+      </Presence>
+      <Presence show={!!imageNameRequest}>
+        {imageNameRequest && (
+          <ImageNameDialog
+            request={imageNameRequest}
+            title={t.imageNameDialogTitle}
+            label={t.imageNameDialogLabel}
+            invalidLabel={t.imageNameDialogInvalid}
+            uploadLabel={t.imageNameDialogUpload}
+            cancelLabel={t.cancel}
+            onClose={closeImageNameDialog}
+          />
+        )}
+      </Presence>
+      <GrammarSuggestion
+        grammar={popups.grammar}
+        phone={phone}
+        t={t}
+        onStale={() => notice.showAiNotice(t.grammarApplyStale)}
+      />
+    </>
+  );
+}

@@ -1,0 +1,85 @@
+import { openDocument, type OpenRequest } from "../../utils/open-document";
+import { announceFileCreated } from "../../utils/events";
+import type { EditorView } from "@milkdown/kit/prose/view";
+import { fs } from "../../platform/ipc";
+import { noteJump } from "../nav-history";
+import { basename, dirname, isNoteFile } from "../../utils/path";
+import { parseNoteLink, type NoteLink } from "../../utils/note-link";
+import { revealHeading } from "./heading-jump";
+
+/** Where in a note a link points: `^id` for a block, `A#B` for nested
+ *  headings; undefined for its top. */
+function linkAnchor(link: NoteLink): string | undefined {
+  if (link.block) return `^${link.block}`;
+  return link.headings.join("#") || undefined;
+}
+
+function open({ path, ...request }: { path: string } & OpenRequest): void {
+  openDocument(path, request);
+}
+
+/** The most folders a followed link makes on its way to a new note. */
+const MAX_NEW_FOLDERS = 8;
+
+/** A note a link names that isn't there yet, made empty so the link leads
+ *  somewhere; never over a file (the backend refuses a taken name). */
+async function createNote(path: string): Promise<boolean> {
+  const dir = dirname(path);
+  // The folders it names that aren't there, made from the top down.
+  const missing: string[] = [];
+  for (
+    let at = dir;
+    missing.length < MAX_NEW_FOLDERS && (await fs.fileMtimeMs(at)) === null;
+    at = dirname(at)
+  )
+    missing.unshift(at);
+  for (const folder of missing)
+    await fs.createFolder(dirname(folder), basename(folder)).catch(() => {});
+  return fs.createDocument(dir, basename(path)).then(
+    (made) => {
+      announceFileCreated(made);
+      return true;
+    },
+    () => false,
+  );
+}
+
+/** Where an unsaved draft's links start: the folder's top, as a note
+ *  there; null without a folder. */
+export function draftBase(folder: string | null): string | null {
+  return folder ? `${folder.replace(/\/$/, "")}/_` : null;
+}
+
+/**
+ * Follows a wikilink's source, or a Markdown link's target the plain path
+ * didn't find, from the document at `docPath`: a note opens at its heading
+ * or block, any other file as a linked file, and a wikilink to a note that
+ * doesn't exist creates it where the vault puts new notes.
+ */
+export async function followNoteLink(
+  view: EditorView,
+  written: string,
+  docPath: string | null,
+  folder: string | null,
+): Promise<void> {
+  const link = parseNoteLink(written);
+  if (!link) return;
+  const anchor = linkAnchor(link);
+  if (!link.note) {
+    if (anchor) {
+      noteJump();
+      revealHeading(view, anchor);
+    }
+    return;
+  }
+  const from = docPath ?? draftBase(folder);
+  if (!from) return;
+  const target = await fs.resolveNoteLink(from, link.note, folder, link.wiki);
+  if (!target) return;
+  if (!isNoteFile(target.path)) {
+    if (target.exists) open({ path: target.path, linked: true });
+    return;
+  }
+  if (!target.exists && !(link.wiki && (await createNote(target.path)))) return;
+  open({ path: target.path, anchor });
+}

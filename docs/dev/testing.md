@@ -1,0 +1,528 @@
+# Testing map
+
+A test lives in the lowest layer that can catch the mistake it is about.
+Lower layers run in milliseconds and fail for one reason; a browser flow
+takes seconds, and can fail because a machine was busy.
+
+## Which layer a test belongs in
+
+**Extend before you add.** Before writing a new test, look for one that
+already sets up the same surface or flow (search `e2e/` and `*.test.ts` for
+the component, its class names and the flow) and add your step or check to
+it. A new test is for a case no existing one can carry without becoming
+unclear; then split by behaviour, not by bug. Say in the commit which test
+you extended. Fewer, broader tests keep CI fast. Checks are about behaviour
+(stays on one row, wraps, nothing hidden), not exact pixels.
+
+| Layer                 | Where                                         | Catches                                                                                    |
+| --------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 1. Unit               | `src/**/*.test.ts`, next to the code          | Pure logic: a function's answer for its inputs                                             |
+| 1. Editor integration | `src/**/*.test.ts`, with `editor-view-kit.ts` | What keys, typing and pastes do to a real editor's document, and what is saved             |
+| 2. E2E, Chromium      | `e2e/*.spec.ts`                               | What needs a real browser: focus, menus, dialogs, scrolling, layout, clicks, the clipboard |
+| 3. E2E, WebKit        | the same `e2e/*.spec.ts`, `E2E_WEBKIT=1`      | Where WebKit behaves differently: input methods, selection, paste events                   |
+| 4. The built app      | smoke scripts; by hand, on the platform       | What no browser has: the app starting, native menus and their keys, windows, file dialogs  |
+
+Start at the top and go down only when the layer above can't see the
+mistake:
+
+- **Logic in a function of its own** (parsing, diffing, where a card
+  stands, what a setting means): a unit test.
+- **A key, a typed character or a paste, and what the document becomes**:
+  an editor integration test. `src/editor/editor-view-kit.ts` opens
+  the app's whole editor in jsdom (`openView(markdown)`), presses keys
+  through its keymaps (`press("Mod+b")`, `press("Shift+Tab")`), types
+  through its input rules (`type("**bold**")`), pastes plain text or HTML
+  (`paste(text, html)`), places the caret (`caretAt("word", 2)`) and reads
+  back what the app would save (`markdown()`) or the editor's DOM
+  (`view.dom`). `src/editor/keys/markdown-keys.test.ts` is an example.
+  For a test that only needs the full extension chain to parse and
+  serialize, without keys, `createTestEditor`
+  (`src/document-view/editor-test-harness.ts`) mounts it with no-op
+  callbacks.
+- **Only a browser can tell**: an e2e flow in Chromium. Arrow keys, Home
+  and End, and clicks move the caret natively, which jsdom doesn't; focus
+  moving between regions, a menu or dialog opening, something scrolling into
+  view, a layout measured in pixels, the system clipboard.
+- **WebKit does it its own way**: every flow runs in WebKit too. A flow
+  that only one engine can run (a Chromium DevTools call, Windows' input
+  method) skips the other with `test.skip(browserName !== ...)` and says
+  why.
+- **Native**: a menu's key equivalent on macOS (the menu takes the key
+  before the page does), the system's undo or copy, an input method,
+  windows. Check it in the built app, and say what you ran in the pull
+  request.
+
+A test that only exercises editor logic doesn't need a browser, even when
+the bug was found in one: write it as an editor integration test, and
+check that it fails without the fix.
+
+`src/app/key-table.test.ts` holds one table of every shortcut, with who
+answers it on each platform: the native menu (read from
+`src-tauri/src/menu.rs` and `menu/build.rs`), the window's handler
+(`useGlobalShortcuts.ts`) or the editor (asked key by key). A new shortcut
+goes into that table; the test fails if two features claim one key, or if
+a key the macOS menu takes reaches nothing.
+
+## Which tests run when
+
+CI has three layers (`.github/workflows/ci.yml`):
+
+| When                                              | What runs                                                                                                                                                                                              | Required                      |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------- |
+| Every pull request (forks too)                    | `check` (types, lint, formats, repo checks and build, beside the unit tests in 2 shards); the whole e2e suite in Chromium (2 shards) and in WebKit (3 shards); Rust on Linux when `src-tauri/` changed | check, e2e, native, ci-config |
+| A push to `main` (a merged pull request)          | `check`, Rust and the Linux app build; the browsers' cache refreshed. No e2e: it ran on the pull request                                                                                               | -                             |
+| Before a release (the version bump's PR, the tag) | everything: the above, plus Rust on macOS and Windows and the iOS simulator                                                                                                                            | all of them                   |
+
+A change to GitHub's settings, the license or the root Markdown alone
+checks only their format (`light` in `scripts/ci-changes.mjs`).
+Documentation alone (`docs`) checks format, links and the source files
+the developer docs name (`scripts/check-links.mjs`) and the unit tests that read `docs/`, with no
+build or e2e. A run with no test in it
+fails; a test that passes only on its retry is listed as flaky, a warning
+on the pull request, and goes on the watch list.
+
+A contributor runs **`npm run check`** before pushing, and the e2e flows
+near what they changed.
+
+| Kind                                                            | Where                              | When                                |
+| --------------------------------------------------------------- | ---------------------------------- | ----------------------------------- |
+| `npm run check`: types, lint, unit tests, formats               | locally, CI                        | every pull request                  |
+| e2e flows in Chromium (`npm run test:e2e`)                      | locally (4 workers), CI (2 shards) | every pull request                  |
+| e2e flows in WebKit (`E2E_WEBKIT=1`)                            | locally, CI                        | every pull request                  |
+| Stopwatch flows (`@perf`, `npm run test:perf`)                  | locally                            | when timing is the point; never CI  |
+| Benchmarks (`bench:large-doc`, `bench:plugins`, `bench:motion`) | one machine                        | before a release that touches speed |
+
+The e2e flows run as the machine they are on: on a Mac the browser
+reports a Mac, so ⌘ is the shortcut key and `HOME` and `END` in
+`e2e/helpers.ts` are its keys. Native menus and window chrome are checked
+in the real app. Screenshot baselines are Linux's alone and are
+skipped on a Mac (`ignoreSnapshots` in `playwright.config.ts`); keep them
+few - each one shows a whole screen someone would notice changing.
+
+A flow that takes more than about 15 seconds says so with `test.slow()` and
+a line on why; a check of timing or frames is `@perf`, never a plain
+assertion.
+
+## Running each layer
+
+```sh
+npm test                                   # every unit and editor integration test
+npx vitest run src/editor/keys/            # some of them
+npx vitest src/editor/keys/markdown-keys.test.ts   # one file, rerun on save
+npm run test:e2e                           # the e2e flows, Chromium (first time: npm run setup:e2e)
+npx playwright test e2e/clipboard.spec.ts -g "Copy as Plain Text"   # one flow
+E2E_WEBKIT=1 npx playwright test --project=webkit             # the WebKit flows (npx playwright install webkit once)
+```
+
+On macOS the e2e flows don't behave as on CI: Home and End scroll, the
+fonts differ, and some key handling is the platform's. Run them in
+Playwright's Linux image (`mcr.microsoft.com/playwright`, the version in
+`package-lock.json`) to see what CI sees, on a checkout whose
+`node_modules` was installed there, not copied from macOS.
+
+If another copy of the suite may be running (another worktree), set
+`PLAYWRIGHT_PORT` to a free port; the dev server listens on 1430 otherwise.
+
+## Writing an e2e flow
+
+The flows run the real frontend from the Vite dev server, with the dev
+shim (`src/dev/tauri-shim.ts`) answering every backend command and event.
+A flow imports its helpers from `e2e/helpers.ts`, never from `src/` (the
+e2e project can't import it; `blockIds` loads a module from the dev server
+instead).
+
+| Helper                             | What it does                                                                                                                                                                                                                                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openApp(page, options)`           | Opens the window with onboarding done, animations and the caret blink off. `settings` seeds the settings (Chinese UI unless set), `storage` localStorage, `colorScheme` the appearance, `animations: true` keeps the motion, `ready` what to wait for (an editor by default). |
+| `PHONE`, `TABLET`                  | `test.use(PHONE)`: an iPhone 390 wide, by touch, in the phone's layout; `TABLET` an iPad 768 wide, the desktop's layout by touch.                                                                                                                                             |
+| `emit(page, name, payload)`        | Sends a backend event as Rust would: a menu item (`"menu-toggle-sidebar"`), a file drop, a window event.                                                                                                                                                                      |
+| `mockInvoke(page, { cmd: value })` | Answers a command with a canned value.                                                                                                                                                                                                                                        |
+| `settled(page)`                    | Waits until no animation runs and nothing scrolls for a few frames (at most 3 s), in place of a fixed pause before checking where things came to rest.                                                                                                                        |
+| `pasteMarkdown(page, md)`          | Pastes text into the active editor and waits for it to land.                                                                                                                                                                                                                  |
+| `selectionRead(page)`              | Waits until ProseMirror has read the selection a click or a key made; call it between a caret move and the next key.                                                                                                                                                          |
+| `sourceOf(page)`                   | The active document's Markdown, read by switching to source mode and back.                                                                                                                                                                                                    |
+| `HOME`, `END`                      | The keys that go to a line's start and end on this platform.                                                                                                                                                                                                                  |
+| `SAMPLE_DOC`, `MAC`                | A document with most kinds of content; whether the run is on a Mac.                                                                                                                                                                                                           |
+
+Files on disk are in memory: `window.__devFs` (a folder, path to text) and
+`window.__devFiles` (single documents), set from an init script before
+`openApp`.
+
+### The official plugins
+
+The official plugins no longer ship with the app. The dev server serves
+them from a checkout of `CatVinci-Studio/textus-plugins`
+(`vite.dev-plugins.ts`): the folder named by `TEXTUS_PLUGINS_DIR`, or a
+folder `textus-plugins` beside or above the repository, with `npm ci` run
+in it once. Without one the catalog is empty, and the plugin flows fail or
+skip. CI checks one out at a pinned commit in `ci.yml`'s e2e job; it is
+bumped on purpose, with the app change that needs it.
+
+`e2e/plugin-helpers.ts` has the helpers for these flows:
+
+| Helper                                                      | What it does                                                                                                                                    |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openWithPlugins(page, options)`                            | Opens the window with these plugins installed and on (`plugins: { id: [granted permissions] }`), plus `folder`, `files`, a plugin's `settings`. |
+| `pluginsAtStart(page, options)`                             | The same set-up without opening, for a flow that opens the window itself.                                                                       |
+| `hasPlugin(id)`                                             | Whether the checkout has plugin `id`; a flow for an unpublished plugin skips without it (`test.skip(!hasPlugin(…))`).                           |
+| `openPath(page, path)`                                      | Opens a file as Open Recent would, once the window listens.                                                                                     |
+| `openSidebarTab(page, name)`, `openSidebarList(page, name)` | Opens the sidebar on a plugin's tab: its frame, or the list Textus draws for it.                                                                |
+| `tabFrame(page)`                                            | The frame of the plugin tab in front.                                                                                                           |
+
+### A command the shim doesn't know
+
+The shim answers a command it doesn't know with `null`. Where the
+frontend needs more, add a case to `src/dev/tauri-shim.ts` (the plugin
+file and index commands are in `src/dev/plugin-shim-api.ts`), or answer it
+in the flow with `mockInvoke`. The shim drops an event no listener has asked for
+yet, so wait for the listener before you `emit` (as `openPath` does).
+
+## Every suite
+
+`npm run check`, `npm run test:e2e` and `npm run check:native` are the
+three CI runs, the same commands on every platform; the rules
+`npm run check` holds are in [code-style.md](code-style.md). The rest are
+run by hand:
+
+```sh
+E2E_WEBKIT=1 npm run test:e2e          # adds the WebKit project (npx playwright install webkit once)
+npm run test:perf                      # the stopwatch flows (@perf: frame budgets, slides) - never in CI
+npm run bench:motion                   # frame timing of every animation and scroll (e2e/bench/)
+npm run bench:large-doc                # large documents (below)
+npm run bench:plugins                  # the official plugins on a large folder (below)
+scripts/smoke-linux.sh --build         # the built Linux app and its .deb
+npm run screenshots:readme             # regenerate the README screenshots (e2e/shots/readme/)
+npm run screenshots:website            # the website's app screenshots (e2e/shots/website/)
+cd src-tauri && cargo test --lib live_eval -- --ignored --nocapture --test-threads=1
+                                       # real Anthropic API (costs money - docs/design/ai-eval.md)
+```
+
+A flow that times itself (a frame budget, a slide checked frame by frame)
+is tagged `{ tag: "@perf" }`: it depends on how busy the machine is, so CI
+leaves it out (`grepInvert` in `playwright.config.ts`) and it never blocks a
+pull request or a release. Write e2e flows that check what happened, not
+how fast.
+
+The save round trip (`src/document-view/save-roundtrip*.test.ts`, see
+[markdown-roundtrip.md](markdown-roundtrip.md#the-round-trip-test)) is part
+of `npm test`. It tests platform-independent code, so CI runs it only in
+the `unit` shards, and on a pull request only when the change can reach
+saving; the native jobs' `npm test` skips it with
+`TEXTUS_SKIP_ROUNDTRIP=1`. Locally `npm run check` always runs it - on the
+help guides in English, Chinese and Japanese, all ten languages with
+`TEXTUS_ROUNDTRIP_ALL=1`.
+
+Layout and motion are checked as numbers in the engine's unit tests (the
+solver, the tab strip, the row insets, the drop zones): an e2e flow checks
+what a user sees happen - where a tab lands, which island it joins - not
+pixels or styles. There are no screenshot baselines. Every flow runs in
+WebKit too (`E2E_WEBKIT=1`), in CI's `e2e-webkit` job, which the `e2e`
+check requires; the width sweep (`fit-sweep.spec.ts`) and the
+accessibility scan (`a11y.spec.ts`) run there only in the full suite
+(`E2E_FULL=1`), Chromium running them on every pull request. `playwright.webview.config.ts` runs the flows in an old Chromium you
+point it at, the oldest WebView2 Textus supports
+([webview-support.md](webview-support.md#testing)); CI doesn't run it.
+
+`npm run bench:motion` is a measurement, not a test: it plays every
+animated surface (the side panels and their resize, Settings, tabs, menus,
+the revision stream and its margin cards, a diagram building up, scrolling)
+with the animations on, in Chromium slowed four times - about the speed of
+WebKitGTK on a laptop - and prints each one's dropped frames, long tasks,
+forced layouts and style and layout time. Run it on `main` and on your
+branch, on a quiet machine (other builds or test runs skew it), and
+compare. `BENCH_CPU=1` runs it at full speed, `BENCH_TRACE=1` also saves a
+Chromium trace of each scenario; the header of `e2e/bench/motion.bench.ts`
+has the rest. Animations only move `opacity` and `transform`
+([design-language.md](../design/design-language.md#10-motion---in-force)); the unit test
+`src/engine/motion/motion-properties.test.ts` reads every stylesheet and fails on
+anything else.
+
+CI also builds the iOS app for the simulator, unsigned, on macOS (the `ios`
+job) - proof that the desktop/iOS split in `docs/dev/ios-code-map.md` still
+compiles - and starts it there (`scripts/smoke-ios-sim.sh`): a returning
+user's launch, failing if the app is gone 20 seconds later, with the crash
+report's stack in the log. Compiling can't show a command registered on iOS
+whose state only the desktop manages; starting it does. Running it on a
+device is a manual step on a Mac.
+
+## How CI is laid out
+
+`.github/workflows/ci.yml` runs at two depths. A pull request into `main`
+runs the quick suite: `check`, the e2e flows, and `native` on Linux when
+the change reaches Rust; a push to `main` runs it again without the e2e
+flows, which the pull request ran. The full suite - every job below on every
+platform, whatever changed - runs on the tagged commit before a release is
+built (`release.yml` calls `ci.yml`) and on the pull request that changes
+the version. Run the e2e flows locally before a pull request
+that reaches the browser. The required checks are `check`, `e2e`, `native`
+and `ci-config`; `e2e` and `native` are one-line jobs that pass when every
+job they stand for passed, or when all of them were skipped.
+
+| Job                                    | Runs                                                                                                                                                               | When                                                   |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| `changes`                              | `scripts/ci-changes.mjs`: which of the jobs below to run                                                                                                           | always                                                 |
+| `ci-config`                            | `scripts/guard-ci-config.mjs`: fails a change to CI or test configuration                                                                                          | a pull request from a fork; skipped (passed) otherwise |
+| `check-static`                         | types, lint, `format:check`, `npm run check:repo`, then `vite build` of the app and of the playground; for a light change only `format:check` and the README check | always                                                 |
+| `unit (1/2)` and `unit (2/2)`          | `vitest run --shard=N/2`; `check` passes only when they and `check-static` do                                                                                      | not for a light or documentation change                |
+| `e2e (1/2)` and `e2e (2/2)`            | `npm run test:e2e -- --shard=N/2`, with a pinned textus-plugins checkout                                                                                           | a pull request, the full suite                         |
+| `e2e webkit (1/3)` … `(3/3)`           | every flow in WebKit, the width sweep and a11y scan only in the full suite; `e2e` passes only when they do                                                         | a pull request, the full suite                         |
+| `browser cache (chromium)`, `(webkit)` | the Playwright browser fetched and cached when this version's is missing                                                                                           | a push to `main`                                       |
+| `native (ubuntu-22.04)`                | `npm run check:native`, then Android's `cargo clippy` with warnings as errors (`aarch64-linux-android`, the image's default NDK)                                   | the change reaches Rust                                |
+| `native (macos-26)`                    | `npm test`, then `npm run check:native`                                                                                                                            | the full suite                                         |
+| `native (windows-2025)`                | `npm run check:native`                                                                                                                                             | the full suite                                         |
+| `native (windows-2025, unit tests)`    | `npm test`                                                                                                                                                         | the full suite                                         |
+| `ios`                                  | the unsigned iOS simulator build, started in the simulator (not required)                                                                                          | the full suite                                         |
+
+macOS, Windows and iOS run only in the full suite; in the quick one
+`native` is the Linux job alone. A release builds only once the full suite
+passed on its tag ([releasing.md](releasing.md#what-the-workflow-does)).
+
+`scripts/ci-changes.mjs` has the rules for "reaches"; the header of
+`ci.yml` sums them up. A light change - only GitHub's settings and
+templates (not its workflows), the license, the Markdown at the root or
+the pictures in `docs/images/` -
+runs `check`'s formatting and README checks alone, merged too. Some choices that keep a pull request's checks short:
+
+- The e2e flows are spread over two shards test by test, not file by file
+  (`fullyParallel` in `playwright.config.ts`), and each shard runs two
+  workers: a runner has four cores. A shard takes two to three and a half
+  minutes. Locally the suite runs one worker unless you pass `--workers`.
+- The unit tests run once per platform, but not twice on Linux: `check`
+  already runs them on the same image the Linux native job uses. On
+  Windows they get a job of their own, because there both they and the
+  Rust build are slowest; on macOS they stay in the Rust job, as macOS
+  runners are the scarce ones.
+- `check` builds with `vite build`, not `npm run build`: the `tsc` in front
+  of the latter has just run in `npm run check`.
+- Rust builds without debug info (`CARGO_PROFILE_DEV_DEBUG=0`): smaller
+  caches to restore, and less to link.
+- Rust builds and the Playwright browser are cached from `main` only. A pull
+  request restores `main`'s caches and saves none, so the repository's
+  10 GB of cache space holds `main`'s and isn't churned by every branch.
+
+## Large-document benchmark
+
+```sh
+npm run bench:large-doc                       # every document, a few minutes
+PERF_DOCS=zh-5k PERF_LABEL=after npm run bench:large-doc
+```
+
+`e2e/perf/large-doc.perf.ts` opens generated documents (`e2e/perf/large-docs.ts`:
+Chinese and English, 1k to 20k top-level blocks with formulas, diagrams,
+code, images, tables and HTML, plus 200k characters of plain text) in
+Chromium and measures opening, memory (JS heap, DOM nodes and layout
+objects after a garbage collection, on opening and after scrolling), typing in the middle (input to next frame,
+p50/p95, with each plugin's share), IME commits, scrolling end to end, a
+jump to the last heading, a save and a tab switch. It asserts nothing and is not part of
+`test:e2e` or CI. Results print to the console and land in
+`test-results/perf/`; the documents are written to `e2e/perf/fixtures/` for
+opening by hand in the real app, where WebKitGTK, WKWebView and WebView2
+can only be timed by eye. Compare runs on the same machine only.
+
+## Plugin benchmark
+
+```sh
+npm run bench:plugins                          # none, each official plugin, all: ~20 minutes
+PERF_PLUGINS=none,tasks PERF_LABEL=after npm run bench:plugins
+```
+
+`e2e/perf/plugins.perf.ts` opens a folder of 5,000 notes (`e2e/perf/large-folder.ts`:
+front matter, wikilinks, tags, dated tasks) with the 20k-block document in
+front, links, tags, tasks and drawn blocks among its paragraphs. For no
+plugin, each official plugin from the textus-plugins checkout alone, and
+all of them, it opens every sidebar tab a plugin adds and measures opening,
+long tasks while nothing is typed, typing in the middle (p50/p95 and long
+tasks) and switching to a small note, with the errors logged. Plugins'
+frames are kept in the page's process, as in WebKit. Results land in
+`test-results/perf/`; `PERF_NOTES` sets the folder's size.
+
+## Flaky tests
+
+On CI, a Playwright test that fails is run once more. If the second run
+passes, the job stays green and the test is reported as **flaky**: the
+`list` reporter names it in the summary at the end of the log, and the
+`github` reporter adds an annotation to the run. Locally there is no retry,
+so a failure on your machine is always a failure. The setting is `retries`
+in `playwright.config.ts`.
+
+A flaky test is still a bug - in the test, or in the app. Don't ignore the
+annotation. To find out how flaky a test is, run it many times:
+
+```sh
+PLAYWRIGHT_PORT=1445 npx playwright test e2e/menu-edit.spec.ts \
+  -g "the test's title" --repeat-each=100 --workers=4
+```
+
+`--workers` above 1 adds load, which brings out timing problems sooner. To
+slow the page down the way a CI runner does, add this to a temporary copy of
+the spec (don't commit it):
+
+```ts
+test.beforeEach(async ({ page }) => {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 });
+});
+```
+
+The usual causes, from the flakes fixed so far:
+
+- **A key sent before the last one was read.** ProseMirror reads the
+  selection a click or an arrow made on the `selectionchange` after it; a
+  key sent at once can overtake it, in WebKit most of all. Call
+  `selectionRead(page)` (`e2e/helpers.ts`) between a caret move and the
+  next key, or check the selection with `expect.poll` before going on.
+- **An event sent before anything listens.** The dev shim drops a backend
+  event no listener has asked for yet; wait for the listener
+  (`openPath` in `e2e/plugin-helpers.ts` does).
+- **A mode a plugin switches a moment later.** A plugin answers from its
+  sandbox: wait for what shows the new mode before the next key.
+- **A long stream against the default 5s.** Give the wait the time the
+  stream takes on a slow machine.
+- **Timing compared frame by frame.** On a busy runner frames are long;
+  assert where things end up, and leave timing to the Chromium run or
+  `npm run bench:motion`.
+
+When you fix one, wait for the thing the assertion depends on - an element
+being focused, a CSS variable reaching its value, an event having fired -
+with `expect(...)` or `expect.poll(...)`. A longer `waitForTimeout` only
+makes the failure rarer. A fix is done when 100 repeats under throttling
+pass.
+
+## What is covered, by kind
+
+The suites divide by _what kind of mistake they catch_, which is more useful
+than dividing by file. Counts are left out on purpose - they go stale; run
+the suite to see them.
+
+### 1. Text and position algebra (vitest)
+
+The group most worth having: this is where a bug is silent and destroys the
+user's document.
+
+| Area                             | Catches                                                                                                                       |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `ai/doc-markdown`                | Markdown-space matching (exact, then typography-normalized), anchor disambiguation, inline vs block insertion, caret context. |
+| `ai/revision/sentence-diff`      | Splitting a proposal into per-sentence changes, and rebuilding the text from the subset the user ticked.                      |
+| `ai/chat/line-diff`              | The diff shown on a proposal card.                                                                                            |
+| `ai/revision/pending-edit-focus` | Review order and where focus lands after accept/reject.                                                                       |
+| `ai/revision/text-locate`        | Locating plain text inside a block for the strike range.                                                                      |
+| `ai/chat/user-message`           | The `<selected-text>`/`<attached-file>` wire format, round-tripped through the writer.                                        |
+| `ai/writing/ghost-text-plugin`   | Completion echo stripping, word-by-word accept, candidate splitting.                                                          |
+| `save-roundtrip`                 | Saving after an edit: untouched blocks kept byte for byte, no text lost on reading back (markdown-roundtrip.md).              |
+
+### 2. Wire formats and provider dialects (`aicompat`)
+
+Every one of these fails as an opaque HTTP 400 if it regresses, so they are
+pinned rather than trusted.
+
+- Turn-list → request body for three dialects (Responses API, Anthropic
+  Messages, chat-completions), including tool-call grouping, image parts,
+  prompt caching, empty assistant turns and the thinking setting per model.
+- SSE stream accumulation: text deltas, indexed tool-call fragments,
+  mid-stream errors.
+- The agent loop: tool dispatch, step limit (ends on a synthetic assistant
+  turn rather than a dangling tool result).
+- Model-list tidying: what counts as a chat model, ordering by release.
+
+### 3. Backend rules (app crate)
+
+| Module                  | Catches                                                                                                                                                                                                                                                                 |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ai::agent`             | The scripted agent loop end to end, history compaction, where the document rides (current turn only), focus-section selection on long docs.                                                                                                                             |
+| `ai::tools`             | `propose_edit`/`add_comment` anchor validation, including near-miss matching.                                                                                                                                                                                           |
+| `ai::project`           | Project folder access: containment, hidden files, size caps, search, `.textus/style.md` and `.textus/library/` parsing and relevance.                                                                                                                                   |
+| `ai::workspace`         | Skill parsing, root resolution and the too-broad-folder guard.                                                                                                                                                                                                          |
+| `ai::client`            | Completion prompt assembly, candidate splitting, grammar-issue relocation (CJK offsets), merging the rules engine's findings.                                                                                                                                           |
+| `ai::rules`             | The writing-rules engine: every rule per language with its guards and never-flag cases, profiles and settings, Markdown blocks, majority, fix idempotency, post-processing, platform counts, timing. `sweep` (ignored) runs it over the help guides and eval documents. |
+| `ai::catalog`           | Every pinned default model exists in the models.dev snapshot.                                                                                                                                                                                                           |
+| `commands::chat_window` | Which chat serves which editor, what a closed window frees.                                                                                                                                                                                                             |
+| `commands::attachment`  | OOXML text extraction and truncation marking.                                                                                                                                                                                                                           |
+| `atomic`, `session`     | Secret files written 0600 and atomically, private temp files and folders, what a closing window leaves in the session.                                                                                                                                                  |
+
+### 4. Frontend state and rendering (vitest)
+
+Settings migration (a rejected value must not discard the rest), the
+composer, streaming tool arguments, the proposal state machine
+(docs/design/ai-proposals.md), cancelled turns, AI error classification, the chat
+history grouping, the tutorial, the Windows-only window frame, menus and
+shortcuts, export pagination, themes, and the AI concept copy (the agent.md
+starters send nothing; templates name the menu items as the menus do).
+
+### 5. Visual (Playwright, `e2e/`)
+
+The real frontend in Chromium against the Vite dev server, with the dev
+Tauri shim (`dev/tauri-shim.ts`) standing in for the backend. Each test
+drives a flow and compares a screenshot: first run, the sidebar lesson, a
+document in light and dark (including the table-header regression, #15),
+split view, zen mode, the AI panel, an agent reply with a reasoned edit, the
+sentence picker and a comment (accepting only some sentences is checked in
+the document), Quick Ask, settings. Other specs assert behaviour without a
+screenshot: the file-backed storage (the boot snapshot, a close that waits
+for settings still on their way), the CJK font stacks, the phone, an
+iPad's keyboard shortcuts and review-step focus, and the Windows PDF
+export's page margins around blocks taller than a page (#151).
+
+**Interface scale and alignment** (design standard 5.6). The numbers live
+in one place each and their tests sit beside them: the build plugin that
+scales lengths (`vite.chrome-scale.test.ts`), the panel width rule
+(`src/engine/controls/side-panel-width.test.ts`, `src/app/frame/sidebar-width.test.ts`) and a
+floating view's size (`floating-views.test.ts`). Changing the scale curve
+(`src/engine/tokens/chrome-scale.ts`) means updating those numbers, not adding cases.
+
+### 6. Built app (`scripts/smoke-linux.sh`)
+
+The release binary and `.deb`: the package's binary, icons and `.desktop`
+entry (takes files, claims Markdown); the app starting on a file; a second
+launch handing its file to the running instance and exiting. Runs with
+throwaway config/data directories. Window checks need niri; `--screenshot`
+also needs the screen unlocked.
+
+`scripts/drive-linux.mjs <binary>` drives the debug build through
+`tauri-driver` (WebKitWebDriver): it starts on a document, takes typing and
+saves it to disk. CI's `linux-app` job runs it under xvfb.
+
+`scripts/smoke-ios-sim.sh <Textus.app>` does the same for iOS in the
+simulator: past onboarding, so the window loads its plugins and menus as at
+every later launch, and alive 20 seconds on. CI's `ios` job runs it.
+
+### 7. Live (`ai::live_eval`, ignored by default)
+
+An evaluation matrix for every AI feature, run through the app's own
+prompts, tools and agent loop against the real API: the agent (75 cases -
+eleven document languages, edits inside every Markdown construct, reviews,
+questions, the three modes, agent.md, style, library, skills, project files,
+multi-turn follow-ups, a long document), inline completion (43 - every tone,
+language and block type, the cursor mid-word, candidates) and the grammar
+check (26 - every strictness level, real mistakes and correct text). Each
+case gets automatic checks (edit vs answer, reply and edit language, bytes
+outside the target untouched, Markdown structure re-parsed and compared,
+tool use, completion spacing and length, grammar recall and false
+positives) and an Opus judge's 1-5 scores; model-comparison runs put the
+defaults side by side with the other current models. Results land in a
+`.jsonl` and `.md` per suite. `docs/design/ai-eval.md` has the matrix, how to run
+and filter it, and the latest before/after results.
+
+Keys live in one env file, `.env.local` at the repository root (git-ignored;
+`TEXTUS_ENV_FILE` points elsewhere), one `NAME=value` per line -
+`ANTHROPIC_API_KEY`, `VOLCENGINE_ARK_API_KEY` and so on - or in the
+environment, which wins. The older `.anthropic-api-key.local` still works.
+Without a key every test passes vacuously. A full run costs
+real money: run it through `node scripts/live-eval.mjs run`, which sets a
+budget and leaves the judge off (`TEXTUS_EVAL_JUDGE=1` turns it on), and
+filter with `--filter` while iterating; `compare` then shows what a change
+did against the provider's baseline (docs/design/ai-eval.md, "Running it").
+The checking code itself is unit-tested and runs with the normal
+`cargo test`.
+
+## What is deliberately not covered
+
+- **WebKitGTK and WebView2 rendering.** The visual suite runs Chromium; the
+  shipped app does not. The smoke test proves the Linux build starts, not
+  that it looks the same.
+- **macOS and Windows native behaviour**: drag-to-merge, the file dialogs,
+  the updater, PDF export, notarized bundles. CI proves they compile.
+- **Attachment extraction of real files.** The OOXML parser is tested on
+  hand-written XML; `pdf-extract` and `calamine` are trusted.
+
+Changes to window management, drafts, or anything that can lose unsaved
+work must still be exercised by hand, and the PR should say what was.

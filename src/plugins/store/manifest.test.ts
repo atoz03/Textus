@@ -1,0 +1,595 @@
+import { describe, expect, it } from "vitest";
+import { pluginString } from "../host/plugin-string";
+import CASES from "./manifest-cases.json";
+import { compareVersions, engineSatisfied } from "./versions";
+import {
+  isPermission,
+  localize,
+  matchesFilename,
+  parseManifest,
+} from "./manifest";
+import { ManifestError } from "./manifest-json";
+
+const base = {
+  id: "catvinci.example",
+  name: "Example",
+  version: "1.0.0",
+  publisher: "catvinci",
+  engines: { textus: "^1.3.0" },
+};
+
+describe("a plugin's manifest", () => {
+  it("takes an agent whose sign-in is its own (signIn empty)", () => {
+    const m = parseManifest({
+      ...base,
+      permissions: ["agents"],
+      contributes: {
+        agents: [
+          {
+            id: "catvinci.example.qwen",
+            name: "Qwen",
+            command: "npx",
+            signIn: "",
+          },
+          {
+            id: "catvinci.example.codex",
+            name: "Codex",
+            command: "npx",
+            signIn: "chat-gpt",
+          },
+        ],
+      },
+    });
+    expect(m.contributes?.agents?.map((a) => a.signIn)).toEqual([
+      "",
+      "chat-gpt",
+    ]);
+  });
+
+  it("reads what a plugin adds", () => {
+    const m = parseManifest({
+      ...base,
+      main: "host.js",
+      activationEvents: ["onCommand:catvinci.example.hello"],
+      permissions: ["files.read", "network:api.zotero.org"],
+      contributes: {
+        commands: [{ command: "catvinci.example.hello", title: "%hello%" }],
+        keybindings: [
+          { command: "catvinci.example.hello", key: "Mod+Shift+H" },
+        ],
+        menus: { "editor/context": [{ command: "catvinci.example.hello" }] },
+        customEditors: [
+          {
+            viewType: "catvinci.example.pdf",
+            displayName: "PDF",
+            filenamePatterns: ["*.PDF"],
+          },
+        ],
+        settings: [
+          {
+            key: "zoom",
+            type: "enum",
+            default: "fit",
+            title: "Zoom",
+            options: [
+              { value: "fit", label: "Fit" },
+              { value: "100", label: "100%" },
+            ],
+          },
+        ],
+      },
+      l10n: { en: { hello: "Say hello" }, zh: { hello: "打个招呼" } },
+    });
+    expect(m.contributes.keybindings[0].key).toBe("mod+shift+h");
+    expect(m.contributes.customEditors[0]).toMatchObject({
+      filenamePatterns: ["*.pdf"],
+      frontMatter: [],
+      priority: "default",
+    });
+    // An editor may claim Markdown by its front matter alone, not by nothing.
+    const board = (editor: object) =>
+      parseManifest({
+        ...base,
+        contributes: {
+          customEditors: [
+            { viewType: "catvinci.example.board", displayName: "B", ...editor },
+          ],
+        },
+      }).contributes.customEditors[0];
+    expect(board({ frontMatter: ["kanban-plugin"] })).toMatchObject({
+      filenamePatterns: [],
+      frontMatter: ["kanban-plugin"],
+    });
+    expect(() => board({})).toThrow(/filenamePatterns/);
+    // A document type: extensions bare and lowercase, Textus's own refused,
+    // nothing kept unless asked.
+    const types = (documentTypes: unknown) =>
+      parseManifest({ ...base, contributes: { documentTypes } }).contributes
+        .documentTypes;
+    expect(
+      types([
+        { extensions: [".QMD"] },
+        { extensions: ["rmd"], keep: { blockStarts: [":::"], braces: true } },
+      ]),
+    ).toEqual([
+      { extensions: ["qmd"], keep: null },
+      {
+        extensions: ["rmd"],
+        keep: { blockStarts: [":::"], braces: true, jsx: false },
+      },
+    ]);
+    expect(() => types([{ extensions: ["md"] }])).toThrow(/Textus's own/);
+    expect(() => types([{ extensions: [] }])).toThrow(/empty/);
+    expect(() =>
+      types([{ extensions: ["q"], keep: { braces: "yes" } }]),
+    ).toThrow(/true or false/);
+    // A folder opened as one document: by its extension, the names inside.
+    const folders = (folderDocuments: unknown) =>
+      parseManifest({ ...base, contributes: { folderDocuments } }).contributes
+        .folderDocuments;
+    expect(
+      folders([{ extension: ".TextBundle", documents: ["text.md"] }]),
+    ).toEqual([{ extension: "textbundle", documents: ["text.md"] }]);
+    expect(() =>
+      folders([{ extension: "textbundle", documents: ["../x.md"] }]),
+    ).toThrow(/file name/);
+    expect(() => folders([{ extension: "textbundle", documents: [] }])).toThrow(
+      /empty/,
+    );
+    // A code language: names lowercase, a grammar file of its own, Textus's
+    // drawn fences refused.
+    const languages = (codeLanguages: unknown) =>
+      parseManifest({ ...base, contributes: { codeLanguages } }).contributes
+        .codeLanguages;
+    expect(
+      languages([
+        { id: "Cisco", aliases: ["IOS", "cisco-ios"], path: "cisco.json" },
+      ]),
+    ).toEqual([
+      { id: "cisco", aliases: ["ios", "cisco-ios"], path: "cisco.json" },
+    ]);
+    expect(languages([{ id: "x", path: "x.json" }])[0].aliases).toEqual([]);
+    expect(() => languages([{ id: "mermaid", path: "m.json" }])).toThrow(
+      /Textus itself/,
+    );
+    expect(() => languages([{ id: "a b", path: "m.json" }])).toThrow(
+      /fence's language/,
+    );
+    expect(() => languages([{ id: "x", path: "../x.json" }])).toThrow(
+      /\.json file/,
+    );
+    expect(() => languages([{ id: "x", path: "x.js" }])).toThrow(/\.json file/);
+    // A file icon theme: an id of its own, a JSON inside the plugin.
+    const iconThemes = (fileIconThemes: unknown) =>
+      parseManifest({ ...base, contributes: { fileIconThemes } }).contributes
+        .fileIconThemes;
+    expect(
+      iconThemes([
+        { id: "material", label: "Material", path: "./icons/theme.json" },
+      ]),
+    ).toEqual([
+      { id: "material", label: "Material", path: "icons/theme.json" },
+    ]);
+    expect(iconThemes(undefined)).toEqual([]);
+    expect(() =>
+      iconThemes([{ id: "m", label: "M", path: "../theme.json" }]),
+    ).toThrow(/in the plugin/);
+    expect(() =>
+      iconThemes([{ id: "m", label: "M", path: "theme.svg" }]),
+    ).toThrow(/\.json/);
+    expect(() =>
+      iconThemes([{ id: "Big Theme", label: "M", path: "t.json" }]),
+    ).toThrow(/lowercase/);
+    expect(() =>
+      iconThemes([
+        { id: "m", label: "M", path: "a.json" },
+        { id: "m", label: "N", path: "b.json" },
+      ]),
+    ).toThrow(/taken/);
+    // Traditional Chinese reads the English, not the Simplified.
+    expect(localize(m, m.contributes.commands[0].title, "zh-Hant")).toBe(
+      "Say hello",
+    );
+    expect(localize(m, "%hello%", "fr")).toBe("Say hello");
+    expect(localize(m, "Plain", "zh")).toBe("Plain");
+    const zhOnly = parseManifest({
+      ...base,
+      l10n: { zh: { hello: "打个招呼" } },
+    });
+    expect(localize(zhOnly, "%hello%", "fr")).toBe("打个招呼");
+    expect(localize(zhOnly, "%missing%", "fr")).toBe("missing");
+    // The frames get the lookup as source: it stands alone.
+    const inFrame = new Function(
+      `return ${pluginString.toString()}`,
+    )() as typeof pluginString;
+    expect(inFrame({ en: { n: "{0} of {1}" } }, "de", "n", [1, 2])).toBe(
+      "1 of 2",
+    );
+  });
+
+  it("refuses what would let a plugin take another's place or reach more", () => {
+    const bad = (extra: object) => () => parseManifest({ ...base, ...extra });
+    expect(bad({ id: "Example" })).toThrow(ManifestError);
+    expect(bad({ version: "1" })).toThrow(/version/);
+    expect(bad({ permissions: ["root"] })).toThrow(/permission/);
+    expect(
+      bad({
+        contributes: { commands: [{ command: "other.cmd", title: "x" }] },
+      }),
+    ).toThrow(/must start with "catvinci.example."/);
+    expect(
+      bad({
+        contributes: {
+          keybindings: [{ command: "catvinci.example.x", key: "a" }],
+        },
+      }),
+    ).toThrow(/not in contributes.commands/);
+    expect(bad({ contributes: { menus: { "window/title": [] } } })).toThrow(
+      /no menu/,
+    );
+    // As the window compiles it, unicode: "\\-" would throw there and take
+    // every plugin's links down with it.
+    expect(
+      bad({
+        contributes: {
+          commands: [{ command: "catvinci.example.x", title: "x" }],
+          links: [{ pattern: "a\\-b", command: "catvinci.example.x" }],
+        },
+      }),
+    ).toThrow(/not a regular expression/);
+    expect(bad({ engines: {} })).toThrow(/engines.textus/);
+    expect(() => parseManifest("{nope")).toThrow(/not JSON/);
+  });
+
+  it("reads a command that runs one of Textus's own, and only Textus's", () => {
+    const runs = (command: string) =>
+      parseManifest({
+        ...base,
+        contributes: {
+          commands: [
+            {
+              command: "catvinci.example.h2",
+              title: "Heading 2",
+              runs: { command, args: ["h2"] },
+            },
+          ],
+        },
+      });
+    expect(runs("textus.insertBlock").contributes.commands[0].runs).toEqual({
+      command: "textus.insertBlock",
+      args: ["h2"],
+    });
+    expect(() => runs("other.plugin.cmd")).toThrow(/one of Textus's/);
+  });
+
+  it("reads where a plugin suggests completions, and refuses a bad pattern", () => {
+    const m = parseManifest({
+      ...base,
+      contributes: {
+        completions: [
+          { id: "catvinci.example.tex", where: "math", pattern: "\\\\[a-z]*" },
+          { id: "catvinci.example.any", pattern: "@\\w*", title: "%dates%" },
+        ],
+      },
+    });
+    expect(m.contributes.completions).toEqual([
+      { id: "catvinci.example.tex", where: "math", pattern: "\\\\[a-z]*" },
+      {
+        id: "catvinci.example.any",
+        where: "any",
+        pattern: "@\\w*",
+        title: "%dates%",
+      },
+    ]);
+    const bad = (c: object) => () =>
+      parseManifest({ ...base, contributes: { completions: [c] } });
+    expect(bad({ id: "catvinci.example.x", pattern: "(" })).toThrow(
+      /not a regular expression/,
+    );
+    expect(
+      bad({ id: "catvinci.example.x", where: "code", pattern: "a" }),
+    ).toThrow(/where/);
+    expect(bad({ id: "other.x", pattern: "a" })).toThrow(/must start with/);
+  });
+
+  it("reads the links a plugin opens, each to one of its commands", () => {
+    const command = { command: "catvinci.example.open", title: "Open" };
+    const m = parseManifest({
+      ...base,
+      contributes: {
+        commands: [command],
+        links: [{ pattern: "^https?://", command: command.command }],
+      },
+    });
+    expect(m.contributes.links).toEqual([
+      { pattern: "^https?://", command: "catvinci.example.open" },
+    ]);
+    const bad = (link: object) => () =>
+      parseManifest({
+        ...base,
+        contributes: { commands: [command], links: [link] },
+      });
+    expect(bad({ pattern: "(", command: command.command })).toThrow(
+      /not a regular expression/,
+    );
+    expect(bad({ pattern: "a", command: "catvinci.example.other" })).toThrow(
+      /not in contributes.commands/,
+    );
+  });
+
+  it("reads the statuses a plugin shows before it starts", () => {
+    const command = { command: "catvinci.example.open", title: "Open" };
+    const m = parseManifest({
+      ...base,
+      contributes: {
+        commands: [command],
+        statusItems: [
+          { id: "count", text: "%words%", command: command.command },
+        ],
+      },
+    });
+    expect(m.contributes.statusItems).toEqual([
+      { id: "count", text: "%words%", command: "catvinci.example.open" },
+    ]);
+    expect(() =>
+      parseManifest({
+        ...base,
+        contributes: { statusItems: [{ id: "a", text: "b", command: "x.y" }] },
+      }),
+    ).toThrow(/not in contributes.commands/);
+  });
+
+  it("reads what a document must hold for the plugin to be suggested, leaving out kinds it doesn't know", () => {
+    const m = parseManifest({
+      ...base,
+      contributes: { suggestFor: ["wikilinks", "a-later-kind"] },
+    });
+    expect(m.contributes.suggestFor).toEqual(["wikilinks"]);
+    expect(parseManifest(base).contributes.suggestFor).toEqual([]);
+  });
+
+  it("reads the embeds and hover cards a plugin gives, leaving out kinds it doesn't know", () => {
+    const m = parseManifest({
+      ...base,
+      permissions: ["files.read"],
+      contributes: {
+        embeds: [
+          { id: "catvinci.example.embed", targets: ["note", "block", "pdf"] },
+        ],
+        hovers: ["document", "later"],
+      },
+    });
+    expect(m.contributes.embeds).toEqual([
+      { id: "catvinci.example.embed", targets: ["note", "block"] },
+    ]);
+    expect(m.contributes.hovers).toEqual(["document"]);
+  });
+
+  it("refuses embeds without files.read", () => {
+    expect(() =>
+      parseManifest({
+        ...base,
+        contributes: {
+          embeds: [{ id: "catvinci.example.embed", targets: ["note"] }],
+        },
+      }),
+    ).toThrow(/needs files.read/);
+  });
+
+  it("names network permissions by host", () => {
+    expect(isPermission("network:api.zotero.org")).toBe(true);
+    expect(isPermission("network:*.wikipedia.org")).toBe(true);
+    expect(isPermission("network:localhost:23119")).toBe(true);
+    expect(isPermission("network:*")).toBe(true);
+    expect(isPermission("network:")).toBe(false);
+    expect(isPermission("network:a b")).toBe(false);
+  });
+});
+
+describe("a plugin's background code (API 1.1)", () => {
+  it("is read with the notifications and background permissions", () => {
+    const m = parseManifest({
+      ...base,
+      main: "host.js",
+      background: "background.js",
+      permissions: ["notifications", "background"],
+    });
+    expect(m.background).toBe("background.js");
+    expect(m.permissions).toEqual(["notifications", "background"]);
+    expect(parseManifest(base).background).toBeUndefined();
+  });
+});
+
+describe("where a plugin runs", () => {
+  it("is everywhere unless it says, and the desktop alone when it works in the background", () => {
+    expect(parseManifest(base).platforms).toEqual(["desktop", "ios"]);
+    expect(
+      parseManifest({ ...base, platforms: ["desktop"] }).platforms,
+    ).toEqual(["desktop"]);
+    expect(parseManifest({ ...base, background: "jobs.js" }).platforms).toEqual(
+      ["desktop"],
+    );
+    expect(
+      parseManifest({ ...base, requires: [{ setting: "runInBackground" }] })
+        .platforms,
+    ).toEqual(["desktop"]);
+  });
+
+  it("refuses a system it doesn't know, and the background on iOS", () => {
+    expect(() => parseManifest({ ...base, platforms: ["android"] })).toThrow(
+      ManifestError,
+    );
+    expect(() =>
+      parseManifest({
+        ...base,
+        background: "jobs.js",
+        platforms: ["desktop", "ios"],
+      }),
+    ).toThrow(/desktop's only/);
+  });
+
+  it("takes iOS beside a plugin that only asks to keep Textus running", () => {
+    expect(
+      parseManifest({
+        ...base,
+        requires: [{ setting: "runInBackground" }],
+        platforms: ["desktop", "ios"],
+      }).platforms,
+    ).toEqual(["desktop", "ios"]);
+  });
+});
+
+describe("a plugin's settings", () => {
+  const withSettings = (settings: unknown[]) =>
+    parseManifest({ ...base, contributes: { settings } });
+
+  it("reads every kind, with groups, conditions and bounds", () => {
+    const m = withSettings([
+      { key: "on", type: "boolean", default: true, title: "On", group: "A" },
+      {
+        key: "tint",
+        type: "color",
+        default: "#AABBCC",
+        title: "Tint",
+        when: "on",
+      },
+      { key: "h", type: "number", default: 3, min: 1, max: 9, title: "H" },
+      { key: "words", type: "list", default: ["a"], title: "Words" },
+      {
+        key: "go",
+        type: "button",
+        command: "catvinci.example.go",
+        title: "Go",
+      },
+    ]);
+    const [on, tint, h, words, go] = m.contributes.settings;
+    expect(on.group).toBe("A");
+    expect(tint.when).toBe("on");
+    expect([h.min, h.max]).toEqual([1, 9]);
+    expect(words.default).toEqual(["a"]);
+    expect(go.command).toBe("catvinci.example.go");
+    expect(go.default).toBeUndefined();
+  });
+
+  it("refuses a default of the wrong kind, a bad condition, or one on no setting", () => {
+    const bad: [unknown, RegExp][] = [
+      [{ key: "c", type: "color", default: "blue", title: "C" }, /colour/],
+      [{ key: "l", type: "list", default: "a", title: "L" }, /list of strings/],
+      [
+        { key: "b", type: "button", default: 1, command: "x", title: "B" },
+        /left out/,
+      ],
+      [{ key: "b", type: "button", title: "B" }, /command/],
+      [{ key: "n", type: "number", default: 0, min: 1, title: "N" }, /within/],
+      [
+        { key: "w", type: "string", default: "", title: "W", when: "a ==" },
+        /when/,
+      ],
+      [
+        { key: "w", type: "string", default: "", title: "W", when: "ghost" },
+        /no setting/,
+      ],
+      [{ key: "x", type: "date", default: "", title: "X" }, /type/],
+    ];
+    for (const [setting, message] of bad)
+      expect(() => withSettings([setting])).toThrow(message);
+  });
+});
+
+describe("versions", () => {
+  it("order as semver, a pre-release before its release", () => {
+    expect(compareVersions("1.3.0-beta.1", "1.3.0")).toBe(-1);
+    expect(compareVersions("1.10.0", "1.9.9")).toBe(1);
+    expect(compareVersions("1.3.0", "1.3.0")).toBe(0);
+    // Pre-release numbers count as numbers: rc.12 comes after rc.2.
+    expect(compareVersions("1.3.13-rc.12", "1.3.13-rc.2")).toBe(1);
+    expect(compareVersions("1.3.0-rc.1", "1.3.0-rc.beta")).toBe(-1);
+    expect(compareVersions("1.3.0-rc", "1.3.0-rc.1")).toBe(-1);
+    expect(engineSatisfied(">=1.3.13-rc.2", "1.3.13-rc.12")).toBe(true);
+  });
+
+  it("match a plugin's engine range, a beta counting as its release", () => {
+    expect(engineSatisfied("^1.3.0", "1.3.0-beta.1")).toBe(true);
+    expect(engineSatisfied("^1.3.0", "1.4.2")).toBe(true);
+    expect(engineSatisfied("^1.3.0", "2.0.0")).toBe(false);
+    expect(engineSatisfied("^1.4.0", "1.3.0")).toBe(false);
+    expect(engineSatisfied(">=1.3.0", "2.1.0")).toBe(true);
+    expect(engineSatisfied("1.3.x", "1.3.7")).toBe(true);
+    expect(engineSatisfied("1.3.x", "1.4.0")).toBe(false);
+    expect(engineSatisfied("*", "9.0.0")).toBe(true);
+  });
+
+  it("tell the betas apart when the range names one", () => {
+    expect(engineSatisfied(">=1.3.0-beta.2", "1.3.0-beta.1")).toBe(false);
+    expect(engineSatisfied(">=1.3.0-beta.2", "1.3.0-beta.2")).toBe(true);
+    expect(engineSatisfied(">=1.3.0-beta.2", "1.3.0")).toBe(true);
+    expect(engineSatisfied("^1.3.0-beta.2", "1.3.0-beta.1")).toBe(false);
+    expect(engineSatisfied("^1.3.0-beta.2", "1.4.0")).toBe(true);
+  });
+});
+
+it("file name patterns match with * and without regard to case", () => {
+  expect(matchesFilename("*.pdf", "Paper.PDF")).toBe(true);
+  expect(matchesFilename("*.kanban.md", "todo.kanban.md")).toBe(true);
+  expect(matchesFilename("*.kanban.md", "notes.md")).toBe(false);
+  expect(matchesFilename("*.md", "a.md.bak")).toBe(false);
+});
+
+describe("a plugin's floating views", () => {
+  const withViews = (floatingViews: unknown[]) =>
+    parseManifest({ ...base, contributes: { floatingViews } });
+
+  it("are 160 points square and either place unless the manifest says", () => {
+    const m = withViews([
+      { id: "catvinci.example.pet", title: "Pet" },
+      {
+        id: "catvinci.example.timer",
+        title: "Timer",
+        width: 240.4,
+        height: 96,
+        place: "desktop",
+      },
+    ]);
+    expect(m.contributes.floatingViews).toEqual([
+      {
+        id: "catvinci.example.pet",
+        title: "Pet",
+        width: 160,
+        height: 160,
+        place: "either",
+      },
+      {
+        id: "catvinci.example.timer",
+        title: "Timer",
+        width: 240,
+        height: 96,
+        place: "desktop",
+      },
+    ]);
+  });
+
+  it("stay small, take only their own ids and known places", () => {
+    expect(() =>
+      withViews([{ id: "catvinci.example.big", title: "Big", width: 900 }]),
+    ).toThrow(ManifestError);
+    expect(() => withViews([{ id: "other.plugin.pet", title: "Pet" }])).toThrow(
+      /must start with "catvinci.example."/,
+    );
+    expect(() =>
+      withViews([{ id: "catvinci.example.pet", title: "Pet", place: "dock" }]),
+    ).toThrow(/"desktop", "window" or "either"/);
+  });
+});
+
+describe("the manifest cases Rust's check reads too", () => {
+  const manifest = (extra: object) => ({ ...CASES.base, ...extra });
+  it.each(CASES.valid)("takes %j", (extra) => {
+    expect(() => parseManifest(manifest(extra))).not.toThrow();
+  });
+  it.each([...CASES.invalid, ...CASES.invalidInWindow])(
+    "refuses %j",
+    (extra) => {
+      expect(() => parseManifest(manifest(extra))).toThrow();
+    },
+  );
+});

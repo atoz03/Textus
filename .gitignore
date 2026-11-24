@@ -1,0 +1,55 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+dist-playground
+# Live-eval runs (scripts/live-eval.mjs).
+/tmp/
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# makepkg outputs (packaging/arch/README.md)
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/*.tar.gz
+packaging/arch/*.tar.gz.sha256
+packaging/arch/*.pkg.tar.zst
+
+# Local API key for live AI tests - never committed
+.anthropic-api-key.local
+
+# Playwright output (npm run test:e2e, test:visual, screenshots:*)
+test-results/
+# The large-document benchmark's generated documents (e2e/perf/large-docs.ts)
+e2e/perf/fixtures/
+playwright-report/
+*.tsbuildinfo
+
+# Throwaway app profiles for local previews (tutorial, diary)
+.*-preview/
+
+# The save round-trip corpus (scripts/roundtrip-corpus/fetch.mjs):
+# third-party files, downloaded, never committed
+.cache/
+
+# The official plugins checked out beside the app, for the dev server
+# and the plugin flows (vite.dev-plugins.ts); a repository of its own.
+textus-plugins/

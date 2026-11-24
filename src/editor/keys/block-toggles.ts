@@ -1,0 +1,130 @@
+import { lift, setBlockType, wrapIn } from "@milkdown/kit/prose/commands";
+import { liftListItem, wrapInList } from "@milkdown/kit/prose/schema-list";
+import type { Node, NodeType, ResolvedPos } from "@milkdown/kit/prose/model";
+import {
+  TextSelection,
+  type Command,
+  type EditorState,
+} from "@milkdown/kit/prose/state";
+import type { EditorView } from "@milkdown/kit/prose/view";
+
+/**
+ * The iPhone keyboard toolbar's block buttons, which must also undo
+ * themselves: H cycles paragraph, H1-H3; a list or quote button tapped again
+ * inside its own kind takes the block back out.
+ */
+const LAST_LEVEL = 3;
+
+export function cycleHeading(view: EditorView): boolean {
+  const { state } = view;
+  const { heading, paragraph } = state.schema.nodes;
+  if (!heading || !paragraph) return false;
+  const block = textblock(state.selection.$from);
+  const command =
+    block.type === heading
+      ? block.attrs.level >= LAST_LEVEL
+        ? setBlockType(paragraph)
+        : setBlockType(heading, { level: block.attrs.level + 1 })
+      : setBlockType(heading, { level: 1 });
+  return command(state, view.dispatch);
+}
+
+/** How deep the textblock around `$pos` is: the caret can sit in an inline
+ *  node with content (a bold or italic span), not in the block itself. */
+function textblockDepth($pos: ResolvedPos): number {
+  let depth = $pos.depth;
+  while (depth > 0 && !$pos.node(depth).isTextblock) depth--;
+  return depth;
+}
+
+const textblock = ($pos: ResolvedPos): Node => $pos.node(textblockDepth($pos));
+
+/** Runs a wrapping command over the selection's whole blocks: inside a span
+ *  the selection's range would be the paragraph's inside, where nothing
+ *  wraps. The selection is kept as it was. */
+function overBlocks(view: EditorView, command: Command): boolean {
+  const { state } = view;
+  const { selection } = state;
+  const { $from, $to } = selection;
+  const from = textblockDepth($from);
+  const to = textblockDepth($to);
+  if (from === $from.depth && to === $to.depth)
+    return command(state, view.dispatch);
+  const whole: EditorState = state.apply(
+    state.tr.setSelection(
+      TextSelection.create(state.doc, $from.start(from), $to.end(to)),
+    ),
+  );
+  return command(whole, (tr) =>
+    view.dispatch(tr.setSelection(selection.map(tr.doc, tr.mapping))),
+  );
+}
+
+/** The list the caret is directly in, if any (its nearest list item's). */
+function enclosingList(view: EditorView): NodeType | null {
+  const { $from } = view.state.selection;
+  const item = view.state.schema.nodes.list_item;
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type === item) return $from.node(d - 1).type;
+  }
+  return null;
+}
+
+export function toggleList(
+  view: EditorView,
+  kind: "bullet_list" | "ordered_list",
+): boolean {
+  const { schema } = view.state;
+  const target = schema.nodes[kind];
+  const item = schema.nodes.list_item;
+  if (!target || !item) return false;
+  const current = enclosingList(view);
+  // In a list of the other kind it changes kind, nesting kept; in one of
+  // this kind the item comes out.
+  if (current && current !== target) return convertList(view, kind);
+  if (current) return liftListItem(item)(view.state, view.dispatch);
+  // A list item has to start with a paragraph: a heading becomes one.
+  const { heading, paragraph } = schema.nodes;
+  if (
+    heading &&
+    paragraph &&
+    textblock(view.state.selection.$from).type === heading
+  )
+    setBlockType(paragraph)(view.state, view.dispatch);
+  return overBlocks(view, wrapInList(target));
+}
+
+export function toggleBlockquote(view: EditorView): boolean {
+  const quote = view.state.schema.nodes.blockquote;
+  if (!quote) return false;
+  const { $from } = view.state.selection;
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type === quote) return lift(view.state, view.dispatch);
+  }
+  return overBlocks(view, wrapIn(quote));
+}
+
+/** The Format menu's list items in a list of the other kind: the list
+ *  changes kind, nesting kept. False outside a list, or in one of that kind. */
+export function convertList(
+  view: EditorView,
+  kind: "bullet_list" | "ordered_list",
+): boolean {
+  const { state } = view;
+  const target = state.schema.nodes[kind];
+  const item = state.schema.nodes.list_item;
+  if (!target || !item) return false;
+  const { $from } = state.selection;
+  for (let d = $from.depth; d > 1; d--) {
+    if ($from.node(d).type !== item) continue;
+    const list = $from.node(d - 1);
+    if (list.type === target) return false;
+    view.dispatch(
+      state.tr.setNodeMarkup($from.before(d - 1), target, {
+        spread: list.attrs.spread,
+      }),
+    );
+    return true;
+  }
+  return false;
+}

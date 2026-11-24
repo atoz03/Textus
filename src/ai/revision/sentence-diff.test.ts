@@ -1,0 +1,414 @@
+// @vitest-environment jsdom
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Editor } from "@milkdown/kit/core";
+import { createTestEditor } from "../../document-view/editor-test-harness";
+import { composeSentences, oneLine, trimBreaks } from "./sentence-diff";
+import { splitSentences } from "./sentence-pairs";
+import { inlineChange } from "./sentence-diff";
+import { diffSentences, splitUnits } from "./unit-diff";
+
+// Blocks are read by the editor's parser, which an editor registers as it
+// starts.
+let reader: Editor | null = null;
+beforeAll(async () => {
+  reader = await createTestEditor("");
+});
+afterAll(() => reader?.destroy());
+
+describe("splitSentences", () => {
+  it("splits CJK and Latin text without losing a character", () => {
+    const zh = "第一句。第二句！“第三句？”最后";
+    expect(splitSentences(zh)).toEqual([
+      "第一句。",
+      "第二句！",
+      "“第三句？”",
+      "最后",
+    ]);
+    const en = "One. Two is here! Three?";
+    expect(splitSentences(en).join("")).toBe(en);
+    expect(splitSentences(en)).toHaveLength(3);
+  });
+
+  it("keeps a full stop inside a sentence in it", () => {
+    // A decimal or a URL doesn't end a sentence.
+    expect(splitSentences("Pi is 3.14 or so. See example.com today.")).toEqual([
+      "Pi is 3.14 or so. ",
+      "See example.com today.",
+    ]);
+  });
+
+  it("keeps a link's address whole, its ? and ! with it", () => {
+    // Cut at `forum?`, the halves showed as literal Markdown and couldn't be
+    // found in the text, so the whole rewrite fell back to one change.
+    const link =
+      "🔗 论文链接：[OpenReview](https://openreview.net/forum?id=aWVG2rN4OV)\n";
+    expect(splitSentences(`${link}下一句？`)).toEqual([link, "下一句？"]);
+    expect(
+      splitSentences("See https://x.org/a?b=1! Then https://y.org/c? Done."),
+    ).toEqual(["See https://x.org/a?b=1! ", "Then https://y.org/c? ", "Done."]);
+    expect(splitSentences("见https://a.com/x?y=1。第二句。第三句。")).toEqual([
+      "见https://a.com/x?y=1。",
+      "第二句。",
+      "第三句。",
+    ]);
+    const long = `${"https://x.org/a?".repeat(200)} ${"字".repeat(2000)}`;
+    expect(splitSentences(long).join("")).toBe(long);
+  });
+
+  it("ends a sentence at a hard break, which goes with it", () => {
+    expect(splitSentences("One.\\\nTwo.  \nThree.<br>Four")).toEqual([
+      "One.\\\n",
+      "Two.  \n",
+      "Three.<br>",
+      "Four",
+    ]);
+    expect(splitSentences("No stop\\\nNext.")).toEqual([
+      "No stop\\\n",
+      "Next.",
+    ]);
+  });
+});
+
+describe("inlineChange", () => {
+  it("drops the marker of the list item or quote line it rewrites", () => {
+    expect(inlineChange("- 乙。\n", "- 乙改了。\n")).toBe("乙改了。");
+    expect(inlineChange("> 第一句。", "> 第一句改了。")).toBe("第一句改了。");
+    // Several lines are blocks of their own, drawn as such.
+    expect(inlineChange("- 甲。\n- 乙。", "- 甲。\n- 乙改。")).toBe(
+      "- 甲。\n- 乙改。",
+    );
+    // A paragraph's sentence keeps what it says.
+    expect(inlineChange("第一句。", "- 新的一项")).toBe("- 新的一项");
+    // A marker of another kind is what the new text says, not a marker.
+    expect(inlineChange("- 甲", "2023. 年份变了")).toBe("2023. 年份变了");
+    expect(inlineChange("## 标题", "## 2023. 年份")).toBe("2023. 年份");
+    expect(inlineChange("1. 甲", "2. 乙")).toBe("乙");
+    expect(inlineChange("> - 甲", "> * 乙")).toBe("乙");
+    // A quote's marks go, what follows them stays.
+    expect(inlineChange("> 甲", "> 1984. 年")).toBe("1984. 年");
+    expect(inlineChange("> 甲", ">> 乙")).toBe(">> 乙");
+  });
+});
+
+describe("trimBreaks", () => {
+  it("leaves a sentence without the break it ends with", () => {
+    expect(trimBreaks("One.\\\n")).toBe("One.");
+    expect(trimBreaks("Three.<br> ")).toBe("Three.");
+    expect(trimBreaks("  Two.  \n")).toBe("Two.");
+  });
+
+  it("puts blocks on one line without their marks, for a row", () => {
+    expect(oneLine("Data:\n\n- **Speed**: one\n- [ ] Two\n\n> 1. Three")).toBe(
+      "Data: **Speed**: one Two Three",
+    );
+  });
+});
+
+describe("diffSentences + composeSentences", () => {
+  // Two of four sentences changed: decided sentence by sentence.
+  const before =
+    "我们花了整整两个月。访谈了四十六位居民。内容涵盖很多方面。报告下周发布。";
+  const after =
+    "历时两个月。访谈了四十六位居民。内容涉及看法与担忧。报告下周发布。";
+  const hunks = diffSentences(before, after);
+
+  it("finds the changed sentences around the unchanged one", () => {
+    expect(hunks.filter((h) => h.kind === "change")).toHaveLength(2);
+    expect(hunks[1]).toEqual({ kind: "same", text: "访谈了四十六位居民。" });
+  });
+
+  it("takes all, none, or some of the changes", () => {
+    expect(composeSentences(hunks, [true, true])).toBe(after);
+    expect(composeSentences(hunks, [false, false])).toBe(before);
+    expect(composeSentences(hunks, [true, false])).toBe(
+      "历时两个月。访谈了四十六位居民。内容涵盖很多方面。报告下周发布。",
+    );
+  });
+});
+
+describe("aligning a rewritten run", () => {
+  // Sentences kept as they were, so the changes stay the fewer and are
+  // decided one by one.
+  const TAIL = "其余各回也多有照应。此处不赘。全书由此展开。";
+  const KEPT = " Most were retired. Some had children. All lived nearby.";
+
+  it("keeps sentence decisions when a rewrite splits a sentence in two", () => {
+    const before =
+      "这一句其实是在呼应第一回的前世姻缘，可以说是全书爱情线的一个起点。宝玉初见黛玉便觉似曾相识，作者就某种意义而言是借这句话点明了木石前盟。贾母一句“胡说”，却把这层深意轻轻带过。" +
+      TAIL;
+    const after =
+      "这一句呼应第一回的前世姻缘，是全书爱情线的起点。宝玉初见黛玉，便觉似曾相识。作者借这句话点明木石前盟。贾母一句“胡说”，把这层深意轻轻带过。" +
+      TAIL;
+    const changes = diffSentences(before, after).filter(
+      (h) => h.kind === "change",
+    );
+    expect(changes).toHaveLength(3);
+    expect(changes[1]).toEqual({
+      kind: "change",
+      before:
+        "宝玉初见黛玉便觉似曾相识，作者就某种意义而言是借这句话点明了木石前盟。",
+      after: "宝玉初见黛玉，便觉似曾相识。作者借这句话点明木石前盟。",
+    });
+    // Taking only the middle one composes cleanly.
+    expect(
+      composeSentences(diffSentences(before, after), [false, true, false]),
+    ).toBe(
+      "这一句其实是在呼应第一回的前世姻缘，可以说是全书爱情线的一个起点。宝玉初见黛玉，便觉似曾相识。作者借这句话点明木石前盟。贾母一句“胡说”，却把这层深意轻轻带过。" +
+        TAIL,
+    );
+  });
+
+  it("pairs English sentences joined into one", () => {
+    const changes = diffSentences(
+      "The study ran in three towns. It took two months. We met forty residents." +
+        KEPT,
+      "The study ran in three towns over two months. We spoke with forty residents." +
+        KEPT,
+    ).filter((h) => h.kind === "change");
+    expect(changes.map((c) => c.kind === "change" && c.before)).toEqual([
+      "The study ran in three towns. It took two months. ",
+      "We met forty residents. ",
+    ]);
+  });
+
+  it("leaves a wholesale rewrite as one change", () => {
+    expect(
+      diffSentences(
+        "Apples are red. Pears are green.",
+        "Nothing here matches at all.",
+      ).length,
+    ).toBe(1);
+  });
+});
+
+describe("a change over several paragraphs", () => {
+  it("is one change for each paragraph, when the paragraphs stay as many", () => {
+    // Sentences too unalike to pair: one run across both paragraphs, each
+    // long enough to keep its own change.
+    expect(splitSentences("见https://a.com/x?y=1。第二句。第三句。")).toEqual([
+      "见https://a.com/x?y=1。",
+      "第二句。",
+      "第三句。",
+    ]);
+    const long = (s: string) => `${s} ${s} ${s}`;
+    const a = long("Rain fell on the harbour all night long.");
+    const b = long("The wind rose before dawn and shook the masts.");
+    const c = long("The sea was flat and grey under the morning sky.");
+    const d = long("Nothing moved on the quay until the gulls came.");
+    const hunks = diffSentences(`${a}\n\n${b}`, `${c}\n\n${d}`);
+    expect(hunks).toEqual([
+      { kind: "change", before: `${a}\n\n`, after: `${c}\n\n` },
+      { kind: "change", before: b, after: d },
+    ]);
+  });
+
+  it("is one change for a run of short paragraphs rewritten", () => {
+    const hunks = diffSentences(
+      "Rain fell.\n\nWind rose.\n\nBoats came in.",
+      "The sea was flat and grey.\n\nNothing moved on the quay.\n\nThe boats returned.",
+    );
+    expect(hunks).toEqual([
+      {
+        kind: "change",
+        before: "Rain fell.\n\nWind rose.\n\nBoats came in.",
+        after:
+          "The sea was flat and grey.\n\nNothing moved on the quay.\n\nThe boats returned.",
+      },
+    ]);
+  });
+
+  it("keeps a heading or a list item its own change among short paragraphs", () => {
+    const hunks = diffSentences(
+      "Rain fell.\n\n## The harbour\n\nWind rose.",
+      "The sea was grey.\n\n## The quay\n\nNothing moved.",
+    );
+    expect(hunks.filter((h) => h.kind === "change")).toHaveLength(3);
+  });
+
+  it("is one change for a paragraph that was rewritten", () => {
+    const hunks = diffSentences(
+      "Rain fell all night. The wind rose before dawn. Boats came in.",
+      "A storm broke over the harbour. Every mooring strained. Boats came in.",
+    );
+    expect(hunks).toEqual([
+      {
+        kind: "change",
+        before:
+          "Rain fell all night. The wind rose before dawn. Boats came in.",
+        after:
+          "A storm broke over the harbour. Every mooring strained. Boats came in.",
+      },
+    ]);
+  });
+
+  it("stays sentence by sentence for a polish that touched every sentence", () => {
+    const hunks = diffSentences(
+      "Rain fell all night long. The wind rose before the dawn. Boats came in slowly.",
+      "Rain fell all night. The wind rose before dawn. Boats came in slowly.",
+    );
+    expect(hunks.filter((h) => h.kind === "change")).toHaveLength(2);
+  });
+
+  it("sets joined paragraphs against the paragraphs they came from, the rest as it was", () => {
+    const hunks = diffSentences(
+      "A one. A two.\n\nB one. B two.\n\nC one. C two.",
+      "A one. A two. B one. B two.\n\nC one. C two.",
+    );
+    expect(hunks).toEqual([
+      {
+        kind: "change",
+        before: "A one. A two.\n\nB one. B two.\n\n",
+        after: "A one. A two. B one. B two.\n\n",
+      },
+      { kind: "same", text: "C one. " },
+      { kind: "same", text: "C two." },
+    ]);
+  });
+
+  it("sets a translation against its original paragraph by paragraph", () => {
+    // Nothing pairs Chinese with English sentence by sentence; two lines of
+    // dialogue became one paragraph, and the picture's alt was translated.
+    const before = [
+      "# 借雨",
+      "许小满承母之修伞肆，初至之客，乃一老者。是日暴雨，老者入门，衣履皆燥。",
+      "曰：“漏乎？”",
+      "曰：“漏声。”",
+      "![雨夜修伞](assets/a.jpg)",
+      "入夜，小满拆伞顶，于夹层得一白纽，缝缀其中。",
+    ].join("\n\n");
+    const after = [
+      "# Borrowing Rain",
+      "Xu Xiaoman had inherited an umbrella repair shop from their mother. The first customer was an old man who came in from a downpour with his clothes dry.",
+      "“Does it leak?” “Sound.”",
+      "![Mending an umbrella on a rainy night](assets/a.jpg)",
+      "That night, Xiaoman took apart the top of the umbrella and found a white button sewn between the layers.",
+    ].join("\n\n");
+    const changes = diffSentences(before, after).filter(
+      (h) => h.kind === "change",
+    );
+    expect(
+      changes.map((c) => (c.kind === "change" ? c.after.trim() : "")),
+    ).toEqual(after.split("\n\n"));
+    // The joined dialogue is one change, against both its lines.
+    expect(changes[2]).toMatchObject({
+      before: "曰：“漏乎？”\n\n曰：“漏声。”\n\n",
+    });
+  });
+
+  it("joins three lines of dialogue as one change, none struck alone", () => {
+    // Every paragraph rewritten: the first line must not pair with the
+    // narration before it, which would cut the join in two.
+    const changes = diffSentences(
+      "她没有回头，只是用手按住了螺丝刀。\n\n“别打开后盖。”\n\n“里面全是灰。”\n\n“小心会触电的。”\n\n儿子说完这些，又觉得自己说多了，就回房间去了。",
+      "妇不回头，以手按其螺丝刀。\n\n“勿开后盖，里面全是灰，小心触电。”\n\n儿子说完，自觉说多，遂回房间。",
+    ).filter((h) => h.kind === "change");
+    expect(changes.map((c) => (c.kind === "change" ? c.before : ""))).toEqual([
+      "她没有回头，只是用手按住了螺丝刀。\n\n",
+      "“别打开后盖。”\n\n“里面全是灰。”\n\n“小心会触电的。”\n\n",
+      "儿子说完这些，又觉得自己说多了，就回房间去了。",
+    ]);
+  });
+
+  it("stays one change where paragraphs are joined", () => {
+    const hunks = diffSentences(
+      "Rain fell.\n\nWind rose.",
+      "The sea was flat and grey, and nothing moved on the quay.",
+    );
+    expect(hunks.filter((h) => h.kind === "change")).toHaveLength(1);
+  });
+});
+
+describe("splitUnits", () => {
+  it("keeps a whole block as one unit and splits prose into sentences", () => {
+    const text = "One. Two.\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nThree.";
+    const units = splitUnits(text);
+    expect(units.join("")).toBe(text);
+    expect(units).toEqual([
+      "One. ",
+      "Two.\n\n",
+      "| a | b |\n| - | - |\n| 1 | 2 |\n\n",
+      "Three.",
+    ]);
+  });
+
+  it("keeps a fence's blank lines inside its block", () => {
+    const text = "Intro.\n\n```js\nconst a = 1;\n\nconst b = 2;\n```\n\nEnd.";
+    expect(splitUnits(text)[1]).toBe(
+      "```js\nconst a = 1;\n\nconst b = 2;\n```\n\n",
+    );
+  });
+
+  it("leaves a picture under a caption with its sentence", () => {
+    const text = "Figure one.\n![a](a.png)";
+    expect(splitUnits(text)).toEqual([text]);
+  });
+});
+
+describe("diffSentences over whole blocks", () => {
+  const before = "小满撑开伞。\n\n![伞](a.png)\n\n雨停了。";
+  it("diffs the paragraphs on each side of a picture by themselves", () => {
+    const hunks = diffSentences(
+      before,
+      "Xiaoman opened it.\n\n![伞](a.png)\n\nThe rain stopped.",
+    );
+    expect(hunks.map((h) => h.kind)).toEqual(["change", "same", "change"]);
+  });
+
+  it("makes a picture swapped for another one change of its own", () => {
+    const hunks = diffSentences(
+      before,
+      "Xiaoman opened it.\n\n![umbrella](b.png)\n\nThe rain stopped.",
+    );
+    expect(hunks[1]).toEqual({
+      kind: "change",
+      before: "![伞](a.png)\n\n",
+      after: "![umbrella](b.png)\n\n",
+    });
+  });
+
+  it("takes a table written another way for the same table", () => {
+    const table = "| 名字 | 数量 |\n| ---- | ---- |\n| 伞   | 1    |";
+    const hunks = diffSentences(
+      `One.\n\n${table}\n\nTwo.`,
+      "Uno.\n\n|名字|数量|\n|---|---|\n|伞|1|\n\nDos.",
+    );
+    expect(hunks[1].kind).toBe("same");
+  });
+});
+
+describe("diffSentences when the rewrite adds or drops a block", () => {
+  const kinds = (hunks: ReturnType<typeof diffSentences>) =>
+    hunks.map((h) =>
+      h.kind === "same"
+        ? "same"
+        : !h.after
+          ? "drop"
+          : !h.before
+            ? "add"
+            : "change",
+    );
+  const table = "| a | b |\n| - | - |\n| 1 | 2 |";
+
+  it("drops a table as a change of its own, the paragraphs by themselves", () => {
+    expect(
+      kinds(diffSentences(`一。\n\n${table}\n\n二。`, "One.\n\nTwo.")),
+    ).toEqual(["change", "drop", "change"]);
+  });
+
+  it("adds a code block as a change of its own", () => {
+    expect(
+      kinds(diffSentences("一。\n\n二。", "One.\n\n```js\nx\n```\n\nTwo.")),
+    ).toEqual(["change", "add", "change"]);
+  });
+
+  it("keeps the blocks both sides have, next to one they don't", () => {
+    expect(
+      kinds(
+        diffSentences(
+          `一。\n\n![a](a.png)\n\n${table}\n\n二。`,
+          "One.\n\n![a](a.png)\n\nTwo.",
+        ),
+      ),
+    ).toEqual(["change", "same", "drop", "change"]);
+  });
+});

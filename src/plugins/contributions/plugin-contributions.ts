@@ -1,0 +1,338 @@
+import { pluginPlatform } from "../plugin-platform";
+import { pluginWhenKeys } from "./plugin-when-keys";
+import { createElement } from "react";
+import { registerCommand, runCommand } from "../../registry/commands";
+import { registerSidebarTab } from "../../registry/sidebar-tabs";
+import { registerEditorMenuItems } from "../../editor/editor-menu-items";
+import { showMessage } from "../../engine/controls/app-dialog";
+import { currentStrings } from "../../i18n/current";
+import { explainError } from "../../utils/error-explain";
+import { extname } from "../../utils/path";
+import { getActiveDocument, getWindowAccess } from "../app-bridge";
+import {
+  registerContextItems,
+  type ContextMenuPlace,
+} from "../../registry/context-menu-items";
+import { setHoverStarter } from "./hover-providers";
+import { startOnEmbed } from "./embeds";
+import { localize } from "../store/manifest";
+import { type MenuContribution } from "../store/manifest-types";
+import {
+  PluginListPane,
+  PluginTabIcon,
+  PluginWebviewPanel,
+} from "../views/plugin-views";
+import {
+  pluginMayRun,
+  pluginRecord,
+  windowInfo,
+  type PluginRecord,
+} from "../store/plugin-records";
+import { evaluateWhen, type WhenContext } from "./when";
+import { addCodeBlockLanguage } from "./code-blocks";
+import { addCodeLanguage } from "../../editor/extension-points";
+import { readPluginFile } from "../store/files";
+import { addSlashItems, askBlockMenu } from "./slash-commands";
+import { snippetItem } from "./snippets";
+import { pluginKey } from "./plugin-keys";
+import { claim, ownedClaims } from "./owners";
+import { addAgents } from "./agents";
+
+/**
+ * What an on plugin adds to the window, registered from its manifest alone;
+ * its code starts the first time one is used, or sooner if the manifest asks.
+ */
+
+export interface ContributionDeps {
+  /** Runs one of the plugin's commands in its code, starting it first. */
+  runPluginCommand(
+    id: string,
+    command: string,
+    args: unknown[],
+  ): Promise<unknown>;
+  start(id: string): Promise<void>;
+}
+
+const contributions = new Map<string, (() => void)[]>();
+
+/** Adds an undo to what goes when the plugin is withdrawn. */
+export function addContribution(id: string, undo: () => void): void {
+  contributions.get(id)?.push(undo);
+}
+
+/** The keys a menu item's `when` reads, as the window is now. */
+function whenContext(extra: WhenContext = {}): WhenContext {
+  const doc = getActiveDocument();
+  const path = (extra.resourcePath as string | undefined) ?? doc?.path ?? null;
+  return {
+    documentOpen: !!doc,
+    editorHasSelection: !!doc && doc.selection().text.length > 0,
+    folderOpen: !!getWindowAccess()?.rootPath(),
+    fileExtension: path ? extname(path).toLowerCase() : undefined,
+    resourceFilename: path ? path.split(/[\\/]/).pop() : undefined,
+    // As plugins are told the system (an iPad reports itself as a Mac).
+    isMac: pluginPlatform() === "macos",
+    ...pluginWhenKeys(),
+    ...extra,
+  };
+}
+
+/** Registers what an on plugin adds. */
+export function applyContributions(
+  record: PluginRecord,
+  deps: ContributionDeps,
+) {
+  const manifest = record.manifest;
+  if (!manifest || contributions.has(record.id)) return;
+  const id = record.id;
+  const text = (value: string) =>
+    localize(manifest, value, windowInfo().language());
+  const undo: (() => void)[] = [];
+  const { commands, keybindings, menus, sidebarTabs, codeBlocks } =
+    manifest.contributes;
+  const titleOf = (command: string) =>
+    text(commands.find((c) => c.command === command)?.title ?? command);
+  for (const command of commands)
+    undo.push(
+      registerCommand({
+        id: command.command,
+        title: () => text(command.title),
+        shortcut: pluginKey(
+          { id, name: text(manifest.name) },
+          { id: command.command, title: text(command.title) },
+          keybindings.find((k) => k.command === command.command)?.key,
+        ),
+        run: (...args) =>
+          command.runs
+            ? runCommand(command.runs.command, command.runs.args)
+            : void deps
+                .runPluginCommand(id, command.command, args)
+                .catch((err) =>
+                  showMessage(explainError(err, currentStrings()), {
+                    title: text(manifest.name),
+                    tone: "error",
+                  }),
+                ),
+      }),
+    );
+  const editorItems = menus["editor/context"] ?? [];
+  if (editorItems.length)
+    undo.push(
+      registerEditorMenuItems(({ selectedText }) =>
+        editorItems
+          .filter((item) =>
+            evaluateWhen(
+              item.when,
+              whenContext({ editorHasSelection: !!selectedText }),
+            ),
+          )
+          .map((item) => ({
+            label: titleOf(item.command),
+            onSelect: () => runCommand(item.command),
+          })),
+      ),
+    );
+  if (manifest.contributes.blockMenu) undo.push(askBlockMenu(id));
+  const slashItems = menus["editor/slash"] ?? [];
+  if (slashItems.length)
+    undo.push(
+      addSlashItems(
+        id,
+        slashItems.map((item) => ({
+          label: titleOf(item.command),
+          detail: text(manifest.name),
+          keywords: localize(
+            manifest,
+            commands.find((c) => c.command === item.command)?.title ?? "",
+            "en",
+          ),
+          shown: () => evaluateWhen(item.when, whenContext()),
+          run: () => runCommand(item.command),
+        })),
+      ),
+    );
+  if (manifest.contributes.snippets.length)
+    undo.push(
+      addSlashItems(
+        `${id}#snippets`,
+        manifest.contributes.snippets.map((snippet) =>
+          snippetItem(snippet, text, text(manifest.name)),
+        ),
+      ),
+    );
+  const places: ContextMenuPlace[] = [
+    "file/context",
+    "tab/context",
+    "view/title",
+    "floating/context",
+  ];
+  for (const place of places) {
+    const items: MenuContribution[] = menus[place] ?? [];
+    if (!items.length) continue;
+    undo.push(
+      registerContextItems(place, (target) =>
+        items
+          .filter((item) =>
+            evaluateWhen(
+              item.when,
+              whenContext({
+                resourcePath: target.path ?? undefined,
+                resourceIsFolder: !!target.folder,
+                view: target.view,
+              }),
+            ),
+          )
+          .map((item) => ({
+            label: titleOf(item.command),
+            icon: item.icon,
+            plugin: id,
+            // A file's or a tab's command is given its path.
+            onSelect: () =>
+              runCommand(item.command, target.path ? [target.path] : []),
+          })),
+      ),
+    );
+  }
+  if (record.granted.includes("agents") && manifest.contributes.agents.length)
+    undo.push(
+      addAgents(
+        id,
+        manifest.contributes.agents.map((a) => ({
+          id: a.id,
+          name: text(a.name),
+          setup: a.setup && text(a.setup),
+          provider: a.provider,
+          askMode: a.askMode,
+          signIn: a.signIn,
+        })),
+      ),
+    );
+  for (const tab of sidebarTabs)
+    undo.push(
+      registerSidebarTab({
+        id: tab.id,
+        label: () => text(tab.title),
+        Icon: () =>
+          createElement(PluginTabIcon, {
+            plugin: id,
+            origin: record.origin,
+            icon: tab.icon,
+          }),
+        Panel: () =>
+          tab.type === "list"
+            ? createElement(PluginListPane, {
+                plugin: id,
+                view: tab.id,
+                className: "plugin-list-sidebar",
+              })
+            : createElement(PluginWebviewPanel, {
+                plugin: id,
+                view: tab.id,
+                kind: "sidebar",
+              }),
+      }),
+    );
+  for (const block of codeBlocks)
+    undo.push(
+      addCodeBlockLanguage(block.language, id, block.frame, block.size),
+    );
+  // Only the names now: the grammar is read when a block first uses one.
+  for (const language of manifest.contributes.codeLanguages)
+    undo.push(
+      addCodeLanguage({
+        id: language.id,
+        aliases: language.aliases,
+        load: () =>
+          readPluginFile(id, record.origin, language.path).then((bytes) =>
+            new TextDecoder().decode(bytes),
+          ),
+      }),
+    );
+  for (const key of ownedClaims(manifest.contributes))
+    undo.push(claim(key, id));
+  // Floating views left open last time open again; turned off, they go.
+  // Their code loads only for a plugin that has some.
+  const floating = manifest.contributes.floatingViews;
+  if (floating.length) {
+    const views = import("../views/floating-views");
+    void views.then((m) =>
+      m.reopenFloating(id, floating, text, manifest.icon ?? null),
+    );
+    undo.push(() => void views.then((m) => m.closeFloatingOf(id)));
+  }
+  const embedKinds = manifest.contributes.embeds.flatMap((e) => e.targets);
+  if (embedKinds.length)
+    undo.push(
+      startOnEmbed(id, embedKinds, (plugin) => {
+        if (pluginMayRun(pluginRecord(plugin)))
+          void deps.start(plugin).catch(() => {});
+      }),
+    );
+  contributions.set(id, undo);
+  const events = manifest.activationEvents;
+  if (events.includes("onStartupFinished") || events.includes("*"))
+    void deps.start(id).catch(() => {});
+  else {
+    if (events.includes("onHover")) {
+      hoverWaiting.add(id);
+      syncHoverStarter(deps);
+    }
+    if (events.includes("onEditor")) waitForEditor(id, deps);
+  }
+}
+
+/** Plugins that start when the pointer first rests on a link (`onHover`)
+ *  and haven't yet. */
+const hoverWaiting = new Set<string>();
+
+function syncHoverStarter(deps: ContributionDeps) {
+  setHoverStarter(
+    hoverWaiting.size,
+    hoverWaiting.size === 0
+      ? null
+      : async () => {
+          const ids = [...hoverWaiting];
+          hoverWaiting.clear();
+          syncHoverStarter(deps);
+          await Promise.all(
+            ids.map((id) =>
+              pluginMayRun(pluginRecord(id))
+                ? deps.start(id).catch(() => {})
+                : undefined,
+            ),
+          );
+        },
+  );
+}
+
+/** A plugin that marks the text (`onEditor`) starts once a document is in
+ *  front - when the window is idle, so it never holds up the first paint. */
+function waitForEditor(id: string, deps: ContributionDeps) {
+  let stopped = false;
+  const tryStart = () => {
+    if (stopped) return;
+    if (getActiveDocument()) {
+      void deps.start(id).catch(() => {});
+      return;
+    }
+    setTimeout(tryStart, 1000);
+  };
+  const idle =
+    (window as { requestIdleCallback?: (fn: () => void) => void })
+      .requestIdleCallback ?? ((fn: () => void) => setTimeout(fn, 300));
+  idle(tryStart);
+  contributions.get(id)?.push(() => {
+    stopped = true;
+  });
+}
+
+export function withdrawContributions(id: string, deps?: ContributionDeps) {
+  if (hoverWaiting.delete(id) && deps) syncHoverStarter(deps);
+  for (const undo of contributions.get(id) ?? []) undo();
+  contributions.delete(id);
+}
+
+/** Every plugin that added something. */
+export function contributingPlugins(): string[] {
+  return [...contributions.keys()];
+}

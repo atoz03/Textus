@@ -1,0 +1,165 @@
+/* A plugin's list, drawn as the sidebar's own lists are. */
+.plugin-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  /* The sidebar's list size, as the file tree beside it; a tab's list is
+     read as a page. */
+  font-size: var(--text-list);
+  color: var(--ui-text);
+}
+
+.plugin-list-tab {
+  font-size: var(--text-secondary);
+  max-width: 836px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-3);
+  box-sizing: border-box;
+}
+
+.plugin-list-message {
+  padding: 0 var(--space-3) var(--space-1);
+  color: var(--ui-muted);
+  font-size: var(--text-caption);
+}
+
+.plugin-list-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--space-1) var(--space-2);
+  outline: none;
+}
+
+.plugin-list-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 8px;
+  padding-inline-start: calc(8px + var(--tree-indent));
+  border-radius: var(--shape-s);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Items of several lines (a clip, a note: a label and a detail under it)
+   kept apart by a hairline, short of the row's rounded ends. */
+.plugin-list-entry:has(> .plugin-list-row.has-detail)
+  + .plugin-list-entry
+  > .plugin-list-row.has-detail {
+  position: relative;
+  margin-top: 1px;
+}
+.plugin-list-entry:has(> .plugin-list-row.has-detail)
+  + .plugin-list-entry
+  > .plugin-list-row.has-detail::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  inset-inline: var(--space-2);
+  border-top: 1px solid var(--ui-border);
+  pointer-events: none;
+}
+.plugin-list-row.has-detail {
+  padding-block: var(--space-2);
+}
+
+/* Under the pointer; the keyboard's row only while the keys move it (the
+   list or its filter focused from the keyboard), so the row the pointer
+   left last doesn't stay lit. */
+@media (any-hover: hover) {
+  .plugin-list-row:hover {
+    background: var(--ui-hover);
+  }
+}
+
+.plugin-list-rows:focus-visible .plugin-list-row.is-active {
+  outline: 2px solid var(--focus-ring, var(--ui-accent));
+  outline-offset: -2px;
+}
+
+.plugin-list-row.is-done .plugin-list-label {
+  color: var(--ui-muted);
+  text-decoration: line-through;
+}
+
+.plugin-list-twisty {
+  flex: none;
+  width: 16px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ui-muted);
+  cursor: pointer;
+}
+
+.plugin-list-twisty svg {
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.plugin-list-twisty svg.is-open {
+  transform: rotate(90deg);
+}
+
+/* On the label's first line, however tall its text. */
+.plugin-list-check {
+  margin-top: 2px;
+}
+@supports (height: 1lh) {
+  .plugin-list-check {
+    margin-top: calc((1lh - var(--check-size)) / 2);
+  }
+}
+
+.plugin-list-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--ui-muted);
+}
+.plugin-list-icon.is-glyph {
+  font-size: var(--text-list);
+  line-height: 16px;
+  text-align: center;
+}
+
+.plugin-list-text {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  min-width: 0;
+}
+
+/* Its badge follows the label, and drops under it from the label's start
+   rather than squeezing it; the description takes a line of its own
+   before it is cut to a letter. */
+.plugin-list-label {
+  overflow-wrap: break-word;
+}
+
+.plugin-list-text > .tx-badge {
+  align-self: center;
+}
+
+.plugin-list-description {
+  flex: 1 1 auto;
+  color: var(--ui-muted);
+}
+
+.plugin-list-detail {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+  color: var(--ui-muted);
+  font-size: var(--text-caption);
+}
+
+/* Where the next page of rows starts drawing as it scrolls into view. */
+.plugin-list-more {
+  height: 1px;
+}

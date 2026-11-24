@@ -1,0 +1,209 @@
+import { widgetButton } from "../../editor/widget-button";
+import { Plugin, PluginKey } from "@milkdown/kit/prose/state";
+import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
+import type { Node as ProseNode } from "@milkdown/kit/prose/model";
+import { $prose } from "@milkdown/kit/utils";
+import type { FoldAttention } from "../../editor/html/details-fold";
+
+/** A note pinned to its passage, drawn in the margin or, with no room,
+ *  behind a numbered badge after the passage. */
+export interface ReviewNote {
+  /** The add_comment call's id. */
+  id: string;
+  from: number;
+  to: number;
+  comment: string;
+  /** Its badge's number, also shown on its card in the chat. */
+  num: number;
+  /** The writer's own note rather than the AI's. */
+  by?: "me";
+  /** A plugin's note, kept with the writer's: the plugin's name. */
+  author?: string;
+}
+
+/** Who wrote a note, as its card says. */
+export const noteAuthor = (
+  note: ReviewNote,
+  labels: { ownNoteBy: string; reviewNoteBy: string },
+) => note.author ?? (note.by === "me" ? labels.ownNoteBy : labels.reviewNoteBy);
+
+/** Only the writer changes their own words; a plugin's note is theirs. */
+export const noteEditable = (note: ReviewNote) =>
+  note.by === "me" && !note.author;
+
+/** Numbers new notes after the existing ones in the order the AI left them,
+ *  matching the chat's cards; never renumbers. Back to 1 once none is left. */
+export function numberNotes(
+  kept: readonly ReviewNote[],
+  added: readonly Omit<ReviewNote, "num">[],
+): ReviewNote[] {
+  let last = kept.reduce((max, note) => Math.max(max, note.num), 0);
+  return [...kept, ...added.map((note) => ({ ...note, num: ++last }))];
+}
+
+type NotesMeta =
+  | { type: "set"; notes: ReviewNote[] }
+  | { type: "remove"; id: string }
+  /** The note under the pointer (its passage and card light up together). */
+  | { type: "hot"; id: string | null }
+  /** Badges instead of margin cards. */
+  | { type: "compact"; compact: boolean };
+
+interface NotesState {
+  notes: ReviewNote[];
+  hot: string | null;
+  compact: boolean;
+  decoration: DecorationSet;
+}
+
+export const reviewNotesKey = new PluginKey<NotesState>("review-notes");
+
+function build(
+  doc: ProseNode,
+  notes: ReviewNote[],
+  hot: string | null,
+  compact: boolean,
+  onBadge: (id: string, el: HTMLElement) => void,
+): DecorationSet {
+  const decos: Decoration[] = [];
+  notes.forEach((note) => {
+    decos.push(
+      Decoration.inline(note.from, note.to, {
+        // The id in the class too: where a pending edit's sentence covers
+        // the same text, the two share one element, classes joined and the
+        // edit's data-* taking the place of the note's.
+        class: `review-anchor ${noteAnchorClass(note.id)}${hot === note.id ? " review-anchor-hot" : ""}`,
+        "data-note": note.id,
+      }),
+    );
+    if (compact)
+      decos.push(
+        Decoration.widget(
+          note.to,
+          () => {
+            const badge = widgetButton(
+              "review-badge",
+              String(note.num),
+              (button) => onBadge(note.id, button),
+            );
+            badge.contentEditable = "false";
+            badge.dataset.note = note.id;
+            return badge;
+          },
+          {
+            side: 1,
+            key: `review-badge-${note.id}-${note.num}`,
+            ignoreSelection: true,
+            stopEvent: () => true,
+          },
+        ),
+      );
+  });
+  return DecorationSet.create(doc, decos);
+}
+
+/** Keeps the notes on their passages through edits and draws their marks
+ *  and badges. Which notes exist is decided outside. */
+export function createReviewNotesPlugin(options: {
+  /** The notes changed (set, mapped, dropped) - React's only way to learn. */
+  onChange: (notes: ReviewNote[]) => void;
+  /** A badge was clicked: open its note there. */
+  onBadge: (id: string, el: HTMLElement) => void;
+}) {
+  return $prose(
+    () =>
+      new Plugin<NotesState>({
+        key: reviewNotesKey,
+        // A note on text folded in a <details> opens it, so its passage and
+        // margin card have somewhere to be.
+        foldAttention: ((state) =>
+          (reviewNotesKey.getState(state)?.notes ?? []).map((note) => ({
+            key: `note:${note.id}`,
+            from: note.from,
+            to: note.to,
+          }))) satisfies FoldAttention,
+        state: {
+          init: () => ({
+            notes: [],
+            hot: null,
+            compact: false,
+            decoration: DecorationSet.empty,
+          }),
+          apply(tr, prev) {
+            const meta = tr.getMeta(reviewNotesKey) as NotesMeta | undefined;
+            let { notes, hot, compact } = prev;
+            if (meta?.type === "set") notes = meta.notes;
+            else if (meta?.type === "remove")
+              notes = notes.filter((n) => n.id !== meta.id);
+            else if (meta?.type === "hot") hot = meta.id;
+            else if (meta?.type === "compact") compact = meta.compact;
+            if (tr.docChanged && notes.length > 0) {
+              const mapped = notes.flatMap((n) => {
+                const from = tr.mapping.map(n.from, 1);
+                const to = tr.mapping.map(n.to, -1);
+                if (from >= to) return [];
+                return from === n.from && to === n.to
+                  ? [n]
+                  : [{ ...n, from, to }];
+              });
+              // Typing elsewhere moves nothing: keep the array, so React
+              // isn't told about every keystroke.
+              if (
+                mapped.length !== notes.length ||
+                mapped.some((n, i) => n !== notes[i])
+              )
+                notes = mapped;
+            }
+            if (
+              notes === prev.notes &&
+              hot === prev.hot &&
+              compact === prev.compact
+            )
+              return tr.docChanged
+                ? {
+                    ...prev,
+                    decoration: prev.decoration.map(tr.mapping, tr.doc),
+                  }
+                : prev;
+            return {
+              notes,
+              hot,
+              compact,
+              decoration: build(tr.doc, notes, hot, compact, options.onBadge),
+            };
+          },
+        },
+        props: {
+          decorations: (state) => reviewNotesKey.getState(state)?.decoration,
+        },
+        view() {
+          let last: ReviewNote[] = [];
+          return {
+            update(view) {
+              const notes = reviewNotesKey.getState(view.state)?.notes ?? [];
+              if (notes !== last) {
+                last = notes;
+                options.onChange(notes);
+              }
+            },
+          };
+        },
+      }),
+  );
+}
+
+/** The class naming the note a passage's anchor belongs to. */
+export function noteAnchorClass(id: string): string {
+  return `review-anchor-of-${id.replace(/[^\w-]/g, "_")}`;
+}
+
+/** Which of `notes` an anchor element belongs to, by its class. */
+export function noteOfAnchor(
+  el: Element,
+  notes: readonly ReviewNote[],
+): string | null {
+  return (
+    notes.find((note) => el.classList.contains(noteAnchorClass(note.id)))?.id ??
+    null
+  );
+}

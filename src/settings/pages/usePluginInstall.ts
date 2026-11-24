@@ -1,0 +1,120 @@
+import { fill } from "../../i18n/fill";
+import { useCatalogWork } from "./useCatalogWork";
+import { showConfirm, showMessage } from "../../engine/controls/app-dialog";
+import { useSettings } from "../../prefs/SettingsContext";
+import type { Strings } from "../../i18n/strings";
+import {
+  pluginName,
+  pluginsSnapshot,
+  type PluginRecord,
+} from "../../plugins/store/plugin-records";
+import {
+  setPluginEnabled,
+  uninstallPlugin,
+} from "../../plugins/plugin-switches";
+import {
+  installFromCatalog,
+  type CatalogItem,
+} from "../../plugins/store/catalog";
+import { askForRequirements } from "../../plugins/store/requirements";
+import type { Attempt } from "./PluginPage";
+import { explainError } from "../../utils/error-explain";
+
+/** Installs a plugin from the catalog: fetched and checked in Rust, turned
+ *  on with its permissions asked, and what it needs offered. Nothing opens
+ *  after it, so several can be installed in a row. Failures show in a
+ *  message. */
+export function usePluginInstall(t: Strings) {
+  const { settings, setSettings } = useSettings();
+  const { busy: installing, run } = useCatalogWork(
+    (text) => void showMessage(text, { title: t.pluginsTitle, tone: "error" }),
+  );
+
+  const attempt: Attempt = async (work) => {
+    try {
+      await work();
+    } catch (err) {
+      void showMessage(explainError(err, t), {
+        title: t.pluginsTitle,
+        tone: "error",
+      });
+    }
+  };
+
+  const install = (item: CatalogItem) =>
+    run(
+      item.id,
+      async () => {
+        await installFromCatalog(item.id);
+        await askForRequirements(item.id, t);
+      },
+      (err) => explainError(err, t),
+    );
+
+  /** Updates each of `items` in turn; one that fails is named at the end,
+   *  the rest still update. */
+  const updateAll = async (items: CatalogItem[]) => {
+    const failed: string[] = [];
+    for (const item of items)
+      await run(
+        item.id,
+        async () => {
+          await installFromCatalog(item.id);
+          await askForRequirements(item.id, t);
+        },
+        () => {
+          const record = pluginsSnapshot().records.find(
+            (r) => r.id === item.id,
+          );
+          failed.push(
+            pluginName(record ?? { id: item.id, manifest: item.manifest }),
+          );
+          return null;
+        },
+      );
+    if (failed.length)
+      void showMessage(
+        fill(t.pluginsUpdateAllFailed, { names: failed.join(", ") }),
+        { title: t.pluginsTitle, tone: "error" },
+      );
+  };
+
+  /** Turns a plugin on, then offers to turn on what it needs. */
+  const enable = (record: PluginRecord, on: boolean) =>
+    attempt(async () => {
+      await setPluginEnabled(record.id, on);
+      if (on) await askForRequirements(record.id, t);
+    });
+
+  /** Uninstalls a plugin, or unloads a folder loaded in development, once
+   *  confirmed; true when it is gone. */
+  const uninstall = async (record: PluginRecord) => {
+    let gone = false;
+    await attempt(async () => {
+      const ok = await showConfirm(
+        fill(t.pluginUninstallAsk, { name: pluginName(record) }),
+        {
+          title: t.pluginsTitle,
+          okLabel: t.pluginUninstall,
+          cancelLabel: t.cancel,
+          danger: true,
+        },
+      );
+      if (!ok) return;
+      await uninstallPlugin(record.id);
+      gone = true;
+    });
+    return gone;
+  };
+
+  return {
+    installing,
+    install,
+    updateAll,
+    enable,
+    uninstall,
+    attempt,
+    settings,
+    setSettings,
+  };
+}

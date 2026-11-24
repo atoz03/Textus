@@ -1,0 +1,42 @@
+# Maintainer: CatVinci Studio
+#
+# Repackages the prebuilt tarball from the GitHub Release. That binary is
+# built with TEXTUS_DISTRIBUTION=aur, so Textus reports new versions but leaves
+# the upgrade to pacman. See packaging/arch/README.md.
+pkgname=textus-bin
+pkgver=1.0.0
+# The release version. It differs from pkgver only for a pre-release
+# (1.0.0-rc.1), because pkgver cannot contain "-".
+_version=$pkgver
+pkgrel=1
+pkgdesc="Integrated Writing Environment, designed for professional writing"
+arch=('x86_64')
+url="https://github.com/CatVinci-Studio/Textus"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'hicolor-icon-theme')
+optdepends=('pandoc: export to more formats'
+            'libayatana-appindicator: the tray icon of background mode')
+provides=('textus')
+# Levis was renamed Textus at 1.0.0. `pacman -Syu` swaps an installed
+# levis-bin for textus-bin; the two ship different files (/usr/bin/levis vs
+# /usr/bin/textus) but are the same app, so they never sit side by side.
+# Levis's data in ~/.config/com.chengaoshen.levis is left alone.
+replaces=('levis-bin')
+conflicts=('textus' 'levis-bin' 'levis')
+options=('!strip' '!debug')
+source=("https://github.com/CatVinci-Studio/Textus/releases/download/v${_version}/Textus_${_version}_linux_x86_64.tar.gz")
+# updpkgsums writes the real value. Do not publish SKIP to the AUR.
+sha256sums=('SKIP')
+
+package() {
+    cd "$srcdir/Textus"
+    install -Dm755 bin/textus "$pkgdir/usr/bin/textus"
+    install -Dm644 share/applications/textus.desktop \
+        "$pkgdir/usr/share/applications/textus.desktop"
+    install -Dm644 share/licenses/textus/LICENSE \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    local icon
+    for icon in share/icons/hicolor/*/apps/textus.png; do
+        install -Dm644 "$icon" "$pkgdir/usr/$icon"
+    done
+}

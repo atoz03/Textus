@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/plugin-api.ts",
+    "src/**/*.test.{ts,tsx}",
+    "scripts/**/*.mjs",
+    "*.config.ts",
+    "e2e/**/*.{spec,perf,bench}.ts",
+    "e2e/shots/**/*.ts"
+  ],
+  "project": ["src/**/*.{ts,tsx}", "e2e/**/*.ts", "scripts/**/*.mjs"],
+  "ignore": ["src/platform/bindings/**"],
+  "ignoreExportsUsedInFile": false,
+  "rules": {
+    "duplicates": "off"
+  },
+  "ignoreDependencies": ["jscpd", "spdx-license-list"],
+  "ignoreBinaries": ["img2webp", "pandoc"]
+}

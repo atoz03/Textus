@@ -1,0 +1,56 @@
+/* A document's readouts at its page's bottom right (DocumentCorner): laid
+   over its island's sheet, over its editor, quiet - the page's own paper
+   behind them so text scrolling under stays clear of them. */
+.document-corner {
+  z-index: 3;
+  display: flex;
+  /* Short of room the badge goes over the count, not past the island. */
+  flex-wrap: wrap;
+  align-content: flex-end;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-2) 0;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.document-corner > * {
+  pointer-events: auto;
+}
+
+.document-corner .word-count {
+  padding: 2px 8px;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  background: color-mix(in srgb, var(--doc-bg) 88%, transparent);
+  cursor: default;
+}
+
+/* Slips plugins found: a quiet capsule in the warning's colour, its list
+   a menu. */
+.document-corner .slip-count {
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  background: color-mix(in srgb, var(--ui-warning) 14%, var(--doc-bg));
+  color: var(--ui-warning);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* A phone's format strip is the sheet's foot: the readouts sit over it. */
+:root[data-window-chrome="mobile"] .document-corner {
+  padding-bottom: calc(48px + var(--space-2));
+}
+
+/* A phone's count: under the document's last block, in its flow. */
+.doc-end .word-count {
+  margin: var(--space-4) 0 0;
+  text-align: end;
+  font-family: var(--font-ui);
+  font-size: var(--text-footnote);
+  color: var(--doc-muted);
+  user-select: none;
+}

@@ -1,0 +1,297 @@
+import { dragPillLook } from "./drag-pill-look";
+import { scaledPx } from "../../engine/tokens/chrome-scale";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
+import { listenToThisWindow, unlistenAll } from "../../platform/events";
+import { thisWindow } from "../../platform/this-window";
+import type { Strings } from "../../i18n/strings";
+import {
+  floatingDragArgs,
+  makeBlankTab,
+  type DetachedTabDoc,
+  type DocTab,
+} from "../../document/doc-tabs";
+import { drafts, windowIpc, type WindowBounds } from "../../platform/ipc";
+import { flushPendingWrites } from "../../storage/pending-writes";
+import { useLatest } from "../../utils/hooks/useLatest";
+import { canDragTabsBetweenWindows } from "../../platform/capabilities";
+import { arrivalPreview, splitForDrop } from "../islands/split-drop";
+import { dropGeometry } from "../../engine/layout/drop-zones";
+import { placeOnArrival } from "../../engine/layout/store";
+import { moveTab } from "../../engine/layout/ops";
+
+// Moving tabs between windows, as drag source (handed to Rust's floating
+// drag) and as merge target. Within-bar reordering lives in the tab bar.
+
+// The drop target is a window's top strip (window bar plus tab bar), with
+// headroom, not its whole body: at the interface's scale, and handed to
+// Rust with a drag so both test the same strip.
+const TAB_ROW_HEIGHT_LOGICAL = 80;
+const rowStrip = () => scaledPx(TAB_ROW_HEIGHT_LOGICAL);
+
+// Hit-testing is in global logical points, so each window's bounds use its
+// own scaleFactor: it may sit on a different-DPI display.
+/** How far down window `w` the point is (logical points), or null when
+ *  it is outside the window. */
+function depthIn(lx: number, ly: number, w: WindowBounds): number | null {
+  const x = w.x / w.scaleFactor;
+  const y = w.y / w.scaleFactor;
+  const inside =
+    lx >= x &&
+    lx <= x + w.width / w.scaleFactor &&
+    ly >= y &&
+    ly <= y + w.height / w.scaleFactor;
+  return inside ? ly - y : null;
+}
+
+interface DragHoverPreview {
+  title: string;
+  dirty: boolean;
+  x: number;
+}
+
+/** A single-tab window merges by dragging the whole window onto another's
+ *  tab row. Tauri has no "drag ended" event, so Rust streams cursor and
+ *  button ticks; on entering a row the window hands off its document and is
+ *  destroyed, the one operation macOS honors mid-drag. */
+function useWindowDragMerge(
+  tabsRef: MutableRefObject<DocTab[]>,
+  liveTabs: () => DocTab[],
+  t: Strings,
+) {
+  const hitTestWindow = useCallback(
+    async (screenX: number, screenY: number): Promise<string | null> => {
+      const selfLabel = thisWindow().label;
+      try {
+        // Front first (Rust lists them so): the window the point is in,
+        // then whether over its tab row - not a row hidden behind it.
+        const bounds = await windowIpc.listWindowBounds();
+        const front = bounds.find(
+          (b) => b.label !== selfLabel && depthIn(screenX, screenY, b) !== null,
+        );
+        const depth = front && depthIn(screenX, screenY, front);
+        return front && depth! <= rowStrip() ? front.label : null;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  const windowDragRef = useRef<"idle" | "watching" | "handed-off">("idle");
+  const latest = useLatest({ hitTestWindow, liveTabs, t });
+
+  useEffect(() => {
+    // Only where a window's tab can join another's (not iOS, nor Linux).
+    if (!canDragTabsBetweenWindows) return;
+    const win = thisWindow();
+
+    async function handleTick(x: number, y: number, down: boolean) {
+      if (!down) {
+        windowDragRef.current = "idle";
+        return;
+      }
+      if (windowDragRef.current !== "watching") return;
+      const target = await latest.current.hitTestWindow(x, y);
+      // Re-check the phase: a tick may have finished the handoff while
+      // this hit test was in flight.
+      if (!target || windowDragRef.current !== "watching") return;
+      const tab = latest.current.liveTabs()[0];
+      if (!tab) return;
+      windowDragRef.current = "handed-off";
+      // Rust destroys this window at once; held-back storage writes are sent
+      // first and land before the drag command. The tab's draft goes with
+      // it: left here, it would come back as "recovered" at the next start.
+      void flushPendingWrites();
+      await drafts.clearDraftSnapshot(tab.id).catch(() => undefined);
+      void windowIpc.startFloatingTabDrag(
+        floatingDragArgs(tab, latest.current.t, true),
+        rowStrip(),
+        dragPillLook(),
+      );
+    }
+
+    // Ticks run strictly in order - two interleaved handlers could both
+    // pass the "watching" check and hand the document off twice.
+    let chain: Promise<void> = Promise.resolve();
+    const unlistenTick = listenToThisWindow<{
+      x: number;
+      y: number;
+      down: boolean;
+    }>("window-drag-tick", (event) => {
+      const { x, y, down } = event.payload;
+      chain = chain.then(() => handleTick(x, y, down)).catch(() => {});
+    });
+
+    const unlistenMoved = win.onMoved(() => {
+      // Rust checks the button is really down (setPosition fires onMoved too)
+      // and refuses to double-track, so a stray call is harmless.
+      if (windowDragRef.current !== "idle" || tabsRef.current.length !== 1)
+        return;
+      windowDragRef.current = "watching";
+      void windowIpc.startWindowDragTracking().then((started) => {
+        if (!started && windowDragRef.current === "watching")
+          windowDragRef.current = "idle";
+      });
+    });
+
+    return unlistenAll(unlistenTick, unlistenMoved);
+  }, [latest, tabsRef]);
+}
+
+/** What Rust sends while a floating tab is over this window: over its tab
+ *  row (`row`), or over its documents, where it would open split. */
+interface DragHover extends DragHoverPreview {
+  y: number;
+  row: boolean;
+}
+
+export function useTabDragMerge(opts: {
+  tabsRef: MutableRefObject<DocTab[]>;
+  /** A handed-off document must carry the edit the editor's debounce still
+   *  holds. */
+  liveTabs: () => DocTab[];
+  t: Strings;
+  removeTab: (id: string) => void;
+  setTabs: Dispatch<SetStateAction<DocTab[]>>;
+  setActiveTabId: (id: string) => void;
+}) {
+  const { tabsRef, liveTabs, t, removeTab, setTabs, setActiveTabId } = opts;
+
+  // A floating tab hovering this window's tab row; x is window-local.
+  const [dragHoverPreview, setDragHoverPreview] =
+    useState<DragHoverPreview | null>(null);
+  // This window's top-left corner in global logical points, cached for one
+  // hover: the window can't move while something is dragged over it.
+  const previewWinRef = useRef<{ left: number; top: number } | null>(null);
+  // A tab from another window over the documents: room made where it
+  // will open.
+  const arrival = useMemo(() => arrivalPreview(), []);
+
+  // A pulled-out tab leaves this window for good: Rust carries its live
+  // content to wherever the mouse releases, so the drag outlives this DOM.
+  const handleTabDetach = useCallback(
+    async (id: string) => {
+      const tab = liveTabs().find((tb) => tb.id === id);
+      if (!tab) return;
+      try {
+        await windowIpc.startFloatingTabDrag(
+          floatingDragArgs(tab, t, false),
+          rowStrip(),
+          dragPillLook(),
+        );
+      } catch {
+        return; // drag couldn't start (unsupported platform / one already active) - keep the tab
+      }
+      removeTab(id);
+    },
+    [liveTabs, removeTab, t],
+  );
+
+  // The tab's right-click Move to New Window, on every desktop.
+  const moveTabToNewWindow = useCallback(
+    async (id: string) => {
+      const tab = liveTabs().find((tb) => tb.id === id);
+      if (!tab) return;
+      try {
+        await windowIpc.moveTabToNewWindow(floatingDragArgs(tab, t, false));
+      } catch {
+        return;
+      }
+      removeTab(id);
+    },
+    [liveTabs, removeTab, t],
+  );
+
+  useWindowDragMerge(tabsRef, liveTabs, t);
+
+  // Where in this window a global point is, from the corner one hover
+  // cached.
+  const local = async (x: number, y: number) => {
+    if (previewWinRef.current === null) {
+      const win = thisWindow();
+      const [pos, scale] = await Promise.all([
+        win.outerPosition(),
+        win.scaleFactor(),
+      ]);
+      previewWinRef.current = { left: pos.x / scale, top: pos.y / scale };
+    }
+    return {
+      x: x - previewWinRef.current.left,
+      y: y - previewWinRef.current.top,
+    };
+  };
+
+  // A tab dropped on the row lands at the slot it was hovering (no hover-off
+  // comes first: the preview pill turns into the real tab in one render);
+  // one let go over the documents opens split there, as a tab dragged
+  // within the window does.
+  useEffect(() => {
+    const unlisten = listenToThisWindow<
+      DetachedTabDoc & { x: number; y: number; row: boolean }
+    >("receive-detached-tab", (event) => {
+      const { x, y, row, ...doc } = event.payload;
+      const newTab = { ...makeBlankTab(), ...doc };
+      const corner = previewWinRef.current;
+      const at = corner && { x: x - corner.left, y: y - corner.top };
+      const split = !row && at ? arrival.take(at.x, at.y) : null;
+      // Onto a row: that island's, at the slot under the pointer.
+      const bar =
+        row && at
+          ? dropGeometry().bars.find(
+              (b) => at.x >= b.row.left && at.x <= b.row.right,
+            )
+          : undefined;
+      if (bar && at) {
+        const slot = bar.pills.filter((pill) => pill.center < at.x).length;
+        placeOnArrival(
+          newTab.id,
+          (now) => moveTab(now, newTab.id, bar.pane, slot) ?? now,
+        );
+      }
+      previewWinRef.current = null;
+      setDragHoverPreview(null);
+      arrival.clear();
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabId(newTab.id);
+      // Its island taken as it arrives, in the same update.
+      if (split) splitForDrop(newTab.id, split, true);
+    });
+    return unlistenAll(unlisten);
+  }, [arrival, setActiveTabId, setTabs, tabsRef]);
+
+  // Rust sends the global cursor every tick; made window-local here.
+  useEffect(() => {
+    const unlisten = listenToThisWindow<DragHover | null>(
+      "drag-hover",
+      async (event) => {
+        if (!event.payload) {
+          previewWinRef.current = null;
+          setDragHoverPreview(null);
+          arrival.clear();
+          return;
+        }
+        const { y, row, ...preview } = event.payload;
+        const at = await local(preview.x, y);
+        if (row) {
+          arrival.clear();
+          setDragHoverPreview({ ...preview, x: at.x });
+        } else {
+          setDragHoverPreview(null);
+          arrival.show(at.x, at.y);
+        }
+      },
+    );
+    return unlistenAll(unlisten);
+  }, [arrival, setActiveTabId, setTabs, tabsRef]);
+
+  return { dragHoverPreview, handleTabDetach, moveTabToNewWindow };
+}

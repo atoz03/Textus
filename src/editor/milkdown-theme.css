@@ -1,0 +1,7 @@
+/* milkdown-theme.css: its parts, in cascade order. */
+@import "./editor-base.css";
+@import "./editor-pending.css";
+@import "./editor-inline.css";
+@import "./editor-media.css";
+@import "./editor-blocks.css";
+@import "./editor-lists-tables.css";

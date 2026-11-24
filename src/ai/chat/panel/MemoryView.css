@@ -1,0 +1,312 @@
+/* The AI panel's Project tab: the project folder row, then one section per
+   thing the AI keeps, each set off from the next by a hairline. */
+.project-bar-memory {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px 16px;
+  border-bottom: 0;
+}
+
+.memory-no-project {
+  padding: 16px 16px;
+  color: var(--ui-muted);
+  line-height: 1.6;
+}
+
+.memory-sections {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+}
+
+.memory-section {
+  padding: 16px 0;
+}
+
+.memory-section + .memory-section {
+  border-top: 1px solid var(--chat-hairline, var(--ui-border));
+}
+
+.memory-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: var(--text-footnote);
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.memory-section h4 button {
+  font-size: var(--text-caption);
+}
+
+.memory-section h4 button,
+.memory-link {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-accent-text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+@media (any-hover: hover) {
+  .memory-section h4 button:hover,
+  .memory-link:hover {
+    text-decoration: underline;
+  }
+}
+
+.memory-link {
+  display: block;
+  margin: 8px 0 0;
+  font-size: var(--text-caption);
+}
+
+/* Each thing kept a row, as the remembered ones are: no box around them. */
+.memory-card {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-lines li {
+  padding: 8px 0;
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+  animation: motion-fade-in var(--dur-base) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * var(--dur-stagger-row));
+}
+
+.memory-lines li + li {
+  border-top: 1px solid var(--chat-hairline, var(--ui-border));
+}
+
+.memory-global {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.memory-scope {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--text-caption);
+  color: var(--ui-muted);
+}
+
+.memory-used {
+  font-weight: 600;
+  color: var(--ui-accent-text);
+}
+
+.memory-entry {
+  position: relative;
+}
+
+.memory-entry + .memory-entry {
+  border-top: 1px solid var(--chat-hairline, var(--ui-border));
+}
+
+.memory-entry-name {
+  font-size: var(--text-secondary);
+  color: var(--ui-text);
+}
+
+.memory-desc {
+  font-size: var(--text-caption);
+  color: var(--ui-muted);
+}
+
+.memory-empty {
+  color: var(--ui-muted);
+  font-size: var(--text-footnote);
+  line-height: 1.55;
+}
+
+.memory-empty p {
+  margin: 0;
+}
+
+.memory-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* An entry: its name, its first line, then whether it was sent; delete at
+   its end on hover or focus. */
+.memory-entry-open {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 28px 8px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.memory-entry-delete {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  background: none;
+  color: var(--ui-muted);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@media (any-hover: hover) {
+  .memory-entry-delete:hover {
+    background: color-mix(in srgb, var(--ui-text) 8%, transparent);
+    color: var(--ui-text);
+  }
+}
+
+/* "AI remembered": personal, then the project's, each item its text, a
+   line of what and when, and its actions. */
+.memory-remembered-group + .memory-remembered-group {
+  margin-top: 12px;
+}
+
+.memory-remembered-group h5 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: var(--text-caption);
+  font-weight: 500;
+  color: var(--ui-muted);
+}
+
+/* Where a group's files are (the file manager opens on them). */
+.memory-reveal {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (any-hover: hover) {
+  .memory-reveal:hover {
+    color: var(--ui-accent-text);
+    text-decoration: underline;
+  }
+}
+
+/* Recently forgotten: closed until opened, Restore on each. */
+.memory-forgotten {
+  margin-top: 8px;
+}
+
+.memory-forgotten summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-caption);
+  color: var(--ui-muted);
+  cursor: pointer;
+}
+
+/* The Project tab's search, once there is enough to search. */
+.memory-search {
+  flex: none;
+  margin: 0 0 12px;
+}
+
+.memory-remembered-list li {
+  padding: 8px 0;
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.memory-remembered-list li + li {
+  border-top: 1px solid var(--chat-hairline, var(--ui-border));
+}
+
+.memory-remembered-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: var(--text-caption);
+  color: var(--ui-muted);
+}
+
+/* The memory's words, a button that opens its details. */
+.memory-remembered-text {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.memory-remembered-text.tx-clamp {
+  display: -webkit-box;
+}
+
+.memory-not-sent .memory-remembered-text {
+  opacity: 0.6;
+}
+
+.memory-remembered-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.memory-remembered-actions button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-accent-text);
+  font: inherit;
+  font-size: var(--text-caption);
+  cursor: pointer;
+}
+
+@media (any-hover: hover) {
+  .memory-remembered-actions button:hover {
+    text-decoration: underline;
+  }
+}
+
+.memory-note {
+  margin: 8px 0 0;
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--ui-muted);
+}
+
+/* Nothing kept yet: what can be, as one row of light buttons. */
+.memory-setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

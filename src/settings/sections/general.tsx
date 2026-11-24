@@ -1,0 +1,352 @@
+import { fill } from "../../i18n/fill";
+import { useEffect, useRef, useState } from "react";
+import { appVersion } from "../../platform/app-info";
+import { showConfirm } from "../../engine/controls/app-dialog";
+import type { Update } from "../../platform/app-info";
+import type { Strings } from "../../i18n/strings";
+import {
+  cli,
+  defaultEditor,
+  type CliStatus,
+  updater,
+  type DefaultEditorStatus,
+  type UpdateChannel,
+} from "../../platform/ipc";
+import { installAndRelaunch } from "../../platform/install-update";
+import {
+  checkChannel,
+  selfUpdateAllowed,
+  updateElsewhere,
+} from "../../platform/distribution";
+import { canAutoUpdate } from "../../platform/capabilities";
+import { useSettings } from "../../prefs/SettingsContext";
+import { Select } from "../../engine/controls/Select";
+import { SettingRow } from "./controls";
+import { explainError } from "../../utils/error-explain";
+
+/**
+ * The manual "Check for Updates" button. Unlike the silent background check,
+ * it answers "already latest" and failures explicitly.
+ */
+export function UpdateButton({
+  t,
+  checkOnOpen = false,
+}: {
+  t: Strings;
+  checkOnOpen?: boolean;
+}) {
+  const [phase, setPhase] = useState<
+    "idle" | "checking" | "latest" | "available" | "downloading" | "error"
+  >("idle");
+  const [message, setMessage] = useState("");
+  const [update, setUpdate] = useState<Update | null>(null);
+  const [selfUpdate, setSelfUpdate] = useState(true);
+  const { settings } = useSettings();
+
+  useEffect(() => {
+    if (canAutoUpdate) void selfUpdateAllowed().then(setSelfUpdate);
+  }, []);
+
+  // Opened by Check for Updates…, once.
+  const checked = useRef(false);
+  useEffect(() => {
+    if (!checkOnOpen || checked.current) return;
+    checked.current = true;
+    void checkNow();
+  });
+
+  async function checkNow() {
+    setPhase("checking");
+    setMessage("");
+    try {
+      const allowed = await selfUpdateAllowed();
+      const found = await updater.check(
+        checkChannel(settings.updateChannel, allowed),
+      );
+      // As this check found it, not as the panel first assumed (a menu's
+      // Check for Updates runs before that is known).
+      setSelfUpdate(allowed);
+      if (found) {
+        setUpdate(found);
+        setPhase("available");
+        setMessage(
+          allowed
+            ? `${t.updateAvailable} v${found.version}`
+            : `${t.updateAvailable} v${found.version} ${updateElsewhere(t)}`,
+        );
+      } else {
+        setPhase("latest");
+        setMessage(t.updateLatest);
+      }
+    } catch (err) {
+      setPhase("error");
+      setMessage(`${t.updateFailed} ${explainError(err, t)}`);
+    }
+  }
+
+  async function install() {
+    if (!update || !selfUpdate) return;
+    setPhase("downloading");
+    setMessage(t.updateDownloading);
+    try {
+      await installAndRelaunch(update);
+    } catch (err) {
+      setPhase("error");
+      setMessage(`${t.updateFailed} ${explainError(err, t)}`);
+    }
+  }
+
+  // No updater on iOS: the App Store updates it.
+  if (!canAutoUpdate) return null;
+  const busy = phase === "checking" || phase === "downloading";
+  const ready =
+    selfUpdate && (phase === "available" || phase === "downloading");
+  return (
+    <>
+      <button
+        type="button"
+        className="tx-button text-button settings-about-link"
+        onClick={ready ? install : checkNow}
+        disabled={busy}
+      >
+        {ready
+          ? t.updateInstall
+          : phase === "checking"
+            ? t.updateChecking
+            : t.updateCheckButton}
+      </button>
+      {/* The answer to the check, under the row of buttons. */}
+      {message && (
+        <div
+          className={`settings-about-status${phase === "error" ? " settings-error" : ""}`}
+          role="status"
+        >
+          {message}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * On a beta with the channel set back to Stable: installs the newest stable
+ * release, older than the beta, after asking. Nothing else installs an older version.
+ */
+function BackToStable({ t }: { t: Strings }) {
+  const [version, setVersion] = useState("");
+  const [phase, setPhase] = useState<"idle" | "working" | "none" | "error">(
+    "idle",
+  );
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    void appVersion()
+      .then((v) => setVersion(v ?? ""))
+      .catch(() => {});
+  }, []);
+  // Only a pre-release has a stable version to go back to.
+  if (!version.includes("-")) return null;
+
+  async function goBack() {
+    setPhase("working");
+    setMessage("");
+    try {
+      const found = await updater.check("stable", true);
+      if (!found) {
+        setPhase("none");
+        setMessage(t.backToStableNone);
+        return;
+      }
+      const ok = await showConfirm(
+        fill(t.backToStableConfirm, { version: found.version, beta: version }),
+        {
+          okLabel: fill(t.backToStableInstall, { version: found.version }),
+          cancelLabel: t.cancel,
+        },
+      );
+      if (!ok) {
+        setPhase("idle");
+        return;
+      }
+      setMessage(t.updateDownloading);
+      await installAndRelaunch(found);
+    } catch (err) {
+      setPhase("error");
+      setMessage(`${t.updateFailed} ${explainError(err, t)}`);
+    }
+  }
+
+  // Beside the channel picked: a button, its state under it if any.
+  return (
+    <>
+      <button
+        type="button"
+        className="tx-button text-button settings-inline-button"
+        disabled={phase === "working"}
+        onClick={() => void goBack()}
+      >
+        {t.backToStableLabel}
+      </button>
+      {message && (
+        <div
+          className={`settings-about-status${phase === "error" ? " settings-error" : ""}`}
+          role="status"
+        >
+          {message}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Stable or Beta. Beta also gets release candidates. Hidden where the app
+ * doesn't install its own updates: iOS and package-manager builds.
+ */
+export function UpdateChannelRow({ t }: { t: Strings }) {
+  const { settings, setSettings } = useSettings();
+  const [selfUpdate, setSelfUpdate] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (canAutoUpdate) void selfUpdateAllowed().then(setSelfUpdate);
+  }, []);
+
+  if (!canAutoUpdate || !selfUpdate) return null;
+  return (
+    <div className="settings-about-channel">
+      <SettingRow label={t.updateChannelLabel}>
+        <Select
+          className="settings-select"
+          aria-label={t.updateChannelLabel}
+          value={settings.updateChannel}
+          onChange={(e) =>
+            setSettings({ updateChannel: e.target.value as UpdateChannel })
+          }
+        >
+          <option value="stable">{t.updateChannelStable}</option>
+          <option value="beta">{t.updateChannelBeta}</option>
+        </Select>
+        {settings.updateChannel === "stable" && <BackToStable t={t} />}
+      </SettingRow>
+    </div>
+  );
+}
+
+const CLI_STATUS: Record<CliStatus, (t: Strings) => [string, string]> = {
+  installed: (t) => [t.cliCommandInstalled, t.cliCommandReinstallButton],
+  outdated: (t) => [t.cliCommandOutdated, t.cliCommandUpdateButton],
+  missing: (t) => [t.cliCommandNotInstalled, t.cliCommandInstallButton],
+};
+
+/**
+ * Startup already tries a silent install; this row covers when that failed
+ * (an older Textus's script, or none) and retries through an
+ * admin-privileged prompt.
+ */
+export function CliCommandSection({ t }: { t: Strings }) {
+  const [status, setStatus] = useState<CliStatus>("missing");
+  const [phase, setPhase] = useState<"idle" | "installing" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    cli.cliCommandStatus().then(setStatus);
+  }, []);
+
+  async function install() {
+    setPhase("installing");
+    setError(null);
+    try {
+      await cli.installCliCommand();
+      setStatus("installed");
+      setPhase("idle");
+    } catch (err) {
+      setPhase("error");
+      setError(explainError(err, t));
+    }
+  }
+
+  const [state, action] = CLI_STATUS[status](t);
+  return (
+    <SettingRow
+      label={t.cliCommandLabel}
+      error={error && `${t.cliCommandFailed} ${error}`}
+    >
+      {!error && <span className="settings-row-value">{state}</span>}
+      <button
+        className="tx-button text-button settings-inline-button"
+        onClick={install}
+        disabled={phase === "installing"}
+      >
+        {phase === "installing" ? t.cliCommandInstalling : action}
+      </button>
+    </SettingRow>
+  );
+}
+
+/**
+ * Make Textus the app that opens .md files. Windows only lets the user
+ * choose, so there it opens Default apps and re-reads the status on return.
+ */
+export function DefaultEditorSection({ t }: { t: Strings }) {
+  const [status, setStatus] = useState<DefaultEditorStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const refresh = () =>
+      void defaultEditor
+        .status()
+        .then(setStatus)
+        .catch(() => setStatus(null));
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
+
+  async function makeDefault() {
+    setBusy(true);
+    setError(null);
+    try {
+      await defaultEditor.set();
+      if (status?.chooseInSettings) setOpened(true);
+      else setStatus(await defaultEditor.status());
+    } catch (err) {
+      setError(explainError(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!status) return null;
+  if (!status.supported)
+    return (
+      <SettingRow
+        label={t.defaultEditorLabel}
+        hint={t.defaultEditorUnsupported}
+      />
+    );
+  return (
+    <SettingRow
+      label={t.defaultEditorLabel}
+      hint={opened && !status.isDefault ? t.defaultEditorChooseHint : undefined}
+      error={error && `${t.defaultEditorFailed} ${error}`}
+    >
+      {!error && (
+        <span className="settings-row-value">
+          {status.isDefault
+            ? t.defaultEditorIsDefault
+            : t.defaultEditorNotDefault}
+        </span>
+      )}
+      {!status.isDefault && (
+        <button
+          className="tx-button text-button settings-inline-button"
+          onClick={makeDefault}
+          disabled={busy}
+        >
+          {t.defaultEditorButton}
+        </button>
+      )}
+    </SettingRow>
+  );
+}

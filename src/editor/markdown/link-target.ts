@@ -1,0 +1,120 @@
+import {
+  decodeUrlPath,
+  dirname,
+  fileUrlAsLink,
+  hasUrlScheme,
+  isDrivePath,
+  isNoteFile,
+} from "../../utils/path";
+
+/** Where a followed link leads. */
+export type LinkTarget =
+  /** `#heading`: a heading in this document. */
+  | { kind: "heading"; anchor: string }
+  /** http(s) or mailto, for the system browser or mail app. */
+  | { kind: "web"; url: string }
+  /** A Markdown file, to open in a tab, at the heading `anchor` names. */
+  | { kind: "document"; path: string; anchor?: string }
+  /** Any other local file, to show in the file manager. */
+  | { kind: "file"; path: string };
+
+/**
+ * Where `href`, a link in the document at `docPath`, leads, or null. Of URL
+ * schemes only http(s) and mailto are followed: javascript: and the like
+ * would let a document's author run things. A local `file:` URL is read as
+ * the path it names, which only opens a note or shows a file, never runs it.
+ */
+export function linkTarget(
+  href: string,
+  docPath: string | null,
+): LinkTarget | null {
+  const link = fileUrlAsLink(href.trim());
+  if (link.startsWith("#"))
+    return link.length > 1
+      ? { kind: "heading", anchor: decodeUrlPath(link.slice(1)) }
+      : null;
+  // A Windows drive path would otherwise read as a one-letter URL scheme.
+  const drive = isDrivePath(link);
+  if (!drive && hasUrlScheme(link))
+    return /^(https?|mailto):/i.test(link) ? { kind: "web", url: link } : null;
+  const hash = link.indexOf("#");
+  const resolved = localPath(
+    decodeUrlPath(hash < 0 ? link : link.slice(0, hash)),
+    docPath,
+  );
+  if (!resolved) return null;
+  // Any other file is only shown in the file manager, where an anchor leads
+  // nowhere.
+  if (!isNoteFile(resolved)) return { kind: "file", path: resolved };
+  const anchor = hash < 0 ? "" : decodeUrlPath(link.slice(hash + 1));
+  return anchor
+    ? { kind: "document", path: resolved, anchor }
+    : { kind: "document", path: resolved };
+}
+
+/**
+ * A decoded path from the document at `docPath` as a full path, or null for
+ * a relative one in an unsaved document. Spelled the way the OS spells it,
+ * so a document already open in a tab is found by its path.
+ */
+export function localPath(file: string, docPath: string | null): string | null {
+  // A link naming another machine's share (\\host\share, //host) isn't
+  // followed: even looking at it there sends the user's sign-in on Windows.
+  if (!file || /^[\\/]{2}/.test(file)) return null;
+  const absolute = isDrivePath(file) || /^[\\/]/.test(file);
+  if (!absolute && !docPath) return null;
+  const path = absolute ? file : `${dirname(docPath!)}/${file}`;
+  return normalizePath(
+    path,
+    /^[a-z]:|^\\/i.test(absolute ? file : docPath!) ? "\\" : "/",
+  );
+}
+
+/** `path` with "." and ".." steps taken and `sep` between its parts. */
+function normalizePath(path: string, sep: "/" | "\\"): string {
+  const drive = /^[a-z]:/i.exec(path)?.[0] ?? "";
+  const rest = path.slice(drive.length);
+  // One leading separator for a root, two for a UNC share (\\server\share).
+  const root = Math.min(/^[\\/]*/.exec(rest)![0].length, 2);
+  const parts: string[] = [];
+  for (const part of rest.split(/[\\/]+/)) {
+    if (part === "..") parts.pop();
+    else if (part && part !== ".") parts.push(part);
+  }
+  return drive + sep.repeat(root) + parts.join(sep);
+}
+
+/** Which of `texts` (a document's headings in order) `anchor` names: by
+ *  slug, a repeat numbered the way GitHub does ("intro", "intro-1"); -1 for
+ *  none. Clicks, embeds, metadata and exports all match headings here. */
+export function headingIndex(texts: readonly string[], anchor: string): number {
+  return numberRepeats(texts.map(headingSlug)).indexOf(headingSlug(anchor));
+}
+
+/** Anchors in document order with repeats numbered as GitHub does: the
+ *  second "intro" is "intro-1". The one rule for headings' ids. */
+export function numberRepeats(slugs: readonly string[]): string[] {
+  // Each name given, with how many repeats of it have been numbered.
+  const seen = new Map<string, number>();
+  return slugs.map((slug) => {
+    let name = slug;
+    let n = seen.get(slug);
+    if (n !== undefined) {
+      do name = `${slug}-${++n}`;
+      while (seen.has(name));
+      seen.set(slug, n);
+    }
+    seen.set(name, 0);
+    return name;
+  });
+}
+
+/** A heading's anchor as GitHub writes it: lower case, punctuation dropped,
+ *  spaces as "-" - letters of any script kept, so `#章節一` works. */
+export function headingSlug(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}\p{Pc}\- ]/gu, "")
+    .replace(/ /g, "-");
+}

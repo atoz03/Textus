@@ -1,0 +1,164 @@
+/* Buttons. Size, shape and every state are defined here only; a component
+   keeps just layout and text colour. Two sizes, three kinds: secondary,
+   primary (one per group) and quiet. */
+.tx-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* A label wider than its row is cut at its end, not at both. */
+  justify-content: safe center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 0 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  background: transparent;
+  font-size: var(--text-control);
+  line-height: 1.2;
+  /* One line: a pill holds its label whole; short of room, its group
+     wraps instead. */
+  white-space: nowrap;
+  max-width: 100%;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+
+.tx-button.small {
+  min-height: var(--control-height-sm);
+  padding: 0 8px;
+  font-size: var(--text-secondary);
+}
+
+/* The hover arrives in 80ms and leaves at the 120ms of the base rule. */
+@media (any-hover: hover) {
+  .tx-button:not(:disabled):hover {
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    transition-duration: var(--dur-instant);
+  }
+}
+
+.tx-button.primary {
+  border-color: var(--ui-primary);
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
+  font-weight: 600;
+}
+
+@media (any-hover: hover) {
+  .tx-button.primary:not(:disabled):hover {
+    border-color: color-mix(
+      in srgb,
+      var(--ui-primary) 86%,
+      var(--ui-on-primary)
+    );
+    background: color-mix(in srgb, var(--ui-primary) 86%, var(--ui-on-primary));
+    transition-duration: var(--dur-instant);
+  }
+}
+
+/* Pressed: a shade darker, at once - and no scale (macOS buttons don't
+   shrink). Let go, it eases back with the base rule's 120ms. */
+.tx-button:not(:disabled):active {
+  background: var(--ui-pressed);
+  transition-duration: 0s;
+}
+
+.tx-button.primary:not(:disabled):active {
+  border-color: var(--ui-primary-pressed);
+  background: var(--ui-primary-pressed);
+  transition-duration: 0s;
+}
+
+/* A destructive confirm: the primary in the danger fill. The fill is its own
+   token, as the dark palette's pale --ui-danger carries no white text. */
+.tx-button.primary.danger {
+  border-color: var(--ui-danger-fill);
+  background: var(--ui-danger-fill);
+  color: var(--ui-on-fill);
+}
+
+@media (any-hover: hover) {
+  .tx-button.primary.danger:not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--ui-danger-fill) 86%, #000);
+    background: color-mix(in srgb, var(--ui-danger-fill) 86%, #000);
+  }
+}
+
+.tx-button.primary.danger:not(:disabled):active {
+  border-color: color-mix(in srgb, var(--ui-danger-fill) 80%, #000);
+  background: color-mix(in srgb, var(--ui-danger-fill) 80%, #000);
+}
+
+/* Icons drawn at fixed pixel sizes grow as a picture, without moving what
+   is around it; the app's set sizes itself (icons.tsx iconSize) and is left
+   out. The buttons' own sizes are scaled below. */
+:root:not([data-window-chrome="mobile"])
+  :is(
+    .window-bar-toggle,
+    .window-bar-sidebar-toggle,
+    .window-menu-button,
+    .tx-icon-button,
+    .tab-bar-add,
+    .sidebar-tab,
+    .window-caption-button,
+    .window-bar-lock,
+    .tree-row
+  )
+  > svg:not([style*="--icon-scale"]) {
+  /* Their size attribute's 16 drawn at 18. */
+  scale: calc(1.125 * var(--chrome-scale));
+}
+
+/* Icon buttons: no frame, a muted glyph that darkens on hover; the composer
+   toolbar's are framed to match its 26px controls. */
+.tx-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  background: transparent;
+  color: var(--ui-muted);
+  width: var(--icon-button-s);
+  height: var(--icon-button-s);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+
+/* They grow with the window as the chrome's other icons do. Kept as light
+   as the base, so a surface can take the frame off. */
+.tx-icon-button:where(.framed) {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  border: 1px solid var(--ui-border);
+}
+
+@media (any-hover: hover) {
+  .tx-icon-button:not(:disabled):hover {
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    color: var(--ui-text);
+    transition-duration: var(--dur-instant);
+  }
+}
+
+.tx-icon-button:not(:disabled):active {
+  background: var(--ui-pressed);
+  transition-duration: 0s;
+}
+
+/* A touch screen has no hover to give way to: the pressed button also
+   dims, as an iOS button does while a finger is on it. */
+@media (any-hover: none) {
+  :is(.tx-button, .tx-icon-button):not(:disabled):active {
+    opacity: 0.6;
+  }
+}

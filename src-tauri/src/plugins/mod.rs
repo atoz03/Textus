@@ -1,0 +1,180 @@
+//! Plugins: which are installed, which are on and what each was granted, and
+//! the calls their sandboxed code makes through the app window. Each check is
+//! made again here, so a window bug can't grant more than the user did.
+
+pub mod access;
+pub mod ai;
+pub mod ai_tools;
+pub mod app_tools;
+pub mod catalog;
+pub mod dev;
+pub mod document_types;
+pub mod export;
+pub mod files;
+pub mod git;
+pub mod http;
+pub mod install;
+pub mod manifest;
+pub mod metadata;
+pub mod moved_skills;
+pub mod read_tool;
+pub mod scheme;
+pub mod scripts;
+pub mod ssh;
+pub mod state;
+pub mod store;
+pub mod uri;
+pub mod workspace;
+
+/// The app's invoke handler with every plugin command in front of the commands
+/// invoke_handler.rs lists.
+#[macro_export]
+macro_rules! with_plugin_commands {
+    ($($rest:tt)*) => {
+        tauri::generate_handler![
+            $crate::plugins::state::plugins_state,
+            $crate::plugins::state::plugins_set_all,
+            $crate::plugins::state::plugin_set,
+            $crate::plugins::ai::plugin_ai_status,
+            $crate::plugins::ai::plugin_ai_allow,
+            $crate::plugins::ai::plugin_ai_complete,
+            $crate::plugins::ai::plugin_ai_stream,
+            $crate::plugins::install::plugins_installed,
+            $crate::plugins::install::plugin_install,
+            $crate::plugins::install::plugin_install_files,
+            $crate::plugins::catalog::plugin_catalog,
+            $crate::plugins::catalog::plugin_catalog_cached,
+            $crate::plugins::catalog::pages::plugin_catalog_readme,
+            $crate::plugins::catalog::pages::plugin_catalog_icon,
+            $crate::plugins::catalog::skills::skill_catalog,
+            $crate::plugins::catalog::skills::skill_install_catalog,
+            $crate::plugins::access::plugin_fs_rename,
+            $crate::plugins::access::plugin_fs_trash,
+            $crate::plugins::access::plugin_fs_trash_path,
+            $crate::plugins::access::plugin_fs_mkdir,
+            $crate::plugins::files::plugin_fs_stat,
+            $crate::plugins::files::plugin_fs_create,
+            $crate::plugins::files::plugin_fs_read_versioned,
+            $crate::plugins::files::plugin_app_settings,
+            $crate::plugins::files::plugin_fs_write_if,
+            $crate::plugins::files::plugin_secret_get,
+            $crate::plugins::files::plugin_secret_set,
+            $crate::plugins::metadata::plugin_metadata_all,
+            $crate::plugins::metadata::plugin_metadata_get,
+            $crate::plugins::metadata::texts::plugin_metadata_of_texts,
+            $crate::plugins::git::plugin_git_status,
+            $crate::plugins::git::plugin_git_log,
+            $crate::plugins::git::plugin_git_show,
+            $crate::plugins::git::plugin_git_commit,
+            $crate::plugins::git::plugin_git_fetch,
+            $crate::plugins::git::plugin_git_push,
+            $crate::plugins::git::plugin_git_pull,
+            $crate::plugins::ssh::plugin_ssh_hosts,
+            $crate::plugins::ssh::plugin_ssh_allow,
+            $crate::plugins::ssh::plugin_ssh_connect,
+            $crate::plugins::ssh::plugin_ssh_home,
+            $crate::plugins::ssh::plugin_ssh_list,
+            $crate::plugins::ssh::plugin_ssh_read,
+            $crate::plugins::ssh::plugin_ssh_write,
+            $crate::plugins::ssh::plugin_ssh_create,
+            $crate::plugins::ssh::plugin_ssh_rename,
+            $crate::plugins::ssh::plugin_ssh_remove,
+            $crate::plugins::ssh::plugin_ssh_close,
+            $crate::plugins::git::git_trust_repository,
+            $crate::plugins::catalog::plugin_install_catalog,
+            $crate::plugins::dev::plugin_load_dev,
+            $crate::plugins::install::plugin_uninstall,
+            $crate::plugins::uri::plugin_take_uris,
+            $crate::plugins::export::plugin_export,
+            $crate::plugins::access::plugin_file,
+            $crate::plugins::access::plugin_read_resource,
+            $crate::plugins::access::plugin_fs_read,
+            $crate::plugins::access::plugin_fs_list,
+            $crate::plugins::workspace::plugin_fs_documents,
+            $crate::plugins::workspace::plugin_fs_search,
+            $crate::plugins::access::plugin_fs_write,
+            $crate::plugins::http::plugin_http,
+            $crate::plugins::http::plugin_http_cancel,
+            $crate::plugins::dev::plugin_dev_stamp,
+            $crate::plugins::ai_tools::plugin_ai_tools_set,
+            $crate::plugins::ai_tools::plugin_ai_tool_result,
+            $crate::plugins::store::plugin_store_get,
+            $crate::plugins::store::plugin_store_set,
+            $crate::plugins::store::plugin_store_keys,
+            $crate::plugins::store::plugin_store_read,
+            $crate::plugins::store::plugin_store_write,
+            $crate::plugins::store::plugin_store_files,
+            $crate::plugins::store::plugin_store_delete,
+            $crate::plugins::store::plugin_store_usage,
+            $crate::plugins::store::plugin_store_clear,
+            $($rest)*
+        ]
+    };
+}
+
+use crate::app_dirs::AppDirs;
+use std::path::PathBuf;
+use tauri::Manager;
+
+/// The manifest's file name in a plugin's folder.
+pub const MANIFEST: &str = "textus-plugin.json";
+
+/// `plugins/` in the app's data folder.
+fn plugins_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .own_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("plugins"))
+}
+
+/// `plugin-data/<id>/` in the app's data folder.
+fn data_dir(app: &tauri::AppHandle, id: &str) -> Result<PathBuf, String> {
+    require_id(id)?;
+    Ok(app
+        .path()
+        .own_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("plugin-data")
+        .join(id))
+}
+
+/// A plugin id is `publisher.name`, lowercase letters, digits and dashes:
+/// safe as a folder name on every system, never `..` or a separator.
+pub fn require_id(id: &str) -> Result<(), String> {
+    let valid = |part: &str| {
+        !part.is_empty()
+            && part.len() <= 64
+            && part
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            && !part.starts_with('-')
+    };
+    match id.split_once('.') {
+        Some((publisher, name)) if valid(publisher) && valid(name) => Ok(()),
+        _ => Err(format!("\"{id}\" is not a plugin id (publisher.name).")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_id;
+
+    #[test]
+    fn an_id_is_publisher_dot_name() {
+        assert!(require_id("catvinci.pdf-viewer").is_ok());
+        assert!(require_id("a1.b2").is_ok());
+        for bad in [
+            "pdf",
+            "Catvinci.pdf",
+            "catvinci.",
+            ".pdf",
+            "catvinci.pdf.viewer",
+            "../x.y",
+            "a.b/c",
+            "a.-b",
+        ] {
+            assert!(require_id(bad).is_err(), "{bad}");
+        }
+    }
+}

@@ -1,0 +1,43 @@
+import type { CaretPlace } from "./tab-editor";
+import type { DocumentPlace } from "../plugins/app-bridge";
+import { createSubscribers } from "../utils/store";
+
+/**
+ * Where a tab's editor should put the reader once it is on screen, handed
+ * over by whoever opened the document. A new tab has no editor yet and a
+ * hidden one can't scroll, so the jump waits until it is mounted and showing.
+ */
+export type TabJump =
+  /** A followed `./other.md#heading` link: scroll to that heading. */
+  | { kind: "heading"; anchor: string }
+  /** The outline's row: the document's `index`-th top-level heading, or
+   *  with `select` its whole section selected (the outline's menu). */
+  | { kind: "outline"; index: number; select?: boolean }
+  /** A document reopened: the caret where it was left. `stay`: the page
+   *  goes back where it was read, and the caret moves no page. */
+  | { kind: "caret"; at: CaretPlace; stay?: boolean }
+  /** A plugin opened it at a place: a block, a line, some words, a heading. */
+  | { kind: "place"; place: DocumentPlace };
+
+const pending = new Map<string, TabJump>();
+const jumps = createSubscribers<[tabId: string]>();
+
+/**
+ * Hands `jump` to the editor of `tabId`, replacing one it hasn't taken. It is
+ * taken on the next mount or activation; `now` also tells an editor already
+ * mounted and showing.
+ */
+export function setTabJump(tabId: string, jump: TabJump, now = false): void {
+  pending.set(tabId, jump);
+  if (now) jumps.publish(tabId);
+}
+
+export function takeTabJump(tabId: string): TabJump | null {
+  const jump = pending.get(tabId) ?? null;
+  pending.delete(tabId);
+  return jump;
+}
+
+/** Called with the tab id of each jump set with `now`. Returns the
+ *  unsubscribe. */
+export const onTabJump = jumps.subscribe;

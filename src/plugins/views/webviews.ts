@@ -1,0 +1,179 @@
+import type { Endpoint } from "../host/rpc";
+import { createSubscribers } from "../../utils/store";
+import { keepFresh } from "../../utils/keep-fresh";
+
+/**
+ * The webviews plugins have open, by id. A webview's state is kept by its
+ * `key` (the view, or the tab), so a panel closed and reopened finds it.
+ */
+export type WebviewKind =
+  "sidebar" | "view" | "editor" | "settings" | "codeBlock" | "floating";
+
+export interface WebviewRecord {
+  id: string;
+  plugin: string;
+  kind: WebviewKind;
+  key: string;
+  /** The page, its resources in place; null until the plugin sets it. */
+  html: string | null;
+  title?: string;
+  /** The file a custom editor shows. */
+  resource?: string;
+  /** The frame's channel, while one is connected. */
+  endpoint: Endpoint | null;
+  /** Messages posted before the frame connected. */
+  outbox: unknown[];
+}
+
+const records = new Map<string, WebviewRecord>();
+const states = new Map<string, unknown>();
+/** Code blocks' states apart, the latest few: a key per block ever drawn,
+ *  none of which a tab's closing forgets. */
+const blockStates = new Map<string, unknown>();
+const BLOCK_STATES_KEPT = 500;
+const subscribers = createSubscribers();
+
+function changed() {
+  subscribers.publish();
+}
+
+export const subscribeWebviews = subscribers.subscribe;
+
+/** Webview `id`'s page as useSyncExternalStore reads it: a view of one
+ *  draws again when its own page changes, not when any other does. */
+export function webviewHtml(id: string | null): string | null {
+  return (id && records.get(id)?.html) ?? null;
+}
+
+let counter = 0;
+
+export function createWebview(
+  plugin: string,
+  kind: WebviewKind,
+  key: string,
+  resource?: string,
+): WebviewRecord {
+  const record: WebviewRecord = {
+    id: `wv-${++counter}-${Math.random().toString(36).slice(2, 8)}`,
+    plugin,
+    kind,
+    key,
+    html: null,
+    resource,
+    endpoint: null,
+    outbox: [],
+  };
+  records.set(record.id, record);
+  changed();
+  return record;
+}
+
+export function webview(id: string): WebviewRecord | undefined {
+  return records.get(id);
+}
+
+/** The webview shown under `key` (a tab's id, a view's), if any. */
+export function webviewForKey(key: string): WebviewRecord | undefined {
+  return [...records.values()].find((r) => r.key === key);
+}
+
+export function webviewsOf(plugin: string): WebviewRecord[] {
+  return [...records.values()].filter((r) => r.plugin === plugin);
+}
+
+export function setWebviewHtml(id: string, html: string): void {
+  const record = records.get(id);
+  if (!record) return;
+  record.html = html;
+  changed();
+}
+
+export function setWebviewTitle(id: string, title: string): void {
+  const record = records.get(id);
+  if (!record) return;
+  record.title = title;
+  changed();
+}
+
+/** Posts to the frame, or keeps it for when the frame connects. */
+export function postToWebview(id: string, message: unknown): void {
+  const record = records.get(id);
+  if (!record) return;
+  if (record.endpoint) record.endpoint.notify("message", { message });
+  else record.outbox.push(message);
+}
+
+/** The webview's frame once it is connected; null when it isn't within
+ *  `ms`, or the webview goes. */
+function whenConnected(id: string, ms: number): Promise<Endpoint | null> {
+  const now = records.get(id)?.endpoint;
+  if (now) return Promise.resolve(now);
+  return new Promise((resolve) => {
+    const done = (endpoint: Endpoint | null) => {
+      clearTimeout(timer);
+      stop();
+      resolve(endpoint);
+    };
+    const timer = setTimeout(() => done(null), ms);
+    const stop = subscribeWebviews(() => {
+      const record = records.get(id);
+      if (!record) done(null);
+      else if (record.endpoint) done(record.endpoint);
+    });
+  });
+}
+
+/** How the webview's page looks, for an export: an SVG's markup or an
+ *  image's data: URL; null when the page gives none within `ms`. */
+export async function webviewPicture(
+  id: string,
+  theme: "light" | "dark",
+  ms = 10_000,
+): Promise<string | null> {
+  const started = Date.now();
+  const endpoint = await whenConnected(id, ms);
+  if (!endpoint) return null;
+  const left = ms - (Date.now() - started);
+  const answer = await Promise.race([
+    endpoint.call("export", { theme }).catch(() => null),
+    new Promise((resolve) => setTimeout(() => resolve(null), left)),
+  ]);
+  return typeof answer === "string" ? answer : null;
+}
+
+export function webviewConnected(id: string, endpoint: Endpoint | null): void {
+  const record = records.get(id);
+  if (!record) return;
+  record.endpoint = endpoint;
+  if (endpoint)
+    for (const message of record.outbox.splice(0))
+      endpoint.notify("message", { message });
+  changed();
+}
+
+export function webviewState(key: string): unknown {
+  return blockStates.get(key) ?? states.get(key);
+}
+
+export function setWebviewState(key: string, state: unknown): void {
+  const block = [...records.values()].some(
+    (r) => r.key === key && r.kind === "codeBlock",
+  );
+  if (block) keepFresh(blockStates, key, state, BLOCK_STATES_KEPT);
+  else states.set(key, state);
+}
+
+/** A tab's page closed for good: its state goes with it. */
+export function forgetTabWebviewState(tabId: string): void {
+  states.delete(`tab:${tabId}`);
+}
+
+/** Forgets a webview; its state stays with its key. */
+export function removeWebview(id: string): WebviewRecord | undefined {
+  const record = records.get(id);
+  if (!record) return undefined;
+  records.delete(id);
+  record.endpoint = null;
+  changed();
+  return record;
+}

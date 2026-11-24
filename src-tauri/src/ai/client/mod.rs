@@ -1,0 +1,131 @@
+use crate::ai::catalog;
+use crate::ai::route::{self, OpenaiAuth, NOT_CONFIGURED};
+use aicompat::providers::{anthropic, custom, openai_api_key, openai_codex};
+use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
+
+mod completion;
+mod grammar;
+pub(crate) use completion::*;
+pub(crate) use grammar::*;
+
+/// `model` overrides the provider's default model; inline completion always
+/// passes `None`. Dispatches by dialect.
+pub(crate) async fn call(
+    app: &AppHandle,
+    provider: &str,
+    instructions: String,
+    user_text: String,
+    model: Option<&str>,
+) -> Result<String, String> {
+    let entry = catalog::find(provider).ok_or_else(|| format!("unknown provider: {provider}"))?;
+    match entry.dialect {
+        "openai-responses" => match route::resolve_openai_auth(app).await? {
+            OpenaiAuth::Codex {
+                access_token,
+                account_id,
+            } => {
+                openai_codex::call_completion(
+                    &access_token,
+                    &account_id,
+                    crate::app_identity::ORIGINATOR,
+                    instructions,
+                    user_text,
+                    model,
+                )
+                .await
+            }
+            OpenaiAuth::ApiKey(key) => {
+                openai_api_key::call_completion(&key, instructions, user_text, model).await
+            }
+        },
+        "anthropic-messages" => {
+            let auth = route::resolve_anthropic_auth(app).await?;
+            anthropic::call_completion(&auth, instructions, user_text, model).await
+        }
+        "openai-chat-completions" => {
+            let (base_url, api_key, default_model) =
+                route::resolve_chat_completions(app, provider, entry).await?;
+            let model = model
+                .map(str::to_string)
+                .or(default_model)
+                .ok_or_else(|| NOT_CONFIGURED.to_string())?;
+            custom::call_completion(
+                &base_url,
+                api_key.as_deref(),
+                &model,
+                instructions,
+                user_text,
+                route::chat_vendor(&base_url),
+            )
+            .await
+        }
+        other => Err(format!("unhandled dialect: {other}")),
+    }
+}
+
+/// [`call`], its answer streamed: each piece of text to `on_text` as it
+/// comes, the whole returned. The agent's one step, without tools.
+pub(crate) async fn stream(
+    app: &AppHandle,
+    provider: &str,
+    instructions: String,
+    user_text: String,
+    model: Option<&str>,
+    on_text: &(dyn Fn(&str) + Send + Sync),
+) -> Result<String, String> {
+    use aicompat::agent::{AgentTurn, ProviderEvent, StepResult};
+    let entry = catalog::find(provider).ok_or_else(|| format!("unknown provider: {provider}"))?;
+    let agent = route::agent_provider(
+        app,
+        provider,
+        entry,
+        model.map(str::to_string),
+        aicompat::capabilities::ThinkingLevel::Auto,
+        None,
+    )
+    .await?
+    .ok_or_else(|| format!("unhandled dialect: {}", entry.dialect))?;
+    let sink = |event: ProviderEvent<'_>| {
+        if let ProviderEvent::Text(text) = event {
+            on_text(text);
+        }
+    };
+    let (result, _) = agent
+        .step(&instructions, &[AgentTurn::user(user_text)], &[], &sink)
+        .await?;
+    match result {
+        StepResult::Done(text) => Ok(text),
+        StepResult::ToolCalls(_) => Err("The model asked for a tool it wasn't given.".into()),
+    }
+}
+
+/// Live model list for the agent model picker in Settings. A custom
+/// endpoint has fetch_custom_models instead.
+#[tauri::command]
+#[cfg_attr(test, specta::specta)]
+pub async fn fetch_agent_models(app: AppHandle, provider: String) -> Result<Vec<String>, String> {
+    crate::ai::ensure_on(&app)?;
+    let entry = catalog::find(&provider).ok_or_else(|| format!("unknown provider: {provider}"))?;
+    match entry.dialect {
+        "anthropic-messages" => {
+            let auth = route::resolve_anthropic_auth(&app).await?;
+            anthropic::list_models(&auth).await
+        }
+        // OAuth (Codex) tokens 403 on GET /v1/models (missing api.model.read):
+        // only the API-key path can list.
+        "openai-responses" => {
+            let key = crate::auth::keys::load_provider_key(&app, "openai")?
+                .ok_or_else(|| NOT_CONFIGURED.to_string())?;
+            custom::list_models("https://api.openai.com/v1", Some(&key)).await
+        }
+        "openai-chat-completions" if entry.base_url.is_some() => {
+            let key = crate::auth::keys::load_provider_key(&app, &provider)?;
+            custom::list_models(entry.base_url.unwrap_or_default(), key.as_deref()).await
+        }
+        _ => Err(format!("models can't be listed for provider: {provider}")),
+    }
+}
+
+#[cfg(test)]
+mod tests;

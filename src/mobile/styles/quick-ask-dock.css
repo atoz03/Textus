@@ -1,0 +1,144 @@
+/* Quick Ask on an iPhone: a composer docked to the bottom of the screen like
+   Messages' input bar, since in the document it would sit under the keyboard.
+   The web view ends at the keyboard, so bottom: 0 is right above it. Only
+   rendered on a phone. */
+
+:root[data-window-chrome="mobile"] .quick-ask-dock {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  /* Over the AI page, the newer of the two, and under the title row and the
+     sidebar drawer. */
+  z-index: var(--z-phone-dock);
+  max-width: none;
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--ui-text);
+}
+
+:root[data-window-chrome="mobile"] .quick-ask-dock .inline-chat-shell {
+  /* Never taller than the page below the title row; the reply area gives
+     way first (below). */
+  max-height: calc(100dvh - var(--mobile-top, 48px) - 8px);
+  padding-bottom: var(--safe-bottom);
+  border-width: 1px 0 0;
+  border-color: var(--ui-border);
+  border-radius: var(--shape-l) var(--shape-l) 0 0;
+  background: var(--ui-bg);
+  box-shadow: var(--shadow-sheet);
+  /* It rises with the keyboard, from the bottom edge. */
+  animation: motion-sheet-in var(--dur-slow) var(--ease-spring);
+}
+
+/* The context row is the composer's, but it reads first, as the panel's header. */
+:root[data-window-chrome="mobile"] .quick-ask-dock-head {
+  order: -1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 48px;
+  padding: 0 4px 0 12px;
+}
+
+/* Every section under it is ruled off - including the input when there is
+   no reply yet. */
+:root[data-window-chrome="mobile"] .quick-ask-dock .inline-chat-shell > * {
+  border-top: 1px solid var(--ui-border);
+}
+
+:root[data-window-chrome="mobile"]
+  .quick-ask-dock
+  .inline-chat-shell
+  > .quick-ask-dock-head {
+  border-top: none;
+}
+
+/* The passage on one line, marked like a quotation. Line breaks in it
+   collapse to spaces. */
+:root[data-window-chrome="mobile"] .quick-ask-dock-quote {
+  flex: 1;
+  min-width: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--ui-accent);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-secondary);
+  color: var(--ui-muted);
+}
+
+:root[data-window-chrome="mobile"] .quick-ask-dock-actions {
+  display: flex;
+  flex-shrink: 0;
+}
+
+/* New, continue in the panel, close, and dropping the selection: full
+   44pt targets, not the desktop's 24px corner icons. */
+:root[data-window-chrome="mobile"] .quick-ask-dock .inline-chat-header-button,
+:root[data-window-chrome="mobile"]
+  .quick-ask-dock-head
+  .inline-chat-chip-remove {
+  width: 48px;
+  height: 48px;
+  justify-content: center;
+}
+
+:root[data-window-chrome="mobile"]
+  .quick-ask-dock
+  .inline-chat-header-button
+  svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* The reply: the one part that scrolls, held to about 40% of the page so
+   the input and the passage above the panel stay in view. */
+:root[data-window-chrome="mobile"] .quick-ask-dock .quick-ask-status {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 40vh;
+  max-height: 40dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Opened out in full, the transcript scrolls inside that area rather than
+   adding a second limit of its own. */
+:root[data-window-chrome="mobile"] .quick-ask-dock .quick-ask-transcript {
+  max-height: calc(40dvh - 70px);
+}
+
+:root[data-window-chrome="mobile"] .quick-ask-dock .quick-ask-more {
+  min-height: 48px;
+}
+
+/* Review: accept, reject, previous, next - finger-sized. */
+:root[data-window-chrome="mobile"] .quick-ask-dock .quick-ask-pending-bar {
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+}
+
+:root[data-window-chrome="mobile"] .quick-ask-dock .inline-chat-action {
+  min-height: 48px;
+}
+
+:root[data-window-chrome="mobile"]
+  .quick-ask-dock
+  .quick-ask-pending-nav
+  .tx-icon-button {
+  width: 48px;
+  height: 48px;
+  font-size: 24px;
+}
+
+/* The panel takes the format strip's place, and the document scrolls clear
+   of it, its end included. */
+:root[data-window-chrome="mobile"].has-quick-ask-dock .format-bar {
+  display: none;
+}
+
+:root[data-window-chrome="mobile"].has-quick-ask-dock .editor-scroll {
+  padding-bottom: var(--quick-ask-dock-height, 0px);
+}

@@ -1,0 +1,121 @@
+/* The history list in a chat header. The header is its containing block, so
+   the list spans the whole width however near the edge the button sits. */
+.chat-history-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 8px;
+  right: 8px;
+  z-index: var(--z-popover);
+  max-height: min(462px, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform-origin: top right;
+  animation: motion-pop-in var(--dur-base) var(--ease-out);
+}
+
+.chat-history-menu[data-state="closing"] {
+  animation: motion-pop-out var(--dur-fast) var(--ease-in) forwards;
+}
+
+/* Entries are hairline-separated: a title and a date line per entry would
+   otherwise run together. */
+.chat-history {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+
+.chat-history-group-title {
+  margin: 0;
+  padding: 8px 8px 4px;
+}
+
+/* Older conversations were moved to the trash folder (beyond the cap). */
+.chat-history-archived {
+  padding: 4px 8px 2px;
+  font-size: var(--text-caption);
+  color: var(--ui-muted);
+}
+
+.chat-history-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--shape-s);
+  cursor: pointer;
+  font-size: var(--text-secondary);
+  color: var(--ui-text);
+  line-height: 1.45;
+}
+
+.chat-history-entry + .chat-history-entry {
+  border-top: 1px solid var(--ui-border);
+}
+
+@media (any-hover: hover) {
+  .chat-history-entry:hover {
+    background: var(--ui-hover);
+  }
+}
+
+/* The row's own button: the whole entry reopens, by pointer or key. */
+.chat-history-entry-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.chat-history-entry-meta {
+  font-size: var(--text-caption);
+  color: var(--ui-muted);
+}
+
+.chat-history-entry-delete {
+  border: none;
+  background: none;
+  color: var(--ui-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  flex-shrink: 0;
+}
+
+@media (any-hover: hover) {
+  .chat-history-entry-delete:hover {
+    color: var(--ui-text);
+  }
+}
+
+/* A finger needs room to hit it. */
+@media (pointer: coarse) {
+  .chat-history-entry-delete {
+    justify-content: center;
+    min-width: 36px;
+    min-height: 36px;
+    margin: -4px -4px -4px 0;
+  }
+}
+
+/* Searching what was said: the field on top, and each conversation found
+   with the words it was found by. */
+.chat-history-search {
+  flex: none;
+  margin: 4px 4px 8px;
+}
+
+.chat-history-hit {
+  font-size: var(--text-secondary);
+  color: var(--ui-text);
+}

@@ -1,0 +1,309 @@
+import {
+  registerLateContextItems,
+  type LateMenuPlace,
+} from "../../registry/context-menu-items";
+import { getActiveDocument } from "../app-bridge";
+import {
+  showConfirm,
+  showMessage,
+  showPrompt,
+} from "../../engine/controls/app-dialog";
+import { removeOutlineProvider } from "../contributions/outline-providers";
+import { forgetPasteHandlers } from "../contributions/paste-handlers";
+import { forgetDropHandlers } from "../contributions/drop-handlers";
+import { forgetFileBadges } from "../contributions/file-badges";
+import {
+  endProgress,
+  reportProgress,
+  showNotice,
+  startProgress,
+} from "../../engine/controls/notices";
+import {
+  showPluginForm,
+  type PluginFormField,
+} from "../views/plugin-form-queue";
+import {
+  showQuickPick,
+  type QuickPickItem,
+} from "../../engine/controls/quick-pick-queue";
+import { removeStatusItem, setStatusItem } from "../contributions/status-items";
+import {
+  optionalStr,
+  str,
+  type Params,
+  type PluginScope,
+} from "./broker-scope";
+import { held } from "../contributions/key-holder";
+import {
+  forgetPluginWhenKeys,
+  setPluginWhenKey,
+} from "../contributions/plugin-when-keys";
+
+/** A plugin's rows for a pick, strings as their own label and value; a
+ *  search's answer at most this many. */
+const MAX_PICK_ITEMS = 500;
+function pickItems(items: unknown): QuickPickItem[] {
+  return (Array.isArray(items) ? items : [])
+    .slice(0, MAX_PICK_ITEMS)
+    .map((item) =>
+      typeof item === "string"
+        ? { label: item, value: item }
+        : (item as QuickPickItem),
+    );
+}
+
+function tone(value: unknown): "info" | "warning" | "error" {
+  return value === "warning" || value === "error" ? value : "info";
+}
+
+/**
+ * A plugin's commands and the dialogs it asks for, drawn as Textus draws its
+ * own and titled with the plugin's name so the user knows who is asking. No
+ * permission needed.
+ */
+/** The plugin a command id belongs to ("pub.name.cmd" -> "pub.name");
+ *  null for Textus's own. */
+function commandOwner(command: string): string | null {
+  const owner = /^([a-z0-9-]+\.[a-z0-9-]+)\.[^.]/.exec(command)?.[1];
+  return owner && !owner.startsWith("textus.") ? owner : null;
+}
+
+/** Each plugin's right-click menu providers, each with its remover. */
+const menuProviders = new Map<string, Map<string, () => void>>();
+
+/** The menus a plugin's provider can add to, by the API's name. */
+const MENU_PLACES = {
+  editor: "editor/context",
+  fileTree: "file/context",
+} as const satisfies Record<string, LateMenuPlace>;
+
+export function uiHandlers(p: PluginScope) {
+  const progresses = progressesOf(p.id);
+  const menus =
+    menuProviders.get(p.id) ?? menuProviders.set(p.id, new Map()).get(p.id)!;
+  return {
+    "ui.registerContextMenu": ({ where }: Params) => {
+      const name = str(where, "where");
+      if (!(name in MENU_PLACES))
+        throw new Error(`No menu ${name}: editor or fileTree.`);
+      menus.get(name)?.();
+      menus.set(
+        name,
+        registerLateContextItems(
+          MENU_PLACES[name as keyof typeof MENU_PLACES],
+          async (target) => {
+            const items = await p.request<unknown>("$contextMenu", {
+              where: name,
+              target: {
+                ...target,
+                path: target.path ?? getActiveDocument()?.path ?? null,
+              },
+            });
+            return menuItemsFrom(items).map((item) => ({
+              label: item.label,
+              plugin: p.id,
+              onSelect: () =>
+                void p.deps.runCommand(item.command, item.args, p.id),
+            }));
+          },
+        ),
+      );
+    },
+    "ui.unregisterContextMenu": ({ where }: Params) => {
+      const name = str(where, "where");
+      menus.get(name)?.();
+      menus.delete(name);
+    },
+    "commands.register": ({ command, editor }: Params) => {
+      const id = str(command, "command");
+      if (!id.startsWith(`${p.id}.`))
+        throw new Error(`A command must start with "${p.id}.".`);
+      p.deps.commandRegistered(p.id, id, editor === true);
+    },
+    "commands.setContext": ({ key, value }: Params) =>
+      setPluginWhenKey(p.id, str(key, "key"), value),
+    "commands.unregister": ({ command }: Params) => {
+      p.deps.commandUnregistered(p.id, str(command, "command"));
+    },
+    "commands.execute": ({ command, args }: Params) => {
+      const id = str(command, "command");
+      const list = Array.isArray(args) ? args : [];
+      // Here rather than an app command, so the dialog can say who asks.
+      if (id === "textus.offerPlugin")
+        return p.deps.offerPlugin({ id: p.id, name: p.name() }, list[0]);
+      // Another plugin's command runs with that plugin's permissions: only
+      // with leave to (`commands:<its id>`), and only one it lists.
+      const owner = commandOwner(id);
+      if (owner && owner !== p.id) p.need(`commands:${owner}`);
+      return p.deps.runCommand(id, list, p.id);
+    },
+    // With an action ("Undo"), true when it was clicked before the note
+    // went, false when it went by itself.
+    "ui.notice": ({ text, tone: kind, action }: Params) =>
+      new Promise<boolean>((resolve) =>
+        showNotice(str(text, "text"), {
+          tone: tone(kind),
+          source: p.name(),
+          action: optionalStr(action)
+            ? { label: optionalStr(action)!, run: () => resolve(true) }
+            : undefined,
+          onGone: () => resolve(false),
+        }),
+      ),
+    "ui.message": ({ text, tone: kind }: Params) =>
+      showMessage(str(text, "text"), { title: p.name(), tone: tone(kind) }),
+    "ui.confirm": ({ text, okLabel, danger }: Params) =>
+      showConfirm(str(text, "text"), {
+        title: p.name(),
+        okLabel: optionalStr(okLabel) ?? p.t().pluginOk,
+        cancelLabel: p.t().cancel,
+        danger: danger === true,
+      }),
+    "ui.input": ({ prompt, value, placeholder }: Params) =>
+      showPrompt(optionalStr(prompt) ?? "", optionalStr(value) ?? "", {
+        title: p.name(),
+        okLabel: p.t().pluginOk,
+        cancelLabel: p.t().cancel,
+        placeholder: optionalStr(placeholder),
+      }),
+    "ui.pick": async ({
+      items,
+      placeholder,
+      multiple,
+      value,
+      commands,
+      search,
+    }: Params) => {
+      const list = pickItems(items);
+      // A command line: the items among the palette's (Vim's ":"). Its
+      // Enter is a key the user pressed, which the editor ops that follow
+      // (":12", ":u") may act on.
+      if (commands === true) {
+        const picked = await p.deps.pickWithCommands(
+          list,
+          optionalStr(value) ?? "",
+          optionalStr(placeholder),
+        );
+        if (held.owner?.plugin === p.id) held.owner.lastKeyAt = Date.now();
+        return picked;
+      }
+      const searchId = optionalStr(search);
+      return showQuickPick(list, optionalStr(placeholder) ?? "", {
+        multiple: multiple === true && !searchId,
+        query: optionalStr(value),
+        search: searchId
+          ? (query) =>
+              p
+                .request<unknown>("$pickSearch", { id: searchId, query })
+                .then(pickItems)
+          : undefined,
+      });
+    },
+    "ui.form": ({ title, okLabel, fields }: Params) =>
+      showPluginForm({
+        from: p.name(),
+        title: optionalStr(title) ?? p.name(),
+        okLabel: optionalStr(okLabel) ?? p.t().pluginOk,
+        cancelLabel: p.t().cancel,
+        fields: (Array.isArray(fields) ? fields : []) as PluginFormField[],
+      }),
+    // One field of the form's, its value or null.
+    "ui.pickDate": ({ title, value }: Params) =>
+      pickOne(p, "date", title, value),
+    "ui.pickColor": ({ title, value }: Params) =>
+      pickOne(p, "color", title, value),
+    "ui.progressStart": ({ title }: Params) => {
+      const id = startProgress(str(title, "title"), {
+        source: p.name(),
+        cancelLabel: p.t().cancel,
+        onCancel: () => p.request("$progressCancel", { id }).catch(() => {}),
+      });
+      progresses.add(id);
+      return id;
+    },
+    "ui.progressReport": ({ id, fraction, message }: Params) => {
+      if (typeof id === "number" && progresses.has(id))
+        reportProgress(id, {
+          fraction: typeof fraction === "number" ? fraction : undefined,
+          message: optionalStr(message),
+        });
+    },
+    "ui.progressEnd": ({ id }: Params) => {
+      if (typeof id === "number" && progresses.delete(id)) endProgress(id);
+    },
+    "ui.setStatusItem": ({ id, text, tooltip, command }: Params) => {
+      setStatusItem(p.id, str(id, "id"), {
+        text: str(text, "text"),
+        tooltip: optionalStr(tooltip),
+        command: optionalStr(command),
+      });
+    },
+    "ui.removeStatusItem": ({ id }: Params) => {
+      removeStatusItem(p.id, str(id, "id"));
+    },
+  };
+}
+
+function pickOne(
+  p: PluginScope,
+  type: "date" | "color",
+  title: unknown,
+  value: unknown,
+): Promise<string | null> {
+  return showPluginForm({
+    from: p.name(),
+    title: optionalStr(title) ?? p.name(),
+    okLabel: p.t().pluginOk,
+    cancelLabel: p.t().cancel,
+    fields: [{ key: "value", type, label: "", value: optionalStr(value) }],
+  }).then((values) => (values ? String(values.value) : null));
+}
+
+/** The progress bars each plugin has showing. */
+const progressBars = new Map<string, Set<number>>();
+
+function progressesOf(plugin: string): Set<number> {
+  let set = progressBars.get(plugin);
+  if (!set) progressBars.set(plugin, (set = new Set()));
+  return set;
+}
+
+function endProgressBars(plugin: string): void {
+  for (const id of progressBars.get(plugin) ?? []) endProgress(id);
+  progressBars.delete(plugin);
+}
+
+function removeMenuProviders(plugin: string): void {
+  for (const remove of menuProviders.get(plugin)?.values() ?? []) remove();
+  menuProviders.delete(plugin);
+}
+
+/** What a stopped plugin left showing, taken away in this order. */
+export const UI_STOPS: readonly ((plugin: string) => void)[] = [
+  endProgressBars,
+  removeStatusItem,
+  forgetPluginWhenKeys,
+  forgetFileBadges,
+  forgetPasteHandlers,
+  forgetDropHandlers,
+  removeOutlineProvider,
+  removeMenuProviders,
+];
+
+export function stopPluginUi(plugin: string): void {
+  for (const stop of UI_STOPS) stop(plugin);
+}
+
+/** A provider's answer as menu items: each a label and the command it
+ *  runs; anything else left out. */
+function menuItemsFrom(
+  value: unknown,
+): { label: string; command: string; args: unknown[] }[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const { label, command, args } = (item ?? {}) as Record<string, unknown>;
+    return typeof label === "string" && label && typeof command === "string"
+      ? [{ label, command, args: Array.isArray(args) ? args : [] }]
+      : [];
+  });
+}

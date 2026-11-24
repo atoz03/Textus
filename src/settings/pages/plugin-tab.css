@@ -1,0 +1,11 @@
+/* A plugin's tab: its page, centred at a reading width, scrolling. */
+.plugin-tab {
+  height: 100%;
+  overflow-y: auto;
+  padding: 28px 28px 44px;
+}
+
+.plugin-tab > .plugin-page {
+  max-width: 836px;
+  margin: 0 auto;
+}

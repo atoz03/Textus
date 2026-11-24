@@ -1,0 +1,54 @@
+.app-error {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 28px;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font-family: var(--font-sans);
+  text-align: center;
+}
+
+.app-error h1 {
+  margin: 0;
+  font-size: var(--text-title);
+  font-weight: 600;
+}
+
+.app-error-detail {
+  max-width: 528px;
+  margin: 0;
+  color: var(--ui-muted);
+  font-size: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.app-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.app-error-reload,
+.app-error-report {
+  min-height: 40px;
+  padding: 0 28px;
+  border: none;
+  border-radius: var(--shape-pill);
+  background: var(--ui-text);
+  color: var(--ui-bg);
+  font: inherit;
+  font-weight: 600;
+}
+
+/* Second to Reload: outlined. */
+.app-error-report {
+  border: 1px solid var(--ui-border);
+  background: transparent;
+  color: var(--ui-text);
+}

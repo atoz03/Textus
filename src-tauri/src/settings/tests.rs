@@ -1,0 +1,556 @@
+use super::*;
+use std::sync::atomic::AtomicU32;
+
+static DIR_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+/// A fresh, empty directory per test.
+fn temp_dir() -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "textus-settings-test-{}-{}",
+        std::process::id(),
+        DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn obj(value: Value) -> Map<String, Value> {
+    value.as_object().unwrap().clone()
+}
+
+fn read_file(path: &Path) -> Value {
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+fn settings_path(dir: &Path) -> PathBuf {
+    dir.join(file_name("settings"))
+}
+
+#[test]
+fn patches_merge_top_level_fields_and_bump_the_revision() {
+    let dir = temp_dir();
+    let stores = Stores::load(&dir, &dir);
+    let rev0 = stores.settings.snapshot().1;
+    let rev1 = stores.patch_settings(&obj(json!({ "theme": "dark" })));
+    // A second window's patch of another field leaves the first alone.
+    let rev2 = stores.patch_settings(&obj(json!({ "zoom": 1.2 })));
+    assert!(rev0 < rev1 && rev1 < rev2);
+    // A nested object is replaced whole, not deep-merged.
+    stores.patch_settings(&obj(json!({ "shortcuts": { "a": "x", "b": "y" } })));
+    stores.patch_settings(&obj(json!({ "shortcuts": { "a": "z" } })));
+    // null removes a field.
+    stores.patch_settings(&obj(json!({ "zoom": null })));
+    assert_eq!(
+        without_seed(stores.settings.snapshot().0),
+        json!({ "theme": "dark", "shortcuts": { "a": "z" } })
+    );
+}
+
+/// Settings without what a new profile is seeded with.
+fn without_seed(mut settings: Value) -> Value {
+    if let Some(map) = settings.as_object_mut() {
+        map.remove(crate::plugins::moved_skills::MOVED_KEY);
+    }
+    settings
+}
+
+#[test]
+fn a_new_profile_has_no_moved_skills_to_bring_over_and_an_old_one_does() {
+    let moved = crate::plugins::moved_skills::MOVED_KEY;
+    let dir = temp_dir();
+    let stores = Stores::load(&dir, &dir);
+    let all = crate::plugins::moved_skills::all_seen_to();
+    assert_eq!(stores.settings.snapshot().0[moved], all);
+    // Written out with the first change, as any setting.
+    stores.patch_settings(&obj(json!({ "theme": "dark" })));
+    stores.flush_all();
+    let file = read_file(&settings_path(&dir));
+    assert_eq!(file["settings"][moved], all);
+    // A settings file from before the move: its skills still to install.
+    let old = temp_dir();
+    std::fs::write(
+        settings_path(&old),
+        json!({ "schemaVersion": SCHEMA_VERSION, "settings": { "theme": "dark" } }).to_string(),
+    )
+    .unwrap();
+    let stores = Stores::load(&old, &old);
+    assert!(stores.settings.snapshot().0[moved].is_null());
+}
+
+#[test]
+fn writes_are_debounced_and_flushed() {
+    let dir = temp_dir();
+    let stores = Stores::load(&dir, &dir);
+    stores.patch_settings(&obj(json!({ "theme": "dark" })));
+    // Not yet: the write waits out the debounce.
+    assert!(!settings_path(&dir).exists());
+    // Then it lands on its own. Wait for it rather than a fixed time: a busy CI
+    // runner can take well past the debounce.
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !settings_path(&dir).exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(FLUSH_DELAY / 5);
+    }
+    let file = read_file(&settings_path(&dir));
+    assert_eq!(file["schemaVersion"], json!(SCHEMA_VERSION));
+    assert_eq!(
+        without_seed(file["settings"].clone()),
+        json!({ "theme": "dark" })
+    );
+
+    // An explicit flush (the exit path) writes immediately.
+    stores.patch_settings(&obj(json!({ "theme": "light" })));
+    stores.flush_all();
+    assert_eq!(
+        read_file(&settings_path(&dir))["settings"]["theme"],
+        json!("light")
+    );
+    // ...and reloading reads back what was written.
+    let reloaded = Stores::load(&dir, &dir);
+    assert_eq!(reloaded.settings.snapshot().0["theme"], json!("light"));
+}
+
+#[test]
+fn corrupt_settings_are_moved_aside_and_defaults_used() {
+    let dir = temp_dir();
+    std::fs::write(settings_path(&dir), "{ not json").unwrap();
+    let stores = Stores::load(&dir, &dir);
+    // Not a new profile either: nothing is seeded over the lost file.
+    assert_eq!(stores.settings.snapshot().0, json!({}));
+    assert!(!settings_path(&dir).exists());
+    let aside: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().contains(".corrupt-"))
+        .collect();
+    assert_eq!(aside.len(), 1);
+    assert_eq!(
+        std::fs::read_to_string(aside[0].path()).unwrap(),
+        "{ not json"
+    );
+
+    // The wrong shape counts as corrupt too.
+    let dir = temp_dir();
+    std::fs::write(settings_path(&dir), r#"{"settings":[1,2]}"#).unwrap();
+    assert_eq!(Stores::load(&dir, &dir).settings.snapshot().0, json!({}));
+}
+
+#[test]
+fn a_settings_file_that_is_not_utf8_counts_as_corrupt() {
+    let dir = temp_dir();
+    std::fs::write(settings_path(&dir), [0xff, 0xfe, b'{']).unwrap();
+    let stores = Stores::load(&dir, &dir);
+    assert_eq!(stores.settings.snapshot().0, json!({}));
+    assert!(!settings_path(&dir).exists());
+    stores.patch_settings(&obj(json!({ "theme": "dark" })));
+    stores.flush_all();
+    assert_eq!(
+        read_file(&settings_path(&dir))["settings"],
+        json!({ "theme": "dark" })
+    );
+}
+
+/// A settings.json that can't be read is left exactly as it is, while the app
+/// runs on in-memory settings.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_settings_file_is_never_overwritten() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = temp_dir();
+    let path = settings_path(&dir);
+    let original = r#"{"schemaVersion":1,"settings":{"theme":"dark"}}"#;
+    std::fs::write(&path, original).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read_to_string(&path).is_ok() {
+        // Running as root: permissions don't stop reads, nothing to test.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        return;
+    }
+    let stores = Stores::load(&dir, &dir);
+    // Not a new profile either: nothing is seeded over the real data.
+    assert_eq!(stores.settings.snapshot().0, json!({}));
+    // The frontend writes its defaults, the user changes something...
+    stores.fill_missing_settings(&obj(json!({ "theme": "system", "zoom": 1 })));
+    stores.patch_settings(&obj(json!({ "zoom": 1.5 })));
+    // ...and it all works, in memory,
+    assert_eq!(
+        stores.settings.snapshot().0,
+        json!({ "theme": "system", "zoom": 1.5 })
+    );
+    // without a write, debounced or on exit.
+    std::thread::sleep(FLUSH_DELAY * 3);
+    stores.flush_all();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    let names: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, [file_name("settings")], "nothing moved aside");
+}
+
+#[test]
+fn filling_defaults_never_overwrites_a_set_field() {
+    let dir = temp_dir();
+    std::fs::write(settings_path(&dir), "{ not json").unwrap();
+    // Launch after the corrupt file was moved aside: nothing stored.
+    let stores = Stores::load(&dir, &dir);
+    let defaults = obj(json!({ "theme": "system", "zoom": 1, "language": "en" }));
+    let (added, rev) = stores.fill_missing_settings(&defaults).unwrap();
+    assert_eq!(added, defaults);
+    // The user changes things...
+    let changed = stores.patch_settings(&obj(json!({ "theme": "dark", "zoom": null })));
+    assert!(changed > rev);
+    // ...and a reloaded window, replaying its empty boot snapshot, offers
+    // the same defaults again: only the field that's missing comes back.
+    let (added, _) = stores.fill_missing_settings(&defaults).unwrap();
+    assert_eq!(added, obj(json!({ "zoom": 1 })));
+    assert_eq!(
+        stores.settings.snapshot().0,
+        json!({ "theme": "dark", "zoom": 1, "language": "en" })
+    );
+    // Nothing missing: no change, no new revision.
+    let rev = stores.settings.snapshot().1;
+    assert!(stores.fill_missing_settings(&defaults).is_none());
+    assert_eq!(stores.settings.snapshot().1, rev);
+    stores.flush_all();
+    assert_eq!(
+        read_file(&settings_path(&dir))["settings"]["theme"],
+        json!("dark")
+    );
+}
+
+#[test]
+fn schema_version_is_written_and_a_newer_one_kept() {
+    let dir = temp_dir();
+    std::fs::write(
+        settings_path(&dir),
+        r#"{"schemaVersion":7,"settings":{"theme":"dark","fromTheFuture":true}}"#,
+    )
+    .unwrap();
+    let stores = Stores::load(&dir, &dir);
+    stores.patch_settings(&obj(json!({ "theme": "light" })));
+    stores.flush_all();
+    let file = read_file(&settings_path(&dir));
+    assert_eq!(file["schemaVersion"], json!(7));
+    assert_eq!(
+        file["settings"],
+        json!({ "theme": "light", "fromTheFuture": true })
+    );
+}
+
+#[test]
+fn only_a_pinned_appearance_overrides_the_system() {
+    assert_eq!(
+        app_theme(&json!({ "theme": "dark" })),
+        Some(tauri::Theme::Dark)
+    );
+    assert_eq!(
+        app_theme(&json!({ "theme": "light" })),
+        Some(tauri::Theme::Light)
+    );
+    assert_eq!(app_theme(&json!({ "theme": "system" })), None);
+    assert_eq!(app_theme(&json!({})), None);
+    assert_eq!(app_theme(&json!({ "theme": 42 })), None);
+}
+
+#[test]
+fn the_appearance_gives_windows_the_page_background() {
+    // Checked against the page itself: a window must open in exactly the colour
+    // index.html paints first and ui/base.css's --doc-bg (--ui-bg follows it) keeps.
+    let index = include_str!("../../../index.html");
+    let app_css = include_str!("../../../src/engine/tokens/base.css");
+    let none = json!({});
+    for (theme, app_css_rule) in [
+        ("dark", ":root[data-theme=\"dark\"] {"),
+        ("light", ":root {"),
+    ] {
+        let Some(tauri::window::Color(r, g, b, a)) =
+            window_background(&json!({ "theme": theme }), &none, &none, None)
+        else {
+            panic!("no window background for a pinned {theme}");
+        };
+        let hex = format!("#{r:02x}{g:02x}{b:02x}");
+        assert_eq!(a, 0xff, "{theme}: an opaque window");
+        let index_rule = format!("html[data-theme=\"{theme}\"] {{");
+        assert_eq!(
+            declared(index, &index_rule, "background:").expect("index.html's rule"),
+            format!("var(--boot-bg, {hex})"),
+            "index.html, {theme}"
+        );
+        assert_eq!(
+            declared(app_css, app_css_rule, "--doc-bg:").expect("base.css's rule"),
+            hex,
+            "ui/base.css, {theme}"
+        );
+        // "system": the same under the system's own appearance.
+        let system = match theme {
+            "dark" => {
+                &index[index
+                    .find("(prefers-color-scheme: dark)")
+                    .expect("a dark rule")..]
+            }
+            _ => index,
+        };
+        assert_eq!(
+            declared(system, "html {", "background:").expect("index.html's system rule"),
+            format!("var(--boot-bg, {hex})"),
+            "index.html, system {theme}"
+        );
+    }
+    // "system" or missing with the system's mode unknown, or unreadable:
+    // the toolkit's own default.
+    assert_eq!(
+        window_background(&json!({ "theme": "system" }), &none, &none, None),
+        None
+    );
+    assert_eq!(window_background(&json!({}), &none, &none, None), None);
+    assert_eq!(
+        window_background(&json!({ "theme": 1 }), &none, &none, Some(true)),
+        None
+    );
+    // "system" with the system's mode known (Windows): the page's colour for it.
+    let dark = window_background(&json!({ "theme": "system" }), &none, &none, Some(true));
+    assert_eq!(
+        dark,
+        window_background(&json!({ "theme": "dark" }), &none, &none, None)
+    );
+    let light = window_background(&json!({}), &none, &none, Some(false));
+    assert_eq!(
+        light,
+        window_background(&json!({ "theme": "light" }), &none, &none, None)
+    );
+}
+
+#[test]
+fn a_theme_gives_windows_its_own_page_background() {
+    use tauri::window::Color;
+    let none = json!({});
+    let paper = |theme: &str| {
+        window_background(
+            &json!({ "theme": theme, "themeId": "paper" }),
+            &none,
+            &none,
+            None,
+        )
+    };
+    // content-themes.css's --doc-bg for Paper, light and dark.
+    assert_eq!(paper("light"), Some(Color(0xfa, 0xf6, 0xee, 0xff)));
+    assert_eq!(paper("dark"), Some(Color(0x1f, 0x1b, 0x16, 0xff)));
+    // Prism keeps the default page.
+    assert_eq!(
+        window_background(
+            &json!({ "theme": "dark", "themeId": "prism" }),
+            &none,
+            &none,
+            None
+        ),
+        window_background(&json!({ "theme": "dark" }), &none, &none, None)
+    );
+    // An imported theme: the chrome the frontend last derived for it from
+    // this stylesheet in this appearance, as applyThemeChrome writes it.
+    let settings = json!({ "theme": "dark", "themeId": "mine" });
+    // Measured as JavaScript does: 20 UTF-16 units, 23 bytes.
+    let sources = json!({ "light": "p {}", "dark": "p { content: \"é—\"; }" });
+    let chrome = |id: &str, dark: bool, source_length: usize| {
+        json!({ "themeChrome": {
+            "id": id, "dark": dark, "sourceLength": source_length,
+            "css": ":root { --ui-bg: rgb(18, 52, 86) !important;\n--ui-text: rgb(1, 2, 3) !important; }",
+        } })
+    };
+    assert_eq!(
+        window_background(&settings, &chrome("mine", true, 20), &sources, None),
+        Some(Color(18, 52, 86, 0xff))
+    );
+    // Derived for another theme, the other appearance, a stylesheet since
+    // changed, or with the stylesheet left out of the boot script: the default.
+    let default = window_background(&json!({ "theme": "dark" }), &none, &none, None);
+    for (ui_state, theme_css) in [
+        (chrome("other", true, 20), &sources),
+        (chrome("mine", false, 20), &sources),
+        (chrome("mine", true, 23), &sources),
+        (chrome("mine", true, 20), &Value::Null),
+    ] {
+        assert_eq!(
+            window_background(&settings, &ui_state, theme_css, None),
+            default
+        );
+    }
+}
+
+#[test]
+fn histories_upsert_dedupe_sort_and_cap() {
+    let dir = temp_dir();
+    let stores = Stores::load(&dir, &dir);
+    let chat = &stores.chat;
+    for i in 0..70 {
+        chat.save(json!({ "id": format!("c{i}"), "updatedAt": i, "turns": [] }));
+    }
+    // Re-saving a conversation moves it, never duplicates it.
+    chat.save(json!({ "id": "c30", "updatedAt": 100, "turns": [1] }));
+    let list = chat.list();
+    let list = list.as_array().unwrap();
+    assert_eq!(list.len(), 70);
+    assert_eq!(list[0]["id"], json!("c30"));
+    assert_eq!(list[1]["id"], json!("c69"));
+    assert_eq!(list.iter().filter(|e| e["id"] == json!("c30")).count(), 1);
+
+    chat.remove("c30");
+    assert_eq!(chat.list()[0]["id"], json!("c69"));
+
+    let clip = &stores.clipboard;
+    for i in 0..35 {
+        clip.upsert(
+            HistoryKind::Clipboard,
+            json!({ "text": format!("t{i}"), "at": i }),
+        );
+    }
+    clip.upsert(HistoryKind::Clipboard, json!({ "text": "t10", "at": 99 }));
+    let list = clip.snapshot().0;
+    assert_eq!(list.as_array().unwrap().len(), 30);
+    assert_eq!(list[0]["text"], json!("t10"));
+    clip.clear();
+    stores.flush_all();
+    assert_eq!(
+        read_file(&dir.join(file_name("clipboard-history")))["entries"],
+        json!([])
+    );
+}
+
+#[test]
+fn invalid_history_entries_are_rejected() {
+    assert!(!HistoryKind::Chat.valid(&json!({ "id": "x" })));
+    assert!(!HistoryKind::Clipboard.valid(&json!({ "text": 1, "at": 1 })));
+    let long = "x".repeat(MAX_CLIPBOARD_TEXT + 1);
+    assert!(!HistoryKind::Clipboard.valid(&json!({ "text": long, "at": 1 })));
+    assert!(HistoryKind::Clipboard.valid(&json!({ "text": "ok", "at": 1 })));
+}
+
+#[test]
+fn the_proxy_follows_the_settings() {
+    // SOCKS5 resolves names at the proxy (socks5h): on an intranet this
+    // computer's own DNS can't look up an address elsewhere, and socks5://
+    // would ask it to.
+    proxy_changed(
+        &json!({ "proxyType": "socks5", "proxyHost": " 127.0.0.1 ", "proxyPort": "7890" }),
+    );
+    assert_eq!(
+        aicompat::http::proxy_url().as_deref(),
+        Some("socks5h://127.0.0.1:7890")
+    );
+    // A whole URL pasted into the address is taken as is: prefixing another
+    // scheme onto it made a host literally named "http", which then failed
+    // to resolve.
+    proxy_changed(&json!({
+        "proxyType": "http",
+        "proxyHost": "http://192.168.1.1:7890",
+        "proxyPort": "7890",
+    }));
+    assert_eq!(
+        aicompat::http::proxy_url().as_deref(),
+        Some("http://192.168.1.1:7890")
+    );
+    proxy_changed(&json!({
+        "proxyType": "socks5",
+        "proxyHost": "socks5://192.168.1.1:1080",
+    }));
+    assert_eq!(
+        aicompat::http::proxy_url().as_deref(),
+        Some("socks5h://192.168.1.1:1080")
+    );
+    proxy_changed(&json!({ "proxyType": "http", "proxyHost": "proxy.lan" }));
+    assert_eq!(
+        aicompat::http::proxy_url().as_deref(),
+        Some("http://proxy.lan")
+    );
+    // A proxy that asks for a name and password (the frontend's
+    // proxyUsername/proxyPassword): they go into the URL's userinfo,
+    // encoded, which reqwest answers with Basic auth.
+    proxy_changed(&json!({
+        "proxyType": "http",
+        "proxyHost": "proxy.lan",
+        "proxyPort": "8080",
+        "proxyUsername": " alice ",
+        "proxyPassword": "p@ss:w%41rd ",
+    }));
+    assert_eq!(
+        aicompat::http::proxy_url().as_deref(),
+        Some("http://alice:p%40ss%3Aw%2541rd%20@proxy.lan:8080/")
+    );
+    // Direct; and none (the old default), system or no host: the system's.
+    proxy_changed(&json!({ "proxyType": "direct", "proxyHost": "proxy.lan" }));
+    assert_eq!(aicompat::http::proxy_url(), None);
+    for kind in ["none", "system"] {
+        proxy_changed(&json!({ "proxyType": kind, "proxyHost": "proxy.lan" }));
+        assert_eq!(
+            aicompat::http::current_route(),
+            aicompat::http::Route::System
+        );
+    }
+    proxy_changed(&json!({ "proxyType": "http", "proxyHost": "" }));
+    assert_eq!(
+        aicompat::http::current_route(),
+        aicompat::http::Route::System
+    );
+    proxy_changed(&json!({ "proxyType": "direct" }));
+}
+
+#[test]
+fn the_window_and_recents_kept_apart_move_into_the_ui_state_once() {
+    let dir = temp_dir();
+    std::fs::write(
+        dir.join(file_name("prefs")),
+        r#"{"editor_window_size":[900,700],"editor_window_position":[40,60]}"#,
+    )
+    .unwrap();
+    std::fs::write(dir.join(file_name("recent_files")), r#"["/a.md","/b.md"]"#).unwrap();
+    std::fs::write(dir.join(file_name("recent_folders")), r#"["/notes"]"#).unwrap();
+    let stores = Stores::load(&dir, &dir);
+    let state = stores.ui_state.snapshot().0;
+    assert_eq!(state["editorWindowSize"], json!([900, 700]));
+    assert_eq!(state["editorWindowPosition"], json!([40, 60]));
+    assert_eq!(state["recentFiles"], json!(["/a.md", "/b.md"]));
+    assert_eq!(state["recentFolders"], json!(["/notes"]));
+    // On disk before the old files go.
+    let written = read_file(&dir.join(file_name("ui-state")));
+    assert_eq!(written["state"]["recentFolders"], json!(["/notes"]));
+    for stem in ["prefs", "recent_files", "recent_folders"] {
+        assert!(!dir.join(file_name(stem)).exists(), "{stem}");
+    }
+    // Loaded again, nothing is left to move and nothing changes.
+    let again = Stores::load(&dir, &dir);
+    assert_eq!(again.ui_state.snapshot().0, state);
+}
+
+#[test]
+fn the_ui_state_s_own_lists_win_over_old_files() {
+    let dir = temp_dir();
+    std::fs::write(
+        dir.join(file_name("ui-state")),
+        r#"{"schemaVersion":1,"state":{"recentFiles":["/new.md"]}}"#,
+    )
+    .unwrap();
+    std::fs::write(dir.join(file_name("recent_files")), r#"["/old.md"]"#).unwrap();
+    let stores = Stores::load(&dir, &dir);
+    assert_eq!(
+        stores.ui_state.snapshot().0["recentFiles"],
+        json!(["/new.md"])
+    );
+    assert!(!dir.join(file_name("recent_files")).exists());
+}
+
+#[test]
+fn a_name_or_password_change_reapplies_the_proxy() {
+    // Each field is patched on its own as the user types; a proxy that asks
+    // for a name and password must be rebuilt when only those change, or
+    // requests keep going out without them.
+    assert!(proxy_keys_changed(&obj(
+        json!({ "proxyUsername": "alice" })
+    )));
+    assert!(proxy_keys_changed(&obj(
+        json!({ "proxyPassword": "secret" })
+    )));
+    assert!(proxy_keys_changed(&obj(json!({ "proxyType": "http" }))));
+    assert!(!proxy_keys_changed(&obj(json!({ "theme": "dark" }))));
+}

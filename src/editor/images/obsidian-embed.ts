@@ -1,0 +1,197 @@
+import IMAGE_TYPES from "./image-types.json";
+import { $inputRule, $nodeSchema, $remark } from "@milkdown/kit/utils";
+import { InputRule } from "@milkdown/kit/prose/inputrules";
+import type { RemarkPluginRaw } from "@milkdown/kit/transformer";
+import type {
+  Extension as FromMarkdownExtension,
+  Handle as FromMarkdownHandle,
+} from "mdast-util-from-markdown";
+import type { Options as ToMarkdownExtension } from "mdast-util-to-markdown";
+import type { Literal } from "mdast";
+import { doubleBracketSyntax } from "../markdown/double-brackets";
+
+/**
+ * Obsidian's embeds, `![[file]]`, kept as written (the source is the node's
+ * text) so saving writes them back unchanged. A Pandoc export writes its
+ * own copy as a standard image (`src/export/pandoc-markdown.ts`).
+ */
+
+declare module "micromark-util-types" {
+  interface TokenTypeMap {
+    obsidianEmbed: "obsidianEmbed";
+  }
+}
+
+/** An embed as mdast: `value` is its source, `![[` to `]]`. */
+interface ObsidianEmbed extends Literal {
+  type: "obsidianEmbed";
+}
+
+declare module "mdast" {
+  interface PhrasingContentMap {
+    obsidianEmbed: ObsidianEmbed;
+  }
+  interface RootContentMap {
+    obsidianEmbed: ObsidianEmbed;
+  }
+}
+
+/** File types an embed shows as a picture. */
+const IMAGE_EXTENSIONS: readonly string[] = Object.keys(IMAGE_TYPES);
+
+function isImageFile(file: string): boolean {
+  const ext = /\.([^./]+)$/.exec(file)?.[1].toLowerCase();
+  return IMAGE_EXTENSIONS.includes(ext ?? "");
+}
+
+const EMBED_SOURCE = /^!\[\[([^[\]\n]+)\]\]$/;
+
+/** An embed's parts between its bars, and the bar it is written with: in
+ *  a table `\|`, whose backslash belongs to no part. */
+function embedParts(source: string): { parts: string[]; bar: string } | null {
+  const inner = EMBED_SOURCE.exec(source)?.[1];
+  if (inner === undefined) return null;
+  return {
+    parts: inner.split(/\\?\|/),
+    bar: inner.includes("\\|") ? "\\|" : "|",
+  };
+}
+
+/** An embed's source (`![[old.png|alt|300]]`) naming `path` instead, its
+ *  alt text and size kept. */
+export function withEmbedPath(source: string, path: string): string {
+  const { parts = [], bar = "|" } = embedParts(source) ?? {};
+  return `![[${[path, ...parts.slice(1)].join(bar)}]]`;
+}
+
+/** What a missing embed (`source`) becomes once a picked file is stored:
+ *  a vault that writes wiki links keeps an embed by the name it gives;
+ *  else a Markdown image from the document, alt and `|300` size kept. */
+export function embedForPicked(
+  source: string,
+  stored: { src: string; embed?: string | null },
+): { embed: string } | { src: string; alt: string } {
+  const named = stored.embed && parseEmbed(stored.embed)?.path;
+  if (named) return { embed: withEmbedPath(source, named) };
+  const options = embedParts(source)?.parts.slice(1) ?? [];
+  return { src: stored.src, alt: options.join("|") };
+}
+
+export interface EmbedTarget {
+  /** The file as written: a name or a path from the vault root. */
+  path: string;
+  alt: string;
+  /** Obsidian's size suffix, `|300` or `|300x200`, in CSS pixels. */
+  width: number | null;
+  height: number | null;
+  isImage: boolean;
+}
+
+/** What an embed's source (`![[path|alt|300x200]]`) asks for; null when it
+ *  isn't one. */
+export function parseEmbed(source: string): EmbedTarget | null {
+  const found = embedParts(source);
+  if (!found) return null;
+  const [path, ...options] = found.parts;
+  let width: number | null = null;
+  let height: number | null = null;
+  const alt: string[] = [];
+  for (const option of options) {
+    const size = /^\s*(\d+)(?:x(\d+))?\s*$/.exec(option);
+    if (size && width === null) {
+      width = Number(size[1]);
+      height = size[2] ? Number(size[2]) : null;
+    } else alt.push(option.trim());
+  }
+  const file = path.trim();
+  // `![[Note#Heading]]` and `![[pic.png#^block]]` point inside a note.
+  return {
+    path: file,
+    alt: alt.join("|"),
+    width,
+    height,
+    isImage: !file.includes("#") && isImageFile(file),
+  };
+}
+
+const enterEmbed: FromMarkdownHandle = function (token) {
+  this.enter(
+    { type: "obsidianEmbed", value: this.sliceSerialize(token) },
+    token,
+  );
+};
+
+const exitEmbed: FromMarkdownHandle = function (token) {
+  this.exit(token);
+};
+
+const embedFromMarkdown: FromMarkdownExtension = {
+  enter: { obsidianEmbed: enterEmbed },
+  exit: { obsidianEmbed: exitEmbed },
+};
+
+const embedToMarkdown: ToMarkdownExtension = {
+  // Written as it was read: escaping its brackets would turn it to text.
+  handlers: { obsidianEmbed: (node: ObsidianEmbed) => node.value },
+};
+
+const remarkObsidianEmbed: RemarkPluginRaw<unknown> = function (
+  this: ThisParameterType<RemarkPluginRaw<unknown>>,
+) {
+  const data = this.data();
+  // Tried before CommonMark's image start would take the `![`.
+  (data.micromarkExtensions ??= []).push(
+    doubleBracketSyntax("obsidianEmbed", { bang: true, refuseParen: false }),
+  );
+  (data.fromMarkdownExtensions ??= []).push(embedFromMarkdown);
+  (data.toMarkdownExtensions ??= []).push(embedToMarkdown);
+};
+
+export const remarkObsidianEmbedPlugin = $remark(
+  "remark-obsidian-embed",
+  () => remarkObsidianEmbed,
+);
+
+export const obsidianEmbedSchema = $nodeSchema("obsidian_embed", () => ({
+  content: "text*",
+  group: "inline",
+  inline: true,
+  marks: "",
+  // Source, like raw HTML: "*" typed in a file name is not bold.
+  code: true,
+  attrs: {},
+  parseDOM: [
+    { tag: 'span[data-type="obsidian_embed"]', preserveWhitespace: "full" },
+  ],
+  toDOM: () => [
+    "span",
+    { "data-type": "obsidian_embed", class: "obsidian-embed-source" },
+    0,
+  ],
+  parseMarkdown: {
+    match: (node) => node.type === "obsidianEmbed",
+    runner: (state, node, type) => {
+      state.openNode(type);
+      state.addText(node.value as string);
+      state.closeNode();
+    },
+  },
+  toMarkdown: {
+    match: (node) => node.type.name === "obsidian_embed",
+    runner: (state, node) => {
+      state.addNode("obsidianEmbed", undefined, node.textContent);
+    },
+  },
+}));
+
+/** `![[...]]` typed or pasted as text becomes an embed once it closes. */
+export const obsidianEmbedInputRule = $inputRule(
+  (ctx) =>
+    new InputRule(/!\[\[[^[\]\n]+\]\]$/, (state, match, start, end) =>
+      state.tr.replaceWith(
+        start,
+        end,
+        obsidianEmbedSchema.type(ctx).create({}, state.schema.text(match[0])),
+      ),
+    ),
+);

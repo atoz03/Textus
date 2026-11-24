@@ -1,0 +1,168 @@
+import { fill } from "../../i18n/fill";
+import { useRef, type CSSProperties } from "react";
+import { usePlacement } from "../../engine/controls/usePlacement";
+import { usePresenceProps } from "../../engine/motion/usePresence";
+import type { GrammarKind } from "./grammar-kind";
+import { StepNav } from "../../engine/controls/StepNav";
+import "./GrammarPopover.css";
+
+export interface GrammarPopoverInfo {
+  x: number;
+  y: number;
+  from: number;
+  to: number;
+  issue: string;
+  /** None for a slip with no fix: the card only explains it. */
+  suggestion?: string;
+  /** Exact text the range must still contain for Apply to act. */
+  original?: string;
+  /** What kind of slip it is, for the label. */
+  kind: GrammarKind;
+  /** Who found it (a plugin), named in place of the kind. */
+  label?: string;
+  /** A fix other than a change of the words: its button's label, or the
+   *  plain Apply. */
+  otherFix?: { label?: string };
+  /** Its source, as the underlines' registry names it. */
+  source: string;
+  /** How the card shows the fix when it differs from what is replaced (a
+   *  one-character CJK fix, shown with its neighbour). */
+  shownOriginal?: string;
+  shownSuggestion?: string;
+  /** Where it stands among the paragraph's underlines. */
+  index: number;
+  count: number;
+}
+
+interface GrammarPopoverLabels {
+  grammarKinds: Record<GrammarKind, string>;
+  /** "Change to “{s}”". */
+  grammarApplyTo: string;
+  grammarApply: string;
+  grammarIgnore: string;
+  grammarPrevious: string;
+  grammarNext: string;
+}
+
+interface GrammarPopoverProps {
+  info: GrammarPopoverInfo;
+  labels: GrammarPopoverLabels;
+  /** Why the last Apply click did nothing (stale text) - shown in place of the button. */
+  error: string | null;
+  onApply: () => void;
+  onIgnore: () => void;
+  onStep: (delta: 1 | -1) => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}
+
+/** "Change to “毕竟”" - or plain "Apply" for a fix that deletes, or one too
+ *  long to name on a button. */
+function applyLabel(
+  labels: Pick<GrammarPopoverLabels, "grammarApplyTo" | "grammarApply">,
+  suggestion: string,
+): string {
+  const s = suggestion.trim();
+  return s && [...s].length <= 16
+    ? fill(labels.grammarApplyTo, { s })
+    : labels.grammarApply;
+}
+
+/** The Apply button's words, for a fix there is. */
+export function fixLabel(
+  info: Pick<GrammarPopoverInfo, "otherFix" | "suggestion" | "shownSuggestion">,
+  labels: Pick<GrammarPopoverLabels, "grammarApplyTo" | "grammarApply">,
+): string {
+  if (info.otherFix) return info.otherFix.label ?? labels.grammarApply;
+  return applyLabel(labels, info.shownSuggestion ?? info.suggestion ?? "");
+}
+
+/** Who found the slip, or what kind it is. */
+export const issueLabel = (
+  info: Pick<GrammarPopoverInfo, "label" | "kind">,
+  labels: Pick<GrammarPopoverLabels, "grammarKinds">,
+) => info.label ?? labels.grammarKinds[info.kind];
+
+/** The slip's badge: a plugin's own name, or its kind in that kind's tone. */
+export function IssueKind({
+  info,
+  labels,
+}: {
+  info: Pick<GrammarPopoverInfo, "label" | "kind">;
+  labels: Pick<GrammarPopoverLabels, "grammarKinds">;
+}) {
+  return (
+    <span
+      className={`grammar-kind grammar-kind-${info.label ? "plugin" : info.kind}`}
+    >
+      {issueLabel(info, labels)}
+    </span>
+  );
+}
+
+/** The card under a grammar underline. With several underlines in the
+ *  paragraph, ‹ 1/3 › steps between them. */
+export function GrammarPopover({
+  info,
+  labels,
+  error,
+  onApply,
+  onIgnore,
+  onStep,
+  onMouseEnter,
+  onMouseLeave,
+}: GrammarPopoverProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const pos = usePlacement(rootRef, info.x, info.y);
+  const presence = usePresenceProps(rootRef);
+  // It grows out of the underline it explains: from its top edge, or its
+  // bottom one when the window's edge pushed it up over the line.
+  const origin = {
+    "--transform-origin": `${Math.max(0, info.x - pos.left)}px ${pos.top < info.y - 0.5 ? "100%" : "0"}`,
+  } as CSSProperties;
+  return (
+    <div
+      {...presence}
+      className="grammar-popover floating-surface"
+      style={{ ...pos, ...origin }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      <div className="grammar-popover-head">
+        <IssueKind info={info} labels={labels} />
+        {info.suggestion !== undefined && (
+          <span className="grammar-popover-fix">
+            {info.original && <s>{info.shownOriginal ?? info.original}</s>}
+            {info.original && <span aria-hidden="true"> → </span>}
+            <b>{info.shownSuggestion ?? (info.suggestion || "\u2205")}</b>
+          </span>
+        )}
+        {info.count > 1 && (
+          <StepNav
+            className="grammar-popover-nav"
+            previous={labels.grammarPrevious}
+            next={labels.grammarNext}
+            onStep={onStep}
+            position={`${info.index + 1}/${info.count}`}
+          />
+        )}
+      </div>
+      {info.issue && <div className="grammar-popover-issue">{info.issue}</div>}
+      {error ? (
+        <div className="grammar-popover-error">{error}</div>
+      ) : (
+        <div className="grammar-popover-actions">
+          {(info.suggestion !== undefined || info.otherFix) && (
+            <button className="grammar-popover-apply" onClick={onApply}>
+              {fixLabel(info, labels)}
+              <kbd>Alt+Enter</kbd>
+            </button>
+          )}
+          <button className="grammar-popover-ignore" onClick={onIgnore}>
+            {labels.grammarIgnore}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

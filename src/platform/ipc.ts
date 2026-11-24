@@ -1,0 +1,393 @@
+import { Channel } from "@tauri-apps/api/core";
+import type { ImageModel, ImageProviderEntry } from "../ai/image-models";
+import type { SentBlock } from "../editor/markdown/doc-blocks";
+import type { AgentTurn, ImageAttachment, ThinkingLevel } from "../ai/types";
+import type { GrammarIssue } from "../ai/writing/grammar-check-plugin";
+import type { AgentMode_Serialize as AgentMode } from "./bindings/ai-skills";
+import type { Pasted, StreamEvent_Deserialize } from "./bindings/ai-agent";
+import type { Value, SkillOffer } from "./bindings/ai-memory";
+import { aiCommand, command } from "./ipc-call";
+import type {
+  CompletionHints,
+  MemoryKind,
+  MemoryScope,
+  RememberedChange,
+  StreamEvent,
+} from "./ipc-ai-types";
+export { IpcError } from "./ipc-call";
+export * from "./ipc-plugins";
+export type { InstalledPlugin } from "./bindings/plugins";
+export type { UpdateChannel } from "./update-channel";
+export {
+  fs,
+  session,
+  type HistoryKind,
+  storage,
+  drafts,
+  ownNotes,
+} from "./ipc-files";
+export { type IndexedFile } from "./bindings/files";
+export {
+  windowIpc,
+  menuIpc,
+  clipboardIpc,
+  systemIpc,
+  links,
+  webPages,
+  webAssets,
+  exportDoc,
+  themes,
+  themeGallery,
+  cli,
+  type BackgroundStatus,
+  background,
+  defaultEditor,
+  distribution,
+  updater,
+  windowBarIpc,
+} from "./ipc-app";
+export {
+  type WindowBounds,
+  BACKGROUND_STATUS,
+  type CliStatus,
+  type DefaultEditorStatus,
+} from "./bindings/app";
+export {
+  type CustomEndpointConfig,
+  type CustomEndpointEdit,
+  auth,
+  imageHostAuth,
+} from "./ipc-auth";
+export {
+  AI_CANCELLED,
+  type GeneratedImageData,
+  type WebSearchStatus,
+  type StreamEvent,
+  type CompletionHints,
+  type LibraryEntry,
+  type Remembered,
+  type Memory,
+  type MemoryScope,
+  type LibraryUse,
+  type AgentWorkspaceInfo,
+  WRITING_CONVENTIONS,
+  type SkillListItem,
+  type RememberedChange,
+} from "./ipc-ai-types";
+import { aiPaper } from "./ipc-ai-paper";
+import { aiWorkspace } from "./ipc-ai-workspace";
+
+/**
+ * Typed wrappers around every Tauri command the frontend calls, grouped by
+ * domain across the ipc-*.ts files and all re-exported from here.
+ */
+
+export const ai = {
+  // Rust sends the dialect and auth methods as plain strings from fixed sets.
+  /** Whether Deep thinking changes anything for this provider and Agent
+   *  model (null: the provider's default). */
+  canThinkDeeper: (provider: string, model: string | null) =>
+    command("ai_can_think_deeper", provider, model),
+  /** The services Settings › Textus AI › Image model offers. */
+  listImageProviders: (): Promise<ImageProviderEntry[]> =>
+    command("list_image_providers"),
+  /** A picture generate_image made, waiting for Accept or Reject. */
+  generatedImage: (id: string) => command("ai_generated_image", id),
+  /** Asks again for a picture that wasn't made, by itself. */
+  retryGeneratedImage: (id: string) => command("ai_retry_generated_image", id),
+  /** The description a waiting picture was drawn from; null once gone. */
+  generatedImagePrompt: (id: string) =>
+    command("ai_generated_image_prompt", id),
+  /** Draws a waiting picture again from the writer's description. */
+  redrawGeneratedImage: (id: string, prompt: string) =>
+    command("ai_redraw_generated_image", id, prompt),
+  /** Lets a waiting picture go: rejected, or saved. */
+  discardGeneratedImage: (id: string) =>
+    command("ai_discard_generated_image", id),
+  /** The document's undecided proposals as kept with it, or null. */
+  keptProposalsRead: (docPath: string, workspaceRoot: string | null) =>
+    command("kept_proposals_read", docPath, workspaceRoot),
+  /** Keeps them, with the made pictures among `pictures`; null removes what
+   *  was kept. Opaque JSON to Rust. */
+  keptProposalsWrite: (
+    docPath: string,
+    workspaceRoot: string | null,
+    kept: object | null,
+    pictures: string[],
+  ) =>
+    command(
+      "kept_proposals_write",
+      docPath,
+      workspaceRoot,
+      kept as Value,
+      pictures,
+    ),
+  fetchAgentModels: (provider: string) =>
+    aiCommand("fetch_agent_models", provider),
+  complete: (
+    provider: string,
+    before: string,
+    after: string,
+    style: string | null,
+    model: string | null,
+    hints: CompletionHints | null = null,
+    /** The project whose style profile and library the completion follows. */
+    project: { docPath: string | null; workspaceRoot: string | null } = {
+      docPath: null,
+      workspaceRoot: null,
+    },
+  ) =>
+    aiCommand("ai_complete", {
+      provider,
+      before,
+      after,
+      style,
+      model,
+      hints,
+      docPath: project.docPath,
+      workspaceRoot: project.workspaceRoot,
+    }),
+  grammarCheck: (
+    provider: string,
+    paragraph: string,
+    strictness: string | null,
+    model: string | null,
+    /** The document's project, for its writing conventions profile and
+     *  library names; omitted, the check uses the global setting. */
+    project: { docPath: string | null; workspaceRoot: string | null } = {
+      docPath: null,
+      workspaceRoot: null,
+    },
+    /** The app's language: the explanations are written in it. */
+    uiLanguage: string | null = null,
+  ) =>
+    aiCommand("ai_grammar_check", {
+      provider,
+      paragraph,
+      strictness,
+      model,
+      docPath: project.docPath,
+      workspaceRoot: project.workspaceRoot,
+      uiLanguage,
+    }) as Promise<GrammarIssue[]>,
+  agentMessage: ({
+    onEvent,
+    ...args
+  }: {
+    provider: string;
+    /** The document block by block; the model sees each after its id, and
+     *  edits name them. */
+    blocks: SentBlock[];
+    docPath: string | null;
+    /** The folder opened or chosen, or null for none. Decides where
+     *  .textus/ is read from and how far file tools may reach. */
+    workspaceRoot: string | null;
+    /** The conversation, whose attached files the file tools read. */
+    conversation: string;
+    history: AgentTurn[];
+    message: string;
+    /** Attached images. Text-shaped attachments were already extracted and
+     *  inlined into `message` by the caller. */
+    images: ImageAttachment[];
+    webSearch: boolean;
+    /** How hard the model thinks; left out, the provider's default. */
+    thinking?: ThinkingLevel;
+    /** What web_search uses when the model can't search by itself. */
+    searchService?: string;
+    searxngUrl?: string;
+    mode: AgentMode;
+    model: string | null;
+    requestId: string;
+    /** Heading of the section the cursor is in, embedded in full when the
+     *  document is too long to send whole. */
+    focusHeading?: string | null;
+    /** The UI language, so the agent names the app's controls as the UI does. */
+    uiLanguage?: string;
+    /** The image model, or null: generate_image is offered only with one. */
+    imageModel?: ImageModel | null;
+    /** Live fragments while the request runs. */
+    onEvent?: (event: StreamEvent) => void;
+  }) => {
+    const channel = new Channel<StreamEvent>();
+    if (onEvent) channel.onmessage = onEvent;
+    return aiCommand(
+      "ai_agent_message",
+      args,
+      channel as Channel<StreamEvent_Deserialize>,
+    ) as Promise<AgentTurn[]>;
+  },
+  /** What the Web search button can do with this provider and model: its
+   *  own search, or the search service Textus would use (none: needs setup). */
+  webSearchStatus: (
+    provider: string,
+    model: string | null,
+    searchService: string,
+    searxngUrl: string,
+  ) => command("web_search_status", provider, model, searchService, searxngUrl),
+  cancelAgentMessage: (requestId: string) => command("ai_cancel", requestId),
+  /** Into the reply in progress, read at its next step; false when none
+   *  of that id is running. */
+  steerAgentMessage: (requestId: string, message: string) =>
+    command("ai_steer", requestId, message),
+  ...aiPaper,
+
+  loadAgentWorkspace: (docPath: string | null, rootOverride: string | null) =>
+    command("load_agent_workspace", docPath, rootOverride),
+  /** The project folder's text files, for @-mentions. */
+  listProjectFiles: (docPath: string | null, workspaceRoot: string | null) =>
+    command("list_project_files", docPath, workspaceRoot),
+  readProjectFile: (
+    docPath: string | null,
+    workspaceRoot: string | null,
+    path: string,
+  ) => command("read_project_file", docPath, workspaceRoot, path),
+  /** General mode's kept file changes, and putting them on disk or back. */
+  fileChanges: (conversation: string, ids: string[]) =>
+    command("ai_file_changes", conversation, ids),
+  setFileChanges: (conversation: string, ids: string[], on: boolean) =>
+    command("ai_set_file_changes", conversation, ids, on),
+  /** Creates `.textus/<rel>` from `template` if missing; returns its path. */
+  ensureProjectFile: (
+    docPath: string | null,
+    workspaceRoot: string | null,
+    rel: string,
+    template: string,
+  ) => command("ensure_project_file", docPath, workspaceRoot, rel, template),
+  pickTextFiles: () => command("pick_text_files"),
+  /** "Import references…": picked files, zips or (`folder`) a folder copied
+   *  into the project's references/ folder; null when nothing was picked. */
+  importReferences: (
+    docPath: string | null,
+    workspaceRoot: string | null,
+    folder: boolean,
+  ) => command("import_references_picked", docPath, workspaceRoot, folder),
+  /** After an exchange: what to remember, update or forget, decided by the
+   *  conversation's model. Nothing while Remember automatically is off. */
+  /** After an exchange: what to remember, update or forget, decided by
+   *  the conversation's model and made (ai/memory/pass.rs). Nothing while
+   *  Remember automatically is off. */
+  memoryPass: (args: {
+    provider: string;
+    model: string | null;
+    docPath: string | null;
+    workspaceRoot: string | null;
+    /** Recorded with what is remembered. */
+    conversation: { id: string; title: string };
+    exchange: { messages: string[]; reply: string };
+  }) => aiCommand("memory_pass", args) as Promise<RememberedChange[]>,
+  /** After an exchange, its request offered as a skill to save, or null. */
+  offerSkill: (args: {
+    provider: string;
+    model: string | null;
+    docPath: string | null;
+    workspaceRoot: string | null;
+    exchange: { messages: string[]; reply: string };
+  }) => aiCommand("ai_offer_skill", args),
+  /** An offered skill saved, for every document or this project's, in
+   *  `modes`; checked as saveWrittenSkill is. */
+  saveOfferedSkill: (
+    offer: SkillOffer,
+    scope: "personal" | "project",
+    docPath: string | null,
+    workspaceRoot: string | null,
+    modes: AgentMode[],
+    confirmed = false,
+  ) =>
+    command(
+      "save_offered_skill",
+      offer,
+      scope,
+      docPath,
+      workspaceRoot,
+      modes,
+      confirmed,
+    ),
+  /** A skill file a reply wrote, saved in the global skills folder in
+   *  `modes`, over an earlier version. Its path. One in Create mode or that
+   *  reads like a prompt injection fails with `SKILL_NEEDS_CONFIRM:` and its
+   *  warnings until saved again `confirmed`. */
+  saveWrittenSkill: (text: string, modes: AgentMode[], confirmed = false) =>
+    command("save_written_skill", text, modes, confirmed),
+  /** What the writer will probably say next after a reply: up to three
+   *  messages, most likely first (Rust: ai/next_message.rs). */
+  suggestNextMessage: (args: {
+    provider: string;
+    model: string | null;
+    exchange: { messages: string[]; reply: string };
+  }) =>
+    aiCommand("suggest_next_message", args.provider, args.model, args.exchange),
+  /** A short title for an untitled document from its start, or null. */
+  suggestDocTitle: (args: {
+    provider: string;
+    model: string | null;
+    excerpt: string;
+  }) => aiCommand("suggest_doc_title", args.provider, args.model, args.excerpt),
+  memoryUndo: (
+    docPath: string | null,
+    workspaceRoot: string | null,
+    id: string,
+    previous: string | null,
+  ) => command("memory_undo", docPath, workspaceRoot, id, previous),
+  /** Moves a memory to the other scope; returns its new id. */
+  memoryMove: (
+    docPath: string | null,
+    workspaceRoot: string | null,
+    id: string,
+    scope: MemoryScope,
+  ) => command("memory_move", docPath, workspaceRoot, id, scope),
+  /** Puts a forgotten memory or library entry back; its new id. */
+  memoryRestore: (
+    docPath: string | null,
+    workspaceRoot: string | null,
+    id: string,
+  ) => command("memory_restore", docPath, workspaceRoot, id),
+  /** Deletes a memory or a library entry (`project/library/<stem>`). */
+  memoryDelete: (
+    docPath: string | null,
+    workspaceRoot: string | null,
+    id: string,
+  ) => command("memory_delete", docPath, workspaceRoot, id),
+  /** Saves one memory the user asked for with a click; returns its id.
+   *  Fails with plain words on a duplicate. */
+  memoryRemember: (
+    docPath: string | null,
+    workspaceRoot: string | null,
+    kind: MemoryKind,
+    scope: MemoryScope,
+    text: string,
+  ) => command("memory_remember", docPath, workspaceRoot, kind, scope, text),
+  /** The revision choices log, kept beside the personal memories and never
+   *  sent anywhere; null when there is none yet. */
+  revisionChoicesRead: () => command("revision_choices_read"),
+  // The log is the frontend's own shape, opaque JSON to Rust.
+  revisionChoicesWrite: (log: object) =>
+    command("revision_choices_write", log as Value),
+  /** The library entries the last request for the document carried. */
+  libraryUse: (
+    docPath: string | null,
+    workspaceRoot: string | null,
+    document: string,
+  ) => command("library_use", docPath, workspaceRoot, document),
+  /** "Learn my style": writes the project's .textus/style.md from the
+   *  picked samples and returns its path. */
+  learnStyle: (args: {
+    provider: string;
+    model: string | null;
+    docPath: string | null;
+    workspaceRoot: string | null;
+    files: string[];
+  }) =>
+    aiCommand(
+      "learn_style",
+      args.provider,
+      args.model,
+      args.docPath,
+      args.workspaceRoot,
+      args.files,
+    ),
+  ...aiWorkspace,
+  pickAttachmentFiles: (conversation: string) =>
+    command("pick_attachment_files", conversation),
+  attachPasted: (conversation: string, pasted: Pasted[]) =>
+    command("attach_pasted", conversation, pasted),
+};

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Textus
+Comment=Integrated Writing Environment, designed for professional writing
+Exec=textus %F
+Icon=textus
+StartupWMClass=textus
+Terminal=false
+Categories=Utility;TextEditor;
+MimeType=text/markdown;text/x-markdown;

@@ -1,0 +1,138 @@
+import { TextSelection } from "@milkdown/kit/prose/state";
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { editorViewCtx, type Editor } from "@milkdown/kit/core";
+import type { Ctx } from "@milkdown/kit/ctx";
+import { undo } from "@milkdown/kit/prose/history";
+import { createTestEditor } from "../editor-test-harness";
+import {
+  documentChangedForPlugins,
+  selectionChangedForPlugins,
+} from "./plugin-events";
+import { applyPluginEdits, replaceDocument } from "./plugin-edits";
+import { markChangeSource } from "../../editor/change-source";
+import { onPluginEvent, type PluginEventMap } from "../../plugins/app-bridge";
+import { cachedDocument } from "../../editor/markdown/doc-markdown";
+import { setReadOnly } from "../../editor/read-only-plugin";
+
+let editor: Editor | null = null;
+let stop: (() => void) | null = null;
+afterEach(async () => {
+  stop?.();
+  await editor?.destroy();
+  editor = null;
+});
+
+/** The editor, and the sources plugins are told as each change reports. */
+async function setUp() {
+  editor = await createTestEditor("one\n\ntwo\n");
+  const told: string[] = [];
+  stop = onPluginEvent("documentChange", (e) => told.push(e.source));
+  const act = (change: (ctx: Ctx) => void) =>
+    editor!.action((ctx) => {
+      change(ctx);
+      documentChangedForPlugins(true, "/notes/a.md", ctx);
+    });
+  return { told, act };
+}
+
+const view = (ctx: Ctx) => ctx.get(editorViewCtx);
+
+describe("the source plugins are told of a change", () => {
+  it("is the user for typing, history for undo", async () => {
+    const { told, act } = await setUp();
+    act((ctx) => view(ctx).dispatch(view(ctx).state.tr.insertText("!", 2)));
+    act((ctx) => undo(view(ctx).state, view(ctx).dispatch));
+    expect(told).toEqual(["user", "history"]);
+  });
+
+  it("is a plugin for edits through its API, and AI where Textus AI marks it", async () => {
+    const { told, act } = await setUp();
+    act((ctx) => applyPluginEdits(ctx, [{ action: "append", text: "three" }]));
+    act((ctx) => replaceDocument(ctx, "one\n\nfour\n"));
+    act((ctx) =>
+      view(ctx).dispatch(
+        markChangeSource(view(ctx).state.tr.insertText("ai ", 1), "ai"),
+      ),
+    );
+    expect(told).toEqual(["plugin", "plugin", "ai"]);
+  });
+
+  it("is the user when the user and another changed it since the last report", async () => {
+    const { told, act } = await setUp();
+    act((ctx) => {
+      applyPluginEdits(ctx, [{ action: "append", text: "three" }]);
+      view(ctx).dispatch(view(ctx).state.tr.insertText("!", 2));
+    });
+    expect(told).toEqual(["user"]);
+  });
+
+  it("counts bookkeeping alone as the change it followed", async () => {
+    const { told, act } = await setUp();
+    act((ctx) =>
+      view(ctx).dispatch(
+        markChangeSource(view(ctx).state.tr.insertText("ai ", 1), "ai"),
+      ),
+    );
+    act((ctx) =>
+      view(ctx).dispatch(
+        view(ctx).state.tr.insertText("x", 2).setMeta("addToHistory", false),
+      ),
+    );
+    expect(told).toEqual(["ai", "ai"]);
+  });
+
+  it("is taken for a tab behind too, so it isn't told later as the front one's", async () => {
+    const { told } = await setUp();
+    editor!.action((ctx) => {
+      applyPluginEdits(ctx, [{ action: "append", text: "three" }]);
+      documentChangedForPlugins(false, "/notes/a.md", ctx);
+      view(ctx).dispatch(view(ctx).state.tr.insertText("!", 2));
+      documentChangedForPlugins(true, "/notes/a.md", ctx);
+    });
+    expect(told).toEqual(["user"]);
+  });
+});
+
+describe("the selection plugins are told of", () => {
+  it("names the block its moving end is in, and whether it is the caret", async () => {
+    vi.useFakeTimers();
+    editor = await createTestEditor("one\n\ntwo words\n");
+    const told: PluginEventMap["selection"][] = [];
+    stop = onPluginEvent("selection", (e) => told.push(e));
+    const second = editor.action((ctx) => {
+      const v = view(ctx);
+      v.dispatch(
+        v.state.tr.setSelection(TextSelection.create(v.state.doc, 6, 9)),
+      );
+      selectionChangedForPlugins(true, ctx);
+      return cachedDocument(ctx, v.state.doc).blocks[1].id;
+    });
+    vi.runAllTimers();
+    vi.useRealTimers();
+    expect(told).toEqual([{ text: "two", empty: false, block: second }]);
+  });
+});
+
+describe("replacing the document", () => {
+  it("says so when a read-only document refuses the text", async () => {
+    editor = await createTestEditor("one\n");
+    const results = editor.action((ctx) => {
+      setReadOnly(view(ctx), true);
+      return replaceDocument(ctx, "two\n");
+    });
+    expect(results).toBe(false);
+    expect(editor.action((ctx) => view(ctx).state.doc.textContent)).toBe("one");
+  });
+
+  it("keeps the caret in a paragraph whose end it rewrites", async () => {
+    editor = await createTestEditor("alpha beta\n\nsecond\n");
+    const caret = editor.action((ctx) => {
+      const v = view(ctx);
+      v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 3)));
+      replaceDocument(ctx, "alpha beta gamma\n\nsecond\n");
+      return v.state.selection.from;
+    });
+    expect(caret).toBe(3);
+  });
+});

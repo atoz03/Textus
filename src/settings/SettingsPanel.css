@@ -1,0 +1,5 @@
+/* SettingsPanel.css: its parts, in cascade order. */
+@import "./settings-frame.css";
+@import "./settings-controls.css";
+@import "./settings-lists.css";
+@import "./settings-themes.css";

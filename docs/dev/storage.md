@@ -1,0 +1,207 @@
+# What Textus stores, and where
+
+Everything the app remembers between launches, so that it can be backed up
+and inspected.
+
+The settings and histories are plain JSON files owned by Rust
+(`src-tauri/src/settings.rs`), not the webview's localStorage: that store
+belongs to the webview engine, keyed by app identifier and kept in a
+different format on every platform (SQLite under WebKitGTK and WKWebView,
+LevelDB under WebView2), and every window would write the whole settings
+object back on each change, so two windows would undo each other's
+changes.
+
+## Directories
+
+The app identifier is `com.catvinci.textus`. Tauri's app directories:
+
+| Platform | Config directory                                                        | Data directory                        |
+| -------- | ----------------------------------------------------------------------- | ------------------------------------- |
+| Linux    | `~/.config/com.catvinci.textus/`                                        | `~/.local/share/com.catvinci.textus/` |
+| macOS    | `~/Library/Application Support/com.catvinci.textus/`                    | the same directory                    |
+| Windows  | `%APPDATA%\com.catvinci.textus\`                                        | the same directory                    |
+| iOS      | `Library/Application Support/com.catvinci.textus/` in the app container | the same directory                    |
+
+(`$XDG_CONFIG_HOME` and `$XDG_DATA_HOME` move the Linux ones.) The cache
+directory is `~/.cache/com.catvinci.textus/` on Linux,
+`~/Library/Caches/com.catvinci.textus/` on macOS and
+`%LOCALAPPDATA%\com.catvinci.textus\` on Windows.
+
+## Files
+
+Debug builds write `*.dev.json` instead of `*.json` for the three files
+marked †, and use `chat-history.dev/` instead of `chat-history/`, so a
+development build never rewrites an installed app's settings (the two share
+an identifier, hence the directories).
+
+### Config directory
+
+| File                                                                                | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `settings.json` †                                                                   | Every setting in Settings, plus zoom and the onboarding flags: `{"schemaVersion": 1, "settings": {...}}`. Field names and meanings are the `Settings` interface in `src/prefs/settings-types.ts` (defaults `DEFAULT_SETTINGS`; read back by `settings-normalise.ts`).                                                                                                                                                                                                |
+| `session.json`                                                                      | The documents each window had open, for session restore (desktop). Closing the last window leaves it as it was: the next launch reopens those documents, and so does the Dock icon on macOS, where the app keeps running windowless. Where the caret was in each is in `ui-state.json` (`lastCarets`, the last 50 documents, by path).                                                                                                                               |
+| `themes/<id>/light.css`, `dark.css`                                                 | Imported themes, and themes installed from the theme gallery (**Settings › Extensions › Themes**). `settings.userThemes` lists them; a gallery theme's entry also has `gallery: {id, updated, source}`, the version installed, which is how an update is noticed.                                                                                                                                                                                                    |
+| `textus/agent.md`, `textus/skills/`                                                 | The global config folder: global writing instructions and skills ([AI-CONCEPTS.md](../design/ai-concepts.md)), including copies of built-in skills made with Customize… (marked `textus-based-on`) and the skills installed from the market. `settings.skillsMovedToMarket` marks a profile whose skills that moved to the market in 1.3 have been installed back (a profile from before lists the built-ins it had turned off in `settings.disabledBuiltinSkills`). |
+| `textus/memory/<slug>.md`                                                           | What Textus AI remembered about the user for every project, one memory per file (`ai::memory`). Off with `settings.rememberAutomatically`.                                                                                                                                                                                                                                                                                                                           |
+| `textus/projects/<key>/`                                                            | What Textus AI keeps for one project folder, out of the user's folder (`ai::project_data`; the key is the folder's path made a file name, with a short hash): `memory/<slug>.md`, the project's memories, and `papers/<id>/`, the paper writer's runs. A `.textus/memory/` left by an older version is moved here when first read.                                                                                                                                   |
+| `textus/scripts/`                                                                   | Script plugins, one `.js` file each (`src-tauri/src/plugins/scripts.rs`; desktop).                                                                                                                                                                                                                                                                                                                                                                                   |
+| `plugin_secrets.json`                                                               | Every plugin's secrets, apart from its settings and storage; owner-only (`plugins/files.rs`).                                                                                                                                                                                                                                                                                                                                                                        |
+| `provider_keys.json`, `custom_endpoint.json`, `auth-codex.json`, `auth-claude.json` | AI credentials, and in `provider_keys.json` also the image hosts' tokens under ids starting `__image_host` (`credential_id` in `src-tauri/src/commands/image_host.rs`); owner-only on Unix.                                                                                                                                                                                                                                                                          |
+
+`settings.json`'s `writingConventions` is also read by Rust
+(`ai::conventions`), which owns its meaning: `"automatic"` (the default; a
+missing field means the same), one profile such as `"en-GB/govuk"` (what
+Settings > Textus AI > Writing conventions stores; it applies to documents in
+that profile's language, the others stay Automatic), or `{ "zh-Hans": "zh-Hans-CN/tech", "en":
+"en-GB/govuk", "options": { "cjk-latin-space": "on" } }` - one profile per
+language key, `"automatic"` or a missing language meaning Automatic. The
+allowed values are Rust's `rules::profile::LANGUAGE_PROFILES`, mirrored by
+`WRITING_CONVENTIONS` in `platform/ipc-ai-types.ts` (a Rust test keeps the two
+in step).
+
+`settings.json`'s `runInBackground` is **Settings › General › Application
+› Keep running in the background**, off by default, and Rust reads it
+(`src-tauri/src/background/`). [lifecycle.md](lifecycle.md) has the rest.
+
+1.2.0-rc.1 had Quick Notes and a login entry, both taken out before 1.2.0:
+the `quickNote*` and `openAtLogin` fields an rc.1 settings file may still
+have are read by nothing, and neither is the data directory's `quick-note/`
+folder.
+
+`settings.json`'s `updateChannel` is **Settings › General › About Textus ›
+Update channel**: `"stable"` (the default; a missing or unknown value means
+the same) or `"beta"`. Rust doesn't read the file for it: the frontend sends
+the channel with each update check (`check_for_update` in
+`src-tauri/src/commands/update.rs`).
+
+### Data directory
+
+| File                       | What                                                                                                                                                                                                                                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ui-state.json` †          | Where the UI was left: `{"schemaVersion": 1, "state": {...}}` with the fields of `UiState` in `src/storage/ui-state-types.ts`; Rust keeps the last window's size and place and File > Open Recent's lists there too (once in `prefs.json` and `recent_*.json` beside the settings, moved in at launch). |
+| `chat-history/`            | Saved Agent conversations, one file each - see [Chat history](#chat-history) below.                                                                                                                                                                                                                     |
+| `clipboard-history.json` † | The clipboard history of versions before the Clipboard History plugin (1.3.10), newest first. Nothing in the app writes it now; a list there makes the app offer the plugin (`src/plugins/store/moved-offer.ts`).                                                                                       |
+| `drafts/`                  | Crash recovery for unsaved documents, one snapshot per tab ([documents.md](documents.md#drafts-unsaved-writing-survives-a-crash)).                                                                                                                                                                      |
+| `undo/`                    | A document's undo history once its editor is let go or closed, used when it opens at the same text again; old ones go after 30 days, the oldest first past 50 MB.                                                                                                                                       |
+| `own-notes/`               | The writer's own notes and tracked changes per document, named by a hash of its path, never in the Markdown. A file renamed outside Textus loses them.                                                                                                                                                  |
+| `pending/`                 | Textus AI's undecided proposals per document, named by a hash of its path, with the pictures it made beside them.                                                                                                                                                                                       |
+| `plugins/<id>/`            | Installed plugins, each a folder with its `textus-plugin.json`.                                                                                                                                                                                                                                         |
+| `plugins/state.json`       | Whether plugins are on, each one's switch and the permissions granted.                                                                                                                                                                                                                                  |
+| `plugins/schedule.json`    | Plugins' scheduled jobs (desktop; `src-tauri/src/schedule/`); `plugins/notification-clicks.json` for their notifications.                                                                                                                                                                               |
+| `plugin-data/<id>/`        | Each plugin's own storage.                                                                                                                                                                                                                                                                              |
+| `ext-installed.json`       | Which extensions were installed here, so a download counts as a first install, a reinstall or an update (`ext_stats.rs`).                                                                                                                                                                               |
+| `assets/`                  | Images pasted into a document that has not been saved yet, referenced by absolute path until its first save moves them into the folder chosen by the `imageFolder` setting: a subfolder of the document's folder (`assets` by default), or `./` for that folder itself.                                 |
+
+On iOS a document path inside the app's Documents folder is stored as
+`documents:<path inside Documents>` - a conversation's `docPath`, like the
+recent documents in `ui-state.json` - because the app's container, and
+every absolute path into it, moves with each reinstall and update
+(`src/platform/documents-path.ts`). An absolute container path stored by an
+earlier version is rewritten that way when the history loads.
+
+### Chat history
+
+`src-tauri/src/settings/chat_history.rs`. A folder, so a saved turn
+rewrites only its own conversation and the index:
+
+| File                            | What                                                                                                                                                                                    |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chat-history/<id>.json`        | One conversation: `{"schemaVersion": 1, "entry": {id, docPath, title, updatedAt, turns}}`. Attached images are kept as their name and type only.                                        |
+| `chat-history/index.json`       | What the AI panel's history shows, most recent first: `{"schemaVersion": 1, "entries": [{id, docPath, title, updatedAt, turnCount}]}` (`ChatSummary` in `src/ai/chat/chat-history.ts`). |
+| `chat-history/.trash/<id>.json` | Conversations moved out of the list by the cap, as they were.                                                                                                                           |
+
+- Saving a turn rewrites only that conversation's file and the index, each
+  debounced and written like every other file here. The windows hold only
+  the index; a conversation's turns are read (`chat_history_get`) when it
+  is reopened.
+- The index keeps the newest 500 conversations. A save that pushes one past
+  that moves the oldest's file into `.trash/`, and the history list says that
+  older conversations were archived. `.trash/` keeps at most 200 files; past
+  that the oldest (by modification time, which a move keeps) are deleted.
+- A conversation id is a file name, so only ids of letters, digits, `-` and
+  `_` are accepted. Only files named that way are ever moved or deleted;
+  anything else put in the folder is left alone.
+- **Privacy › Clear chat history** deletes every conversation file in the
+  folder and in `.trash/`, and empties the index. Deleting one conversation
+  in the history list deletes its file (not into the trash).
+- A document saved under a new path by Textus (Save As, a rename in the
+  iPhone's document list) takes its conversations along
+  (`chat_history_move_document`).
+- An index that is missing or corrupt while conversation files are there is
+  built again from the files.
+
+The cache directory holds `plugin-catalog.json`, the plugin catalog as
+last fetched (so it lists at once, even offline), and `web-assets/`.
+
+The webview's own storage also lives here (`localstorage/`, `WebKitCache/`
+and so on; `EBWebView\` under `%LOCALAPPDATA%` on Windows). The app
+keeps only small things there that nothing is lost without: each
+provider's fetched model list (fetched again when missing), the composer's
+Deep thinking and last Agent mode. Every key, and every read and write, is
+in `src/storage/local.ts`.
+
+## How the files are written
+
+- Rust holds each file in memory and is its only writer. Windows change
+  settings and UI state one top-level field at a time (`settings_patch`,
+  `ui_state_patch`), and the histories one entry at a time
+  (`history_upsert`, `history_remove`, `history_clear`; a conversation is
+  its own file) - never by writing a
+  whole object or list back, so two windows changing different things both
+  land. Every settings and history change is broadcast to all windows.
+- Writes are debounced by 250 ms and flushed when the app exits, through a
+  write-then-rename, so a crash never leaves a half-written file. That
+  debounce is the only one for settings: windows send every change as it is
+  made, keystrokes in Custom CSS included, so quitting right after typing
+  loses nothing. (The zoom alone is held back until a pinch or wheel burst
+  has rested for 400 ms.)
+- A window never closes with a change still on its way to Rust. IPC is
+  asynchronous, so every close path the app owns - the window's close
+  request (close button, Close Window, Quit and Cmd+Q, Alt+F4), the
+  unsaved-changes prompt, closing the last tab, the detached chat, an
+  update's install - first sends what's held back (the resting zoom) and
+  waits for Rust to answer every settings, UI-state and history write
+  (`src/storage/pending-writes.ts`, at most 2 s). On iOS, going to the
+  background sends what's held back too.
+- A file that can't be parsed (or isn't UTF-8) is renamed to
+  `<name>.corrupt-<unix time>` and the app starts from defaults rather than
+  refusing to start. A window that boots with no settings at all, or on a
+  new profile (no `settings.json` at launch: the boot snapshot's
+  `newProfile`), writes the defaults out with `settings_fill_defaults`,
+  which only adds fields that are missing: a reload replays that same
+  snapshot, and must not put the defaults back over what was changed since.
+- A file that is there but can't be read for another reason (permissions,
+  an I/O error) is left exactly as it is: the app logs it, runs on defaults
+  held in memory for that session, and writes nothing over it.
+- `schemaVersion` changes only for a change an older reader would misread.
+  Adding a field never needs it: readers fill in defaults for missing fields.
+- Before a window loads, Rust injects the current settings and UI state as
+  `window.__BOOT__` and applies the theme, so the first frame is already
+  right (`src-tauri/src/boot.js`, `src/storage/boot.ts`). For an imported
+  theme that includes the app's chrome colours derived from it: working
+  them out takes a CSS engine (`applyThemeChrome` in
+  `src/engine/tokens/palette.ts`), so the frontend remembers the result in
+  `ui-state.json` (`themeChrome`, per theme and appearance) and the boot
+  script applies it when it matches.
+- Until its page first paints, a window shows the platform's own
+  background, so Rust also follows a pinned Light or Dark natively
+  (`theme_changed` in `settings/app.rs`): on macOS it sets the app's appearance
+  (`apply_app_theme`), on Linux and Windows it builds windows in the page's background
+  colour and recolours open ones (`window_background`).
+
+## Project folders: `.textus/`
+
+A project's own settings live in its `.textus/` folder
+([AI-CONCEPTS.md](../design/ai-concepts.md)):
+
+| Path                            | What                                                                                                                                                 |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent.md`                      | The project's writing instructions.                                                                                                                  |
+| `settings.json`                 | Settings that go with the folder: plugins' values under `plugins`, the folder's conventions under `conventions` (`src/storage/project-settings.ts`). |
+| `style.md`, `style.previous.md` | The style profile, and the one "Learn my style" replaced.                                                                                            |
+| `library/<name>.md`             | The library, one entry per file; an entry Textus AI wrote has `remembered-by: textus-ai` in its front matter.                                        |
+| `skills/<name>.md`              | The project's skills.                                                                                                                                |
+
+The project folder is the nearest folder holding the document that has a
+`.textus/` (up to, never including, the home folder or a drive root), else
+the document's own folder, unless one was chosen.

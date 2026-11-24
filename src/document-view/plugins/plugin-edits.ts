@@ -1,0 +1,174 @@
+import { takeKeys } from "../../editor/take-keys";
+import { replaceChanged } from "../../editor/replace-changed";
+import { fnv1a } from "../../utils/hash";
+import { revealPosition } from "../../editor/reveal-position";
+import type { Ctx } from "@milkdown/kit/ctx";
+import { editorViewCtx } from "@milkdown/kit/core";
+import { closeHistory } from "@milkdown/kit/prose/history";
+import { Selection, TextSelection } from "@milkdown/kit/prose/state";
+import type { Node as ProseNode } from "@milkdown/kit/prose/model";
+import type { EditProposal } from "../../ai/types";
+import { serializeBlocks } from "../../editor/markdown/doc-markdown";
+import { resolveAnchored } from "../../ai/revision/pending-place";
+import { replaceWithMarkdown } from "../../editor/markdown/parse-markdown-source";
+import { locatePlainText } from "../../ai/revision/text-locate";
+import { parseMarkdownSource } from "../../editor/markdown/parse-markdown-source";
+import type { DocumentPlace } from "../../plugins/app-bridge";
+import { markChangeSource } from "../../editor/change-source";
+import { flipMatched } from "../../engine/motion/flip-matched";
+import { movingBlocks } from "../../editor/blocks/block-lift";
+
+/**
+ * A plugin's edits to the document in front, placed by block ids in order
+ * and written in one transaction (one undo). Nothing is written when one
+ * can't be placed.
+ */
+export function applyPluginEdits(ctx: Ctx, edits: EditProposal[]): boolean {
+  const view = ctx.get(editorViewCtx);
+  let tr = view.state.tr;
+  // The selection's ends, kept by their offsets into a block written again
+  // whole (a list reordered), not thrown to the block's edge.
+  let ends = [tr.selection.anchor, tr.selection.head];
+  let atCaret = false;
+  for (const edit of edits) {
+    const text = edit.text ?? "";
+    if (
+      edit.action === "insert_at_cursor" ||
+      edit.action === "replace_selection"
+    ) {
+      const { from, to } = tr.selection;
+      const end = edit.action === "insert_at_cursor" ? from : to;
+      tr = replaceWithMarkdown(tr, ctx, from, end, text);
+      atCaret = true;
+      continue;
+    }
+    if (edit.action === "append") {
+      const end = tr.doc.content.size;
+      tr = replaceWithMarkdown(tr, ctx, end, end, `\n\n${text}`);
+      continue;
+    }
+    // The block (or run) is written again whole, its new Markdown composed
+    // around the anchor as an accepted proposal's is.
+    const placed = resolveAnchored(
+      ctx,
+      tr.doc,
+      serializeBlocks(ctx, tr.doc),
+      edit,
+    );
+    if (!placed) return false;
+    const { from, to } = placed.range;
+    const size = tr.doc.content.size;
+    const steps = tr.steps.length;
+    tr = replaceWithMarkdown(tr, ctx, from, to, placed.replacement);
+    const end = to + tr.doc.content.size - size;
+    const map = tr.mapping.slice(steps);
+    ends = ends.map((at) =>
+      at >= from && at <= to ? Math.min(at, end) : map.map(at),
+    );
+  }
+  if (!tr.docChanged) return true;
+  closeHistory(tr);
+  if (!atCaret) {
+    // A block written again leaves the view where it was.
+    const [anchor, head] = ends.map((at) => tr.doc.resolve(at));
+    tr.setSelection(
+      anchor!.pos === head!.pos
+        ? Selection.near(anchor!)
+        : TextSelection.between(anchor!, head!),
+    );
+    // Blocks written again in another order (a list sorted) slide from
+    // where they stood to their new places.
+    flipMatched(
+      () => movingBlocks(view),
+      (el) => `${el.tagName}\u0000${el.textContent}`,
+      () => view.dispatch(markChangeSource(tr, "plugin")),
+    );
+    return true;
+  }
+  view.dispatch(markChangeSource(tr, "plugin").scrollIntoView());
+  return true;
+}
+
+/** Where `place` is in `doc`: its block, its heading, its words, or the
+ *  block its line falls in - the first of them that is found. */
+function findPlace(
+  ctx: Ctx,
+  doc: ProseNode,
+  place: DocumentPlace,
+): number | null {
+  const blocks = serializeBlocks(ctx, doc);
+  if (place.block) {
+    const block = blocks.find((b) => b.id === place.block?.replace(/^#/, ""));
+    if (block) return block.from + 1;
+  }
+  if (place.text) {
+    for (const block of blocks) {
+      const at = locatePlainText(doc, block.from, block.to, place.text);
+      if (at) return at.from;
+    }
+  }
+  if (place.heading) {
+    const want = place.heading.trim().toLowerCase();
+    const heading = blocks.find(
+      (b) =>
+        b.kind === "heading" &&
+        b.markdown
+          .replace(/^#+\s*/, "")
+          .trim()
+          .toLowerCase() === want,
+    );
+    if (heading) return heading.from + 1;
+  }
+  if (typeof place.line === "number") {
+    // Markdown lines, as metadata and the outline count them.
+    let line = 0;
+    for (const block of blocks) {
+      const lines = block.markdown.split("\n").length;
+      if (place.line < line + lines) return block.from + 1;
+      line += lines + 1;
+    }
+    return blocks.length ? blocks[blocks.length - 1].from + 1 : null;
+  }
+  return null;
+}
+
+/** Puts the caret at `place` and scrolls it into view; false when it
+ *  isn't found. */
+export function revealPlace(ctx: Ctx, place: DocumentPlace): boolean {
+  const view = ctx.get(editorViewCtx);
+  const pos = findPlace(ctx, view.state.doc, place);
+  if (pos === null) return false;
+  const $pos = view.state.doc.resolve(
+    Math.min(pos, view.state.doc.content.size),
+  );
+  const selection = $pos.parent.inlineContent
+    ? TextSelection.create(view.state.doc, $pos.pos)
+    : Selection.near($pos);
+  view.dispatch(view.state.tr.setSelection(selection));
+  takeKeys(view);
+  revealPosition(view, selection.from);
+  return true;
+}
+
+/** A short name for the document's version: changes whenever its text
+ *  does. */
+export function documentRevision(markdown: string): string {
+  return `${markdown.length}-${fnv1a(markdown).toString(36)}`;
+}
+
+/**
+ * The document made to read `markdown`, as one undo step: only what
+ * differs is rewritten, so the caret stays.
+ */
+export function replaceDocument(ctx: Ctx, markdown: string): boolean {
+  const view = ctx.get(editorViewCtx);
+  const parsed = parseMarkdownSource(ctx, markdown);
+  if (!parsed) return false;
+  const doc = view.state.doc;
+  const tr = replaceChanged(view.state.tr, doc.content, parsed.content);
+  if (!tr) return true;
+  closeHistory(tr);
+  view.dispatch(markChangeSource(tr, "plugin"));
+  // Refused (a read-only document): the caller learns the text didn't take.
+  return view.state.doc !== doc;
+}

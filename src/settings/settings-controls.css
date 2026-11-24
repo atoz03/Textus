@@ -1,0 +1,182 @@
+button.settings-inline-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+  background: var(--ui-bg);
+}
+
+/* A row with two actions, stacked so a long folder path beside them has room. */
+.settings-inline-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shortcut-row-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 1;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.shortcut-capture-button {
+  min-width: 132px;
+  text-align: center;
+  font-size: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Clear waits for the row it is on: a column of them was all one saw. Out
+   of the row until then, so a key wrapped under its name starts there. */
+@media (any-hover: hover) {
+  .shortcut-setting:not(:hover, :focus-within) .shortcut-clear {
+    display: none;
+  }
+}
+
+.shortcut-capture-active {
+  border-color: var(--ui-accent);
+  color: var(--ui-accent-text);
+}
+
+/* The key's field and its buttons: the buttons under the field when the
+   two don't fit. */
+.api-key-input-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 16ch;
+}
+
+.api-key-input {
+  flex: 1;
+  min-width: 0;
+  max-width: 242px;
+}
+
+.api-key-configured {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.settings-error {
+  padding: 8px 12px;
+  margin: 8px 0;
+  border-left: 2px solid var(--ui-danger);
+  border-radius: 0 var(--shape-s) var(--shape-s) 0;
+  background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+  color: var(--ui-danger);
+  font-size: var(--text-body);
+  word-break: break-word;
+}
+
+.settings-success {
+  padding: 8px 12px;
+  margin: 8px 0;
+  border-left: 2px solid var(--ui-success);
+  border-radius: 0 var(--shape-s) var(--shape-s) 0;
+  background: color-mix(in srgb, var(--ui-success) 10%, transparent);
+  color: var(--ui-success);
+  font-size: var(--text-body);
+}
+
+/* Inline banners carry their own left accent, so drop the row hairline
+   above them. */
+.settings-group-body > .settings-error,
+.settings-group-body > .settings-success {
+  border-top: none;
+}
+
+/* Every <select> in Settings uses this class: outside `.settings-row` a
+   native select has no border or background. The arrow is a drawn chevron. */
+.settings-select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.image-settings-row {
+  align-items: flex-start;
+}
+
+.image-settings-input {
+  width: min(298px, 48%);
+  flex: 0 1 298px;
+}
+
+/* Settings > Images > Folder: the choice, the subfolder's name beside it,
+   and under the label the link a paste writes. */
+.image-folder-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.image-folder-input {
+  flex: 1 1 12ch;
+  min-width: 0;
+}
+
+.image-folder-example {
+  display: block;
+  /* Whole, even on a narrow window: the end of the link is the part that
+     differs. */
+  overflow-wrap: break-word;
+  font-family: var(--font-mono);
+  font-size: var(--text-footnote);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--ui-success);
+  flex-shrink: 0;
+}
+
+/* Account vs API key, a command vs an address: the shared segmented
+   control, in its place in the panel. */
+.settings-segmented {
+  margin: 12px 0 4px;
+}
+
+/* ---- Label + control rows that aren't toggle rows ---- */
+
+/* Label on top, then the controls, then their note, for controls that need
+   the row's width. */
+.settings-field-label {
+  font-size: var(--text-body);
+  color: var(--ui-text);
+  flex-shrink: 0;
+}
+
+/* Proxy setting: type select + host + port on one line. */
+.settings-proxy-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 0 12px;
+}
+
+.settings-proxy-host {
+  flex: 1 1 176px;
+  min-width: 0;
+}
+
+.settings-proxy-port {
+  flex: 0 0 80px;
+}
+
+/* One row's control under its name: every row's (SettingsGroup). */
+.settings-group-body[data-stacked]
+  > .settings-row:not(.settings-toggle-row)
+  > :last-child:not(:first-child) {
+  flex-basis: 100%;
+}

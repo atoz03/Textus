@@ -1,0 +1,8 @@
+/* inline-chat.css: its parts, in cascade order. */
+@import "./chat-shell.css";
+@import "./chat-composer.css";
+@import "./chat-proposals.css";
+@import "./chat-progress.css";
+@import "./chat-quick-ask-doc.css";
+@import "./chat-proposal-text.css";
+@import "./chat-cards.css";

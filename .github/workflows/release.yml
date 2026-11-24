@@ -1,0 +1,481 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to rebuild (for example v0.8.11)
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  # The one place the product's name is spelled for this workflow: the
+  # release title.
+  PRODUCT_NAME: Textus
+
+permissions:
+  contents: write
+
+# One run per tag at a time: a rebuild started while the tag's first run is
+# still uploading would race it for the same draft's assets.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  # Cheap checks on a Linux runner before any macOS/Windows minutes are
+  # spent: the tag must name the version the app's files carry, and a
+  # stable tag needs its release notes.
+  preflight:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Validate version tag
+        run: '[[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]'
+
+      # The checks come from the commit this workflow runs at (so a rebuild
+      # of a tag older than scripts/check-versions.mjs still gets them);
+      # what they check is the tag.
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          path: tagged
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Tag matches the app version
+        run: node scripts/check-versions.mjs --root tagged --tag "$RELEASE_TAG"
+
+      # The tagged app reads textus-latest.json and its workflow keeps
+      # tauri-action from uploading latest.json - the manifest every Levis
+      # install reads (scripts/updater-manifest.mjs). This also refuses a
+      # rebuild of an old Levis tag from this workflow.
+      - name: Updater never serves Levis's manifest
+        run: node scripts/updater-manifest.mjs check --root tagged
+
+      # Required for a newly pushed stable tag. A rebuild of a tag from
+      # before release notes were kept (0.8.10 and older) only warns.
+      - name: Release notes exist for a stable tag
+        if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
+        run: |
+          notes="docs/releases/${RELEASE_TAG#v}.md"
+          if [ -s "tagged/$notes" ]; then exit 0; fi
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            echo "::error::$notes is missing at $RELEASE_TAG - write the release notes before tagging."
+            exit 1
+          fi
+          echo "::warning::$notes is missing at $RELEASE_TAG; the release keeps its current notes."
+
+      # The builds each upload to the tag's draft, made by whichever found
+      # none; two starting together made two and split the files between
+      # them (v1.2.5). Made here once, before any build, they share it.
+      - name: One draft for the builds to share
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then exit 0; fi
+          gh release create "$RELEASE_TAG" --draft --verify-tag \
+            --title "$PRODUCT_NAME $RELEASE_TAG" --notes "" \
+            $([[ "$RELEASE_TAG" == *-* ]] && echo --prerelease)
+
+  # The full suite, once, on the tagged commit: pull requests into main run
+  # only the quick checks (ci.yml). A rebuild of an older tag by hand skips
+  # it, as its commit's suite ran when it was tagged.
+  ci:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/ci.yml
+    with:
+      full: true
+
+  build:
+    needs: [preflight, ci]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
+    name: build (${{ matrix.target || matrix.platform }})
+    timeout-minutes: 90
+    # The signing keys live in the release environment, which only
+    # runs from a release tag (v*); only admins can push those.
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos-26 is what macos-latest points at today (same arm64
+          # pool); pinned so the next image switch is a deliberate change.
+          - platform: macos-26
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          # Intel Macs: cross-compiled on the same Apple silicon runner (the
+          # Intel runner pool is being retired). Its DMG and updater tarball
+          # are named _x64, beside the _aarch64 ones.
+          - platform: macos-26
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            args: ""
+          # Windows ships the NSIS .exe and nothing else; the target list
+          # itself lives in src-tauri/tauri.windows.conf.json, so a local
+          # `tauri build` produces the same one artifact this does.
+          #
+          # It used to bundle MSI as well on stable tags, and that is what
+          # made Windows upgrades ask to uninstall first: the two installers
+          # register in different places, so neither recognises the other's
+          # copy - take the .msi once and the next .exe cannot replace it.
+          # MSI also cannot build a pre-release at all ("optional pre-release
+          # identifier in app version must be numeric-only ... for msi
+          # target"), so rc tags were NSIS-only regardless, and the updater
+          # has always shipped NSIS. One installer, one upgrade path.
+          - platform: windows-2025
+            args: ""
+          # ARM64 Windows and Linux (from 1.1.0), each on GitHub's native
+          # arm64 runner, so the frontend tooling, the Rust build and the
+          # bundlers (NSIS, linuxdeploy) all run as they do on x64. The
+          # explicit --target is what tauri-action reads the architecture
+          # from when it looks for the installers; without it, it would trust
+          # the arch of whichever Node the runner picked. Tauri names their
+          # installers apart from the x64 ones: _arm64-setup.exe, _arm64.deb,
+          # .aarch64.rpm and _aarch64.AppImage (docs/dev/releasing.md).
+          - platform: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            args: --target aarch64-pc-windows-msvc
+          - platform: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            args: --target aarch64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      # Older tags predate .gitattributes. Match the source blobs on Windows
+      # too, so a rebuild does not fail Prettier after an automatic CRLF checkout.
+      - name: Preserve source line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          # The two macOS builds share a runner image; one cache each.
+          key: ${{ matrix.target || 'host' }}
+          # Saved from a tag no later tag can read: it only crowds out main's.
+          save-if: false
+
+      # The Linux bundlers (linuxdeploy, the AppImage plugin and runtime)
+      # Tauri downloads on every build otherwise; kept per architecture.
+      - name: Linux bundler cache
+        if: startsWith(matrix.platform, 'ubuntu')
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/tauri
+          key: tauri-bundlers-${{ matrix.platform }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: tauri-bundlers-${{ matrix.platform }}-
+
+      # ring (rustls, under reqwest) assembles its ARM64 Windows code with
+      # clang, which must be on PATH. The windows-11-arm image ships LLVM;
+      # this makes sure the build finds it, or says why it can't.
+      - name: Put clang on PATH
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          if (Get-Command clang -ErrorAction SilentlyContinue) { clang --version; exit 0 }
+          $llvm = "C:\Program Files\LLVM\bin"
+          if (-not (Test-Path "$llvm\clang.exe")) {
+            Write-Output "::error::clang is neither on PATH nor in $llvm; ring cannot build for ARM64 Windows."
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $llvm
+          & "$llvm\clang.exe" --version
+
+      - name: Install Linux dependencies
+        if: startsWith(matrix.platform, 'ubuntu-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # With the signing secrets missing, Tauri builds an unsigned DMG and
+      # says nothing.
+      - name: Require the macOS signing secrets
+        if: startsWith(matrix.platform, 'macos-')
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in APPLE_CERTIFICATE APPLE_SIGNING_IDENTITY APPLE_ID APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not set: the DMG would ship unsigned."
+              exit 1
+            fi
+          done
+
+      - name: Build and release
+        # Pinned to the commit of v1.0.0: a moving major tag could change how
+        # the release is built between two tags. 1.0 renamed
+        # includeUpdaterJson to uploadUpdaterJson; updater-manifest.mjs
+        # checks the name that matches the version in the comment below.
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the updater artifacts (the .sig files) so installed apps
+          # can verify downloads against the pubkey baked into
+          # tauri.conf.json. It is Levis's key, reused: that is why Textus
+          # must never publish a latest.json (see uploadUpdaterJson below).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # macOS code signing + notarization (Gatekeeper). tauri-action
+          # imports the base64 .p12 into a temp keychain; the bundler then
+          # signs the .app with hardened runtime, notarizes the DMG with
+          # notarytool, and staples the ticket. All six secrets must be set
+          # together - a partially-configured set fails the macOS build
+          # rather than shipping an unsigned DMG.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: "${{ env.PRODUCT_NAME }} ${{ env.RELEASE_TAG }}"
+          # Keep partial matrix builds away from the updater. The publish
+          # job exposes the release only after every build succeeds.
+          releaseDraft: true
+          # A semver pre-release suffix (v0.9.0-rc.1, -beta.2, -alpha) marks
+          # the GitHub release as a pre-release. That is what keeps it away
+          # from everyone else: the updater endpoint in tauri.conf.json points
+          # at `releases/latest/...`, and GitHub's "latest" excludes
+          # pre-releases - so a stable install never even sees this build's
+          # manifest. Without this the tag pattern below (v*.*.*) matches
+          # an rc tag too and would ship it to every user as the new stable.
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+          # Never upload latest.json: Levis 0.9.x installs read that name
+          # from this repository (the old CatVinci-Studio/Levis URL
+          # redirects here) and trust the same signing key, so they would
+          # install Textus over themselves. The publish job writes
+          # textus-latest.json from the uploaded .sig files instead.
+          # scripts/updater-manifest.mjs check fails if this line goes.
+          # (tauri-action before 1.0 called this input includeUpdaterJson.)
+          uploadUpdaterJson: false
+          # RPM versions may not contain '-', so a pre-release (1.0.4-rc.1)
+          # cannot be an .rpm; rc tags ship the .deb and AppImage only, on
+          # x64 and ARM64 alike.
+          args: ${{ matrix.args }}${{ startsWith(matrix.platform, 'ubuntu-') && contains(env.RELEASE_TAG, '-') && ' --bundles deb,appimage' || '' }}
+
+      # textus-bin (packaging/arch/PKGBUILD) installs this tarball. Its
+      # binary is a second build with TEXTUS_DISTRIBUTION=aur: it reports new
+      # versions but does not install them, because pacman owns /usr/bin.
+      # --no-bundle recompiles only the textus crate and skips the installers.
+      # x86_64 only: the package is built and tested in the x86_64-only
+      # archlinux container, and [catvinci] serves no aarch64 repository.
+      - name: Build and upload AUR tarball
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEXTUS_DISTRIBUTION: aur
+        run: |
+          npx tauri build --no-bundle
+          scripts/package-linux-tarball.sh "${RELEASE_TAG#v}" \
+            src-tauri/target/release/textus dist-aur
+          gh release upload "$RELEASE_TAG" dist-aur/* --clobber
+
+      # The portable zip (Windows): a second build with
+      # TEXTUS_DISTRIBUTION=portable, which keeps its settings, data and the
+      # webview's in the TextusData folder beside it and reports new versions
+      # without installing them. --no-bundle recompiles only the textus crate.
+      - name: Build and upload the portable zip
+        if: startsWith(matrix.platform, 'windows-')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEXTUS_DISTRIBUTION: portable
+        run: |
+          npx tauri build --no-bundle ${{ matrix.args }}
+          $version = $env:RELEASE_TAG.TrimStart("v")
+          $arch = if ("${{ matrix.target }}") { "arm64" } else { "x64" }
+          $exe = if ("${{ matrix.target }}") { "src-tauri/target/${{ matrix.target }}/release/textus.exe" } else { "src-tauri/target/release/textus.exe" }
+          $dir = Join-Path $env:RUNNER_TEMP "Textus"
+          New-Item -ItemType Directory -Force (Join-Path $dir "TextusData") | Out-Null
+          Copy-Item $exe (Join-Path $dir "Textus.exe")
+          Set-Content (Join-Path $dir "TextusData/README.txt") "Textus keeps its settings and data in this folder. Keep it beside Textus.exe; to update, unzip the new version over this folder."
+          $zip = Join-Path $env:RUNNER_TEMP "Textus_${version}_${arch}-portable.zip"
+          Compress-Archive -Path (Join-Path $dir "*") -DestinationPath $zip
+          gh release upload $env:RELEASE_TAG $zip --clobber
+
+  # Builds and tests textus-bin and attaches it to the draft (see
+  # arch-package.yml). Before publish, so a broken package keeps the whole
+  # release a draft.
+  arch-package:
+    needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    uses: ./.github/workflows/arch-package.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+    secrets: inherit
+
+  # The signed Android APK (see android-release.yml), also on the draft
+  # before publish.
+  android:
+    needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    uses: ./.github/workflows/android-release.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+    secrets: inherit
+
+  # The jobs after the builds say when they run: without that, a rebuild
+  # (workflow_dispatch, its CI skipped) skipped them all, as a skipped job
+  # passes its skip on to every job that needs it.
+  publish:
+    needs: [build, arch-package, android]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.arch-package.result == 'success' && needs.android.result == 'success' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    outputs:
+      newest-stable: ${{ steps.newest.outputs.newest-stable }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # The updater reads textus-latest.json from the newest release the
+      # moment it is published. It is written here, once every platform's
+      # signed artifacts are on the draft, from their .sig files: each
+      # artifact's URL is the release's download URL plus its asset name.
+      # A platform whose build silently failed to upload (a race, an upload
+      # error) has no .sig, and the build step fails rather than leave every
+      # user of that platform without the update.
+      - name: Write the updater manifest (textus-latest.json)
+        run: |
+          sigs="$RUNNER_TEMP/sigs"
+          mkdir -p "$sigs"
+          gh release download "$RELEASE_TAG" --pattern '*.sig' --dir "$sigs" --clobber
+          notes="docs/releases/${RELEASE_TAG#v}.md"
+          node scripts/updater-manifest.mjs build \
+            --version "${RELEASE_TAG#v}" \
+            --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}" \
+            --sig-dir "$sigs" \
+            $([ -f "$notes" ] && printf -- '--notes-file %s' "$notes") \
+            --out "$RUNNER_TEMP/textus-latest.json"
+          jq '{version, platforms: (.platforms | keys)}' "$RUNNER_TEMP/textus-latest.json"
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/textus-latest.json" --clobber
+
+      # The last gate before anything is public: no latest.json on the
+      # release. Levis installs read that name from the newest release (the
+      # old repository URL redirects here) and trust the same signing key,
+      # so they would install whatever it names over Levis. Releases up to
+      # 1.1.0 carried a copy of Levis 0.9.8's own; Levis support ended
+      # there, so none is allowed now. A rebuild of one of those tags stops
+      # here until that copy is deleted from the release.
+      - name: No latest.json on the release
+        run: |
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' \
+            > "$RUNNER_TEMP/assets.txt"
+          node scripts/updater-manifest.mjs guard --assets-file "$RUNNER_TEMP/assets.txt"
+
+      # A workflow_dispatch rebuild of an old tag republishes that release,
+      # but making it "Latest" or pointing the mirror or arch-repo at it
+      # would downgrade everyone. Asked here, after the builds, not when
+      # the run started: a hotfix tag pushed while this one was still
+      # building is newer by the time this one is published.
+      - name: Is this the newest stable tag?
+        id: newest
+        run: |
+          newest=$(git ls-remote --tags --refs origin 'v*.*.*' \
+            | sed 's|.*refs/tags/||' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V | tail -n1)
+          echo "Newest stable tag: ${newest:-none}"
+          if [ "$newest" = "$RELEASE_TAG" ]; then
+            echo "newest-stable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "newest-stable=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A rebuilt older tag must not become GitHub's "Latest" release: the
+      # updater and the website's download links follow releases/latest.
+      - name: Publish completed release
+        env:
+          NEWEST_STABLE: ${{ steps.newest.outputs.newest-stable }}
+        run: |
+          NOTES="docs/releases/${RELEASE_TAG#v}.md"
+          if [ -f "$NOTES" ]; then
+            gh release edit "$RELEASE_TAG" --notes-file "$NOTES"
+          fi
+          if [ "$NEWEST_STABLE" = true ]; then
+            gh release edit "$RELEASE_TAG" --draft=false
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --latest=false
+          fi
+
+  # After publishing every tag, release candidates included: the beta update
+  # channel's manifest (textus-beta.json on the download bucket), which is
+  # that channel's only way to see a pre-release. It moves only forward, so
+  # rebuilding an older tag leaves it where it is.
+  update-beta-manifest:
+    needs: publish
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
+    uses: ./.github/workflows/update-beta-manifest.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+    secrets: inherit
+
+  # After publishing, only for the newest stable tag: the download mirror
+  # and the [catvinci] pacman repository. Pre-releases have no channel of
+  # their own in either, so pointing them at an rc would hand it to
+  # everyone; an older tag would downgrade. Each is its own workflow and can
+  # be re-run by hand for one tag. The Homebrew cask is Homebrew's own
+  # (Casks/t/textus.rb in Homebrew/homebrew-cask); its bot bumps it.
+  mirror-downloads:
+    needs: publish
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.publish.outputs.newest-stable == 'true' }}
+    uses: ./.github/workflows/mirror-downloads.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+    secrets: inherit
+
+  # The browser playground follows the latest stable release.
+  deploy-playground:
+    needs: publish
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.publish.outputs.newest-stable == 'true' }}
+    uses: ./.github/workflows/deploy-playground.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+    secrets: inherit
+
+  # pacman also sorts 0.9.0_rc.1 above 0.9.0 (see update-arch-repo.yml).
+  update-arch-repo:
+    needs: publish
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.publish.outputs.newest-stable == 'true' }}
+    uses: ./.github/workflows/update-arch-repo.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+    secrets: inherit

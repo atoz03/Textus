@@ -1,0 +1,205 @@
+import { useEffect, useRef } from "react";
+import type { Strings } from "../../i18n/strings";
+import type { FindReplace } from "./useFindReplace";
+import {
+  ArrowUpIcon,
+  ChevronIcon,
+  CloseIcon,
+} from "../../engine/controls/icons";
+import { usePresenceProps } from "../../engine/motion/usePresence";
+import { Tooltip } from "../../engine/controls/Tooltip";
+import "./FindReplaceBar.css";
+import { isImeKeydown } from "../../utils/ime";
+
+type FindReplaceBarLabels = Pick<
+  Strings,
+  | "findPlaceholder"
+  | "replacePlaceholder"
+  | "replace"
+  | "replaceAll"
+  | "matchCase"
+  | "useRegex"
+  | "invalidRegex"
+  | "noMatches"
+  | "findPreviousMatch"
+  | "findNextMatch"
+  | "findClose"
+>;
+
+interface FindReplaceBarProps {
+  findReplace: FindReplace;
+  labels: FindReplaceBarLabels;
+}
+
+export function FindReplaceBar({ findReplace, labels }: FindReplaceBarProps) {
+  const { query, replacement, caseSensitive, useRegex, status, replaceOpen } =
+    findReplace;
+  const presence = usePresenceProps<HTMLDivElement>();
+  const findInput = useRef<HTMLInputElement>(null);
+
+  // On opening and on each Find while open: typing replaces the query.
+  useEffect(() => {
+    findInput.current?.focus();
+    findInput.current?.select();
+  }, [findReplace.focusRequest]);
+
+  // Enter that confirms an input method's word is the IME's, not Find's.
+  function onFindKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !isImeKeydown(e)) {
+      e.preventDefault();
+      if (e.shiftKey) findReplace.prev();
+      else findReplace.next();
+    }
+  }
+
+  function onReplaceKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !isImeKeydown(e)) {
+      e.preventDefault();
+      findReplace.replaceOne();
+    }
+  }
+
+  // Escape handled once here for both inputs; stopPropagation keeps bar
+  // keystrokes out of the app-level shortcut dispatcher.
+  function onBarKeyDown(e: React.KeyboardEvent) {
+    const composing = isImeKeydown(e);
+    if (e.key === "Escape" && !composing) {
+      e.preventDefault();
+      findReplace.close();
+    }
+    e.stopPropagation();
+  }
+
+  const countLabel = status.error
+    ? labels.invalidRegex
+    : query
+      ? status.matchCount > 0
+        ? `${status.activeIndex + 1} / ${status.matchCount}`
+        : labels.noMatches
+      : "";
+
+  return (
+    <div
+      {...presence}
+      className="find-replace-bar floating-surface"
+      onKeyDown={onBarKeyDown}
+    >
+      <Tooltip text={labels.replace}>
+        <button
+          type="button"
+          aria-label={labels.replace}
+          className={`find-replace-chevron ${replaceOpen ? "find-replace-chevron-open" : ""}`}
+          onClick={() => findReplace.setReplaceOpen(!replaceOpen)}
+        >
+          <ChevronIcon />
+        </button>
+      </Tooltip>
+      <div className="find-replace-rows">
+        <div className="find-replace-row">
+          <div className="find-replace-field">
+            <input
+              ref={findInput}
+              className="find-replace-input"
+              type="text"
+              value={query}
+              placeholder={labels.findPlaceholder}
+              onChange={(e) => findReplace.setQuery(e.target.value)}
+              onKeyDown={onFindKeyDown}
+            />
+            <span
+              className={`find-replace-count ${status.error ? "find-replace-count-error" : ""}`}
+            >
+              {countLabel}
+            </span>
+            <Tooltip text={labels.matchCase}>
+              <button
+                type="button"
+                className={`find-replace-toggle ${caseSensitive ? "find-replace-toggle-active" : ""}`}
+                aria-label={labels.matchCase}
+                aria-pressed={caseSensitive}
+                onClick={findReplace.toggleCaseSensitive}
+              >
+                Aa
+              </button>
+            </Tooltip>
+            <Tooltip text={labels.useRegex}>
+              <button
+                type="button"
+                className={`find-replace-toggle ${useRegex ? "find-replace-toggle-active" : ""}`}
+                aria-label={labels.useRegex}
+                aria-pressed={useRegex}
+                onClick={findReplace.toggleUseRegex}
+              >
+                .*
+              </button>
+            </Tooltip>
+          </div>
+          <div className="find-replace-nav">
+            <Tooltip text={labels.findPreviousMatch}>
+              <button
+                type="button"
+                onClick={findReplace.prev}
+                disabled={status.matchCount === 0}
+                aria-label={labels.findPreviousMatch}
+              >
+                <ArrowUpIcon />
+              </button>
+            </Tooltip>
+            <Tooltip text={labels.findNextMatch}>
+              <button
+                type="button"
+                onClick={findReplace.next}
+                disabled={status.matchCount === 0}
+                aria-label={labels.findNextMatch}
+              >
+                <ArrowUpIcon className="find-replace-arrow-down" />
+              </button>
+            </Tooltip>
+            <Tooltip text={labels.findClose}>
+              <button
+                type="button"
+                className="find-replace-close"
+                onClick={findReplace.close}
+                aria-label={labels.findClose}
+              >
+                <CloseIcon />
+              </button>
+            </Tooltip>
+          </div>
+        </div>
+        {replaceOpen && (
+          <div className="find-replace-row">
+            <div className="find-replace-field">
+              <input
+                className="find-replace-input"
+                type="text"
+                value={replacement}
+                placeholder={labels.replacePlaceholder}
+                onChange={(e) => findReplace.setReplacement(e.target.value)}
+                onKeyDown={onReplaceKeyDown}
+              />
+            </div>
+            <div className="find-replace-nav">
+              <button
+                type="button"
+                className="find-replace-text"
+                onClick={findReplace.replaceOne}
+                disabled={status.matchCount === 0}
+              >
+                {labels.replace}
+              </button>
+              <button
+                type="button"
+                className="find-replace-text"
+                onClick={findReplace.replaceAll}
+                disabled={status.matchCount === 0}
+              >
+                {labels.replaceAll}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

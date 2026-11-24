@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Textus</title>
+    <!-- Painted before any script or stylesheet loads, so a new window opens
+         in the system's colours instead of flashing white (base.css's
+         --doc-bg). An appearance pinned in Settings wins: Rust's boot script
+         (src-tauri/src/boot.js) has set data-theme before this is parsed,
+         and --boot-bg to the theme's own page colour where it is known
+         (window_background in src-tauri/src/settings/window_background.rs, whose test
+         checks these colours against base.css). -->
+    <style>
+      html {
+        background: var(--boot-bg, #ffffff);
+      }
+      @media (prefers-color-scheme: dark) {
+        html {
+          background: var(--boot-bg, #1c1c1e);
+        }
+      }
+      html[data-theme="light"] {
+        background: var(--boot-bg, #ffffff);
+      }
+      html[data-theme="dark"] {
+        background: var(--boot-bg, #1c1c1e);
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

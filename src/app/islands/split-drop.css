@@ -1,0 +1,10 @@
+/* While a tab or file is dragged: the grabbing hand everywhere, and no
+   frame taking the pointer. */
+body.document-dragging,
+body.document-dragging * {
+  cursor: grabbing !important;
+}
+
+body.document-dragging iframe {
+  pointer-events: none;
+}

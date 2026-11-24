@@ -1,0 +1,91 @@
+.language-welcome-backdrop {
+  /* Below the unsaved-changes prompt, which a close during the first launch
+     still has to show. */
+  z-index: var(--z-modal);
+  --edge: 28px;
+  padding: calc(var(--safe-top, 0px) + var(--edge))
+    calc(var(--safe-right, 0px) + var(--edge))
+    calc(var(--safe-bottom, 0px) + var(--edge))
+    calc(var(--safe-left, 0px) + var(--edge));
+  animation: motion-fade-in var(--dur-slow) var(--ease-standard);
+}
+
+/* Continue lets it go while the tutorial arrives. */
+.language-welcome-backdrop[data-state="closing"] {
+  animation: motion-fade-out var(--dur-base) var(--ease-in) forwards;
+}
+
+.language-welcome {
+  /* Inside the backdrop's padding, not dvh. */
+  max-height: 100%;
+  overflow-y: auto;
+  width: min(572px, 100%);
+  padding: 36px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--shape-l);
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  box-shadow: var(--shadow-dialog);
+  /* The first thing the app shows: it rises in unhurried. */
+  animation: motion-rise-in var(--dur-slow) var(--ease-out);
+}
+
+.language-welcome-mark {
+  display: block;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 28px;
+}
+
+.language-welcome-eyebrow {
+  color: var(--ui-muted);
+  font-size: var(--text-footnote);
+  letter-spacing: 0.04em;
+}
+
+.language-welcome h1 {
+  margin: 4px 0 8px;
+  font-size: var(--text-large-title);
+  font-weight: 650;
+}
+
+.language-welcome > p {
+  margin: 0 0 28px;
+  color: var(--ui-muted);
+  font-size: var(--text-body);
+}
+
+/* The dropdown takes the whole width, at the height of the Continue button
+   below it, so the two read as one column. */
+.language-welcome-select {
+  width: 100%;
+}
+
+.language-welcome-continue {
+  width: 100%;
+  margin-top: 28px;
+}
+
+@media (max-width: 520px) {
+  .language-welcome {
+    padding: 28px 28px;
+  }
+}
+
+/* A phone on its side: less air, so Continue shows without a scroll. */
+@media (max-height: 520px) {
+  .language-welcome-backdrop {
+    --edge: 8px;
+  }
+  .language-welcome {
+    padding: 20px 24px;
+  }
+  .language-welcome-mark {
+    width: 36px;
+    height: 36px;
+    margin-bottom: 12px;
+  }
+  .language-welcome > p {
+    margin-bottom: 16px;
+  }
+}

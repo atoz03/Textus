@@ -1,0 +1,327 @@
+[package]
+name = "textus"
+version = "1.4.7-rc.4"
+description = "Textus: an Integrated Writing Environment, designed for professional writing"
+authors = ["CatVinci Studio"]
+edition = "2021"
+
+[workspace]
+members = ["crates/aicompat", "plugins/textus-files"]
+exclude = ["patches/wry"]
+resolver = "2"
+
+# Shipped builds (tauri build, tauri ios build) are sized for download:
+# 36.2 MB -> 16.5 MB binary on Linux x86_64, measured for 1.0.4.
+# - strip: the symbol table is only for backtraces, and nothing captures
+#   one - there is no panic hook or crash reporter. A panic's message and
+#   file:line live in the binary's data, so stderr still has them.
+# - lto + codegen-units = 1: whole-program inlining and dead-code removal
+#   across every crate in the tree. Costs build time: a clean release
+#   build went from ~1 to ~2.5 minutes locally, a rebuild of just this
+#   crate from 19 s to 100 s, since the link re-optimizes everything.
+# - opt-level "s": another 4 MB off (20.6 -> 16.5 MB) over 3. The editor
+#   and its rendering run in the webview; the CPU-bound Rust is the
+#   writing-rules engine, which with LTO is still faster at "s" than the
+#   old profile (all ten help guides: 167 ms before, 123 ms at "s", 73 ms
+#   at 3) - well under a frame per paragraph either way.
+# panic stays "unwind": spawn_blocking turns a panic (pdf-extract on a bad
+# PDF, commands/attachment.rs) into an error instead of an abort.
+# PR CI is unaffected: check:native and the iOS simulator build use debug.
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "s"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "textus_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Ids for new custom endpoints (every platform) and scheduled notifications.
+uuid = { version = "1", features = ["v4"] }
+# Dates: plugins' scheduled jobs across daylight saving (src/schedule/),
+# memory and past conversations' days, on every platform.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Version comparison: the update check (the updater hands its versions over
+# as semver 1) and catalog skills.
+semver = "1"
+# macos-private-api: required for transparent webview windows (the floating
+# drag-pill window a tab turns into while being dragged between windows).
+# tray-icon: Settings › General › Background's tray and menu bar icon
+# (src/background/tray.rs). Compiled in on desktop (Tauri builds no tray
+# for iOS), but none of it runs until the setting is turned on; with the
+# rest of background mode it adds 250 KB to the Linux x86_64 release
+# binary (17.18 -> 17.43 MB, measured for 1.2.0). On Linux
+# the tauri CLI then also makes the .deb depend on libayatana-appindicator
+# and copies the library into the AppImage.
+# Keep the minor in step with @tauri-apps/api in package.json; the tauri
+# CLI warns when the JS and Rust versions drift apart.
+tauri = { version = "2.12", features = ["protocol-asset", "macos-private-api", "tray-icon", "unstable"] }
+# Decodes the paths of textus-plugin:// URLs (plugins/scheme.rs); in the tree via url.
+percent-encoding = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-oauth = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# rt-multi-thread (in the tree through tauri): the multi-threaded runtime
+# some tests run on (commands/fs.rs).
+tokio = { version = "1", features = ["fs", "sync", "macros", "rt", "rt-multi-thread", "net", "process", "io-util", "time"] }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+base64 = "0.22"
+# SFTP over the user's own ssh (plugins/ssh): the protocol only, no SSH stack.
+russh-sftp = "3.0.1"
+sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "http2", "socks", "system-proxy"] }
+# Feature unification only - nothing here calls it: tauri-plugin-updater
+# builds its own reqwest 0.13 client for check_for_update/install, and the
+# updater must reach a SOCKS5 proxy (a socks5h:// address) as the rest of
+# the app does. Two reqwest versions in the tree, so this one has its own name.
+reqwest13 = { package = "reqwest", version = "0.13", default-features = false, features = ["socks"] }
+aicompat = { path = "crates/aicompat" }
+
+# Markdown extraction (src/extract/), for chat attachments (commands/
+# attachment.rs) and Textus AI's project tools (ai/project.rs). Everything
+# the "+" button accepts has to become either text in the prompt or a base64
+# image part, so each format needs a reader:
+#   pdf-extract  PDF text layer (scanned/image-only PDFs have none, and are
+#                reported as such rather than silently attaching nothing)
+#   calamine     xlsx/xls/xlsb/ods, rendered as one markdown table per sheet
+#   zip + quick-xml  docx, pptx and EPUB are zips of XML parts, and walking
+#                them into Markdown is a few hundred lines - far less risk
+#                than a do-everything crate (dotext, last released 2019) that
+#                would tie three formats to one unmaintained dependency.
+#   dom_query    HTML (and EPUB chapters) to Markdown: html5ever, the
+#                browsers' parser, so tag soup reads as a browser shows it.
+#                The same version tauri-utils builds with, so no new crates
+#                are downloaded, but it is new code in the binary: this
+#                Markdown extraction as a whole took the Linux x86_64 release
+#                from 15.31 to 16.24 MB (+0.9 MB), nearly all of it
+#                html5ever and its entity table. Shared with Textus AI's
+#                web_fetch (ai/web/extract.rs): web search and web_fetch add
+#                no crates, and 0.30 MB to that binary (16.34 -> 16.63 MB,
+#                measured for 1.2.0).
+#   encoding_rs + codepage  RTF's `\'hh` bytes in the code page the file
+#                declares; both already in the tree via calamine.
+pdf-extract = "0.12"
+calamine = "0.38"
+zip = { version = "9", default-features = false, features = ["deflate"] }
+quick-xml = "0.41"
+dom_query = { version = "0.28", default-features = false }
+encoding_rs = "0.8"
+codepage = "0.1"
+# PDF export's page numbers (commands/pdf_page_numbers.rs): the finished
+# file is opened and each page's number drawn in its bottom margin. Already
+# in the tree via pdf-extract, at the same version and features, so it adds
+# no crates - only lopdf's writer code to the binary.
+lopdf = { version = "0.42", default-features = false }
+# Attached pictures: other formats turned into ones every model reads, and
+# big ones made smaller (commands/attachment/picture.rs).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff", "ico"] }
+# Settings › Editor › Text font: the families installed on this machine.
+fontdb = { version = "0.24", default-features = false, features = ["fs", "memmap"] }
+
+# The writing-rules engine (src/ai/rules/, docs/design/ai-concepts.md): Markdown
+# parsed into prose blocks so code, math, front matter and link targets are
+# never "corrected"; NFC and compatibility ideographs; grapheme counts for
+# platform limits (Bluesky counts graphemes, X counts an emoji sequence as
+# one); regexes for the rule patterns. All pure Rust, and all but
+# unicode-segmentation already in the tree (regex via tauri-utils,
+# unicode-normalization via pdf-extract), so they cost little and build
+# for iOS. autocorrect and ferrous-opencc, which the plan proposed, were
+# measured and dropped: +3.3 MB / 54 crates (pest grammars, ignore,
+# serde_yaml) and +2.4 MB / 46 crates (rkyv, fst, OpenCC dictionaries)
+# for what a few hundred lines and a curated character table do here -
+# and autocorrect inserts the spaces Japanese and Korean must not get.
+pulldown-cmark = { version = "0.13", default-features = false }
+regex = "1"
+unicode-normalization = "0.1"
+unicode-segmentation = "1"
+# Every folder walk (src/walk.rs): the sidebar's file-name search and
+# Textus AI's project tools. The walker ripgrep and fd use - parallel, and
+# it honours .gitignore/.ignore and skips hidden files the way a writer's
+# tools already do. Pure Rust, so it builds for iOS as well.
+ignore = "0.4"
+
+# Desktop only (Windows/macOS/Linux): neither plugin supports iOS or Android
+# (their platform-support metadata says "none"), and lib.rs registers them
+# under #[cfg(desktop)]. iOS updates come through the App Store. Shared
+# plugins (opener, dialog) stay in [dependencies] above. See
+# docs/dev/ios-code-map.md.
+# iOS and Android document access (plugins/textus-files): pickers, security-scoped reads
+# and writes, remembered folders.
+# The scratch folder checks it is the user's own (ai/scratch.rs).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+tauri-plugin-textus-files = { path = "plugins/textus-files" }
+
+[target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
+# In step with @tauri-apps/plugin-updater and @tauri-apps/plugin-process.
+tauri-plugin-updater = "2.14"
+tauri-plugin-process = "2.4"
+# textus:// links for plugins (plugins/uri.rs).
+tauri-plugin-deep-link = "2"
+# A picture an accepted AI picture replaced goes to the system's Trash or
+# Recycle Bin when the user says so (commands/images.rs) - never deleted.
+trash = "5"
+# A notification's id, which its click names (src/schedule/notify/): random,
+# so a textus:// link from a web page can't name one. In the tree through tauri.
+
+# macOS-native PDF export (commands/export.rs): the themed document is
+# rendered in an offscreen WKWebView with createPDF and cut into A4 sheets
+# with PDFKit (Windows/Linux use their webviews' own PDF renderers - see the
+# webview2-com / webkit2gtk section below).
+# Versions and most of the objc2 ecosystem are already in the tree via wry;
+# features here switch on the WebKit bits wry doesn't itself use.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = [
+    "NSString",
+    "NSURL",
+    "NSError",
+    "NSObject",
+    "NSData",
+    "NSDictionary",
+    "NSValue",
+    # The full-screen notifications (window_fullscreen in lib.rs).
+    "NSNotification",
+    "NSOperation",
+    # The system's version, for a problem report (commands/system_info.rs).
+    "NSProcessInfo",
+    "block2",
+] }
+# CFString: the LaunchServices calls of commands/default_editor.rs.
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "CFCGTypes",
+    "CFString",
+    "objc2",
+] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "NSApplication",
+    # Paste without the webview's paste callout (commands/clipboard.rs).
+    "NSPasteboard",
+    # The Dock icon's menu (menu/dock.rs).
+    "NSMenu",
+    "NSMenuItem",
+    "NSResponder",
+    "NSWindow",
+    "NSView",
+    # Roman input only while Vim's normal mode holds the keys (commands/input_source.rs).
+    "NSTextInputContext",
+    "NSTextView",
+    # A finger lifted from the trackpad (trackpad.rs).
+    "NSEvent",
+    "block2",
+] }
+# Plugins' notifications and their clicks (src/schedule/notify/macos.rs).
+# Already in the lock file; links the system's UserNotifications framework.
+objc2-user-notifications = { version = "0.3", default-features = false, features = [
+    "std",
+    "block2",
+    "UNError",
+    "UNNotification",
+    "UNNotificationContent",
+    "UNNotificationRequest",
+    "UNNotificationResponse",
+    "UNNotificationSound",
+    "UNNotificationTrigger",
+    "UNUserNotificationCenter",
+] }
+objc2-web-kit = { version = "0.3", features = [
+    "WKWebView",
+    "WKWebViewConfiguration",
+    "WKPreferences",
+    "WKNavigation",
+    "WKNavigationDelegate",
+    "WKPDFConfiguration",
+    "WKContentWorld",
+    "WKFrameInfo",
+    "block2",
+    "objc2-core-foundation",
+    "objc2-app-kit",
+] }
+objc2-pdf-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "PDFDocument",
+    "PDFPage",
+    "objc2-core-foundation",
+] }
+block2 = "0.6"
+
+# Windows/Linux PDF export (commands/export.rs): the webview's own PDF
+# renderer driven directly - WebView2's PrintToPdf, WebKitGTK's print-to-file
+# operation. Already in the tree via wry; versions must stay on wry's.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+# Win32_UI_Shell and windows-registry: Settings › General › Default Markdown
+# editor (commands/default_editor.rs) - the file-type lookup, the per-user
+# registration and Explorer's refresh. windows-registry is already in the
+# tree via hyper-util.
+# Win32_UI_WindowsAndMessaging: the notification area's icon size at the
+# display's scale (src/background/tray.rs).
+# UI_Notifications, Data_Xml_Dom: plugins' toasts (src/schedule/notify/windows.rs).
+# Win32_UI_Input_KeyboardAndMouse, Win32_UI_HiDpi, Win32_Graphics_Gdi: the
+# cursor and its display's scale for a tab dragged out (src/tab_drag.rs).
+# Win32_System_Console: `textus` prints to the terminal that ran it (src/cli/handoff.rs).
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Console", "Win32_System_SystemInformation", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Foundation", "UI_Notifications", "Data_Xml_Dom"] }
+windows-registry = "0.6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0"
+gtk = "0.18"
+# Whether libayatana-appindicator (or libappindicator) loads, asked before
+# the tray is built (src/background/tray.rs): tray-icon loads it on first
+# use and panics when neither is installed. Already in the tree through
+# libappindicator-sys, at this version.
+libloading = "0.7"
+# Plugins' notifications and their clicks over D-Bus (src/schedule/notify/linux.rs).
+# Already in the tree through tauri-plugin-opener, with the blocking API on.
+zbus = "5"
+# The font folders fontconfig names (a distribution's own, Flatpak's, a
+# user's custom ones), which WebKitGTK draws from: without it fontdb only
+# looks in four fixed folders.
+fontdb = { version = "0.24", default-features = false, features = ["fs", "memmap", "fontconfig"] }
+
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+# A second launch with a textus:// link hands it to the running app
+# (plugins/uri.rs).
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+[dev-dependencies]
+# Throwaway folders for the walker's tests (src/walk.rs), removed when
+# dropped. Already in the tree through tauri-plugin-updater.
+tempfile = "3"
+# A paused clock for the tests that time concurrent work (start_paused).
+tokio = { version = "1", features = ["test-util"] }
+# The TypeScript side of the commands the frontend calls
+# (src/platform/bindings/), generated from their Rust signatures by a test
+# (src/bindings.rs) so the two cannot drift. Test-only: the attributes are
+# `cfg_attr(test, ...)`, so shipped builds (desktop and iOS) never compile
+# specta. tauri-specta and specta are pre-releases, pinned exactly; they
+# move together.
+tauri = { version = "2.12", features = ["specta"] }
+specta = { version = "=2.0.0-rc.26", features = ["derive", "function", "serde_json"] }
+specta-typescript = "=0.0.13"
+tauri-specta = { version = "=2.0.0-rc.26", features = ["typescript"] }
+# AgentTurn and the types it holds, for the AI commands' bindings.
+aicompat = { path = "crates/aicompat", features = ["specta"] }
+
+# wry 0.57.0 with its open PR #1924: on Windows, Chinese/Japanese input could
+# break for good after switching between two Textus windows. Drop this once a
+# wry release has the fix (patches/wry/PATCHED.md).
+[patch.crates-io]
+wry = { path = "patches/wry" }

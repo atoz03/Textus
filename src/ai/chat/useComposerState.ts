@@ -1,0 +1,278 @@
+import {
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
+import type { ChatAttachment, ThinkingLevel } from "../types";
+import { ai } from "../../platform/ipc";
+import { useActiveProvider, useWebSearchStatus } from "../provider-catalog";
+import type { AgentMode, PanelMode } from "../../prefs/SettingsContext";
+import { useWhoAnswers } from "./conversation/useWhoAnswers";
+import { externalAgent } from "../../plugins/contributions/agents";
+import { initialMode, rememberMode } from "./last-mode";
+import { rememberWebSearch, webSearchOn } from "./web-search-on";
+import { deepThinkingOn, useCanThinkDeeper } from "./deep-thinking";
+import { useLatest } from "../../utils/hooks/useLatest";
+import type {
+  ChatComposerHandle,
+  ChatComposerProps,
+  SelectionChipHandlers,
+} from "./composer-types";
+import { currentStrings } from "../../i18n/current";
+import { explainError } from "../../utils/error-explain";
+import { blobToBase64 } from "../../utils/blob-base64";
+import { clipboardFiles } from "../../editor/images/pasted-files";
+import { basename } from "../../utils/path";
+
+/** The composer's state, one hook per concern. */
+
+/** What is typed, and the picker over it. The input grows with its content
+ *  up to the CSS max-height, then scrolls. `handle` lets the chat give back
+ *  queued messages (`restore`). */
+export function useComposerInput(handle?: Ref<ChatComposerHandle | null>) {
+  const [input, setInput] = useState("");
+  const [pickerIndex, setPickerIndex] = useState(0);
+  // Escape closes a picker for the input as it stands; typing reopens it.
+  const [dismissedInput, setDismissedInput] = useState<string | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(
+    handle,
+    () => ({
+      restore: (text: string) => {
+        setInput((now) => (now.trim() ? `${text}\n\n${now}` : text));
+        inputRef.current?.focus();
+      },
+      shown: () => {
+        const el = inputRef.current;
+        return !!el && el.getClientRects().length > 0;
+      },
+    }),
+    [],
+  );
+
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    let needed = el.scrollHeight;
+    el.style.height = `${needed}px`;
+    // scrollHeight is an integer, so the height can land a hair short of the
+    // line box and WebKit then clips the caret (worst with CJK). One
+    // correction pass fits whatever the font does.
+    if (el.scrollHeight > el.clientHeight) {
+      needed += el.scrollHeight - el.clientHeight;
+      el.style.height = `${needed}px`;
+    }
+    // Scrolling only once the content outgrows the box, or an empty input
+    // draws scrollbars.
+    const max = parseFloat(getComputedStyle(el).maxHeight);
+    el.style.overflowY = needed > max ? "auto" : "hidden";
+  }, [input]);
+
+  return {
+    input,
+    setInput,
+    pickerIndex,
+    setPickerIndex,
+    dismissedInput,
+    setDismissedInput,
+    inputRef,
+  };
+}
+
+/** The files staged to go with the message, and why one couldn't be, shown
+ *  rather than swallowed. Vision support is derived here, the only place an
+ *  image is staged, so no caller can forget it. */
+export function useAttachments(noVisionMessage: string, conversation: string) {
+  const providerVision = useActiveProvider()?.supportsVision ?? true;
+  const who = useLatest(useWhoAnswers().agent);
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
+
+  async function attachFile() {
+    // None means the picker was cancelled - not something to report.
+    await stage(() => ai.pickAttachmentFiles(conversation));
+  }
+
+  /** A paste of files (a picture, a PDF, a spreadsheet): attached as the
+   *  "+" button's are. False when it is text, and the textarea's to paste:
+   *  text copied in Word or Excel brings a picture of itself along. */
+  function attachPasted(data: DataTransfer | null): boolean {
+    const { files, paths } = clipboardFiles(data);
+    if (!files.length && !paths.length) return false;
+    const names = new Set([
+      ...files.map((file) => file.name),
+      ...paths.map((path) => basename(path)),
+    ]);
+    const text = (data?.getData("text/plain") ?? "").trim();
+    // A file manager's copy names its files in the text, and nothing else.
+    if (text && !text.split(/\r?\n/).every((line) => names.has(line.trim())))
+      return false;
+    void stage(async () =>
+      ai.attachPasted(conversation, [
+        ...paths.map((path) => ({ kind: "path" as const, path })),
+        ...(await Promise.all(files.map(pastedBytes))),
+      ]),
+    );
+    return true;
+  }
+
+  async function stage(read: () => Promise<ChatAttachment[]>) {
+    setAttachError(null);
+    try {
+      const files = await read();
+      // An outside agent answering takes pictures if it reads them; the
+      // exchange leaves them out for one that doesn't.
+      const agent = externalAgent(who.current);
+      const kept =
+        agent || providerVision
+          ? files
+          : files.filter((file) => file.kind !== "image");
+      if (kept.length < files.length) setAttachError(noVisionMessage);
+      setAttachments((prev) => [...prev, ...kept]);
+    } catch (err) {
+      setAttachError(explainError(err, currentStrings()));
+    }
+  }
+
+  return {
+    attachments,
+    setAttachments,
+    attachError,
+    setAttachError,
+    attachFile,
+    attachPasted,
+  };
+}
+
+/** A pasted picture's bytes, named for its type (a screenshot comes as
+ *  "image.png"). */
+async function pastedBytes(file: File) {
+  return {
+    kind: "bytes" as const,
+    name: file.name || "image.png",
+    dataBase64: await blobToBase64(file),
+  };
+}
+
+/** The mode the message goes in: the tour's while it runs, else the one
+ *  carried from last time where the composer carries it, reported to
+ *  `onModeChange` as it changes. One the composer doesn't offer (a default
+ *  or a last mode of Create, made in Settings now) reads as its first. */
+export function useComposerMode({
+  tourMode,
+  carryMode,
+  defaultMode,
+  offered,
+  onModeChange,
+}: {
+  tourMode: AgentMode | null;
+  carryMode: boolean;
+  defaultMode: AgentMode;
+  offered: readonly PanelMode[];
+  onModeChange: ChatComposerProps["onModeChange"];
+}) {
+  const allowed = (m: PanelMode) => (offered.includes(m) ? m : offered[0]);
+  const [mode, setModeState] = useState<PanelMode>(() =>
+    allowed(tourMode ?? (carryMode ? initialMode(defaultMode) : defaultMode)),
+  );
+  useEffect(() => {
+    if (tourMode) setModeState(tourMode);
+  }, [tourMode]);
+  const onModeChangeRef = useLatest(onModeChange);
+  useEffect(() => onModeChangeRef.current?.(mode), [mode, onModeChangeRef]);
+  const setMode = (next: PanelMode) => {
+    setModeState(next);
+    // A paper is one request; the next conversation starts in an agent mode.
+    if (carryMode && next !== "research") rememberMode(next);
+  };
+  return { mode, setMode };
+}
+
+/** The request's options: the web, and how hard the model thinks. With search
+ *  on but nothing to search with, the button says so (`searchUnavailable`).
+ *  Deep shows only where it changes something; Quick Ask always asks fast. */
+export function useRequestOptions(compact: boolean, startWebSearch?: boolean) {
+  const searchStatus = useWebSearchStatus();
+  const searchUnavailable =
+    !!searchStatus && !searchStatus.native && !searchStatus.service;
+  const [webSearch, setWebSearchState] = useState(
+    () => startWebSearch ?? webSearchOn(),
+  );
+  // Remembered for the next composer, unless this one starts its own way.
+  const setWebSearch = (on: boolean) => {
+    if (startWebSearch === undefined) rememberWebSearch(on);
+    setWebSearchState(on);
+  };
+  const [deepThinking, setDeepThinking] = useState(deepThinkingOn);
+  const canThinkDeeper = useCanThinkDeeper(!compact);
+  const thinking: ThinkingLevel = compact
+    ? "fast"
+    : deepThinking && canThinkDeeper
+      ? "deep"
+      : "auto";
+  return {
+    searchUnavailable,
+    webSearch,
+    setWebSearch,
+    deepThinking,
+    setDeepThinking,
+    canThinkDeeper,
+    thinking,
+  };
+}
+
+/**
+ * The selection riding along as context, droppable with a click. Dropping
+ * remembers that text, not a flag, so a new selection brings the chip back.
+ */
+export function useSelectionChip(
+  selectedText: string | null,
+  selectionChip: SelectionChipHandlers | undefined,
+) {
+  const [droppedSelection, setDroppedSelection] = useState<string | null>(null);
+  const selectionDropped =
+    droppedSelection !== null && droppedSelection === selectedText;
+  const showSelection = !!selectedText && !selectionDropped;
+  const [chipHot, setChipHot] = useState(false);
+  const chipHandlers = useLatest(selectionChip);
+  const shown = showSelection;
+  const hot = showSelection && chipHot;
+  // Reported by value, and again for each new selection; the handlers are
+  // read through a ref.
+  useEffect(() => {
+    chipHandlers.current?.onChange({ shown, hot });
+  }, [shown, hot, selectedText, chipHandlers]);
+  useEffect(
+    () => () => chipHandlers.current?.onChange({ shown: false, hot: false }),
+    [chipHandlers],
+  );
+  return { selectionDropped, setDroppedSelection, showSelection, setChipHot };
+}
+
+/** The project's files for the @-mention picker: fetched on the first "@"
+ *  (`open`), and again for another document or project. */
+export function useProjectFiles(
+  open: boolean,
+  docPath: string | null,
+  workspaceRoot: string | null,
+) {
+  const [projectFiles, setProjectFiles] = useState<string[] | null>(null);
+  useEffect(() => {
+    setProjectFiles(null);
+  }, [docPath, workspaceRoot]);
+  useEffect(() => {
+    if (!open || projectFiles !== null) return;
+    let cancelled = false;
+    ai.listProjectFiles(docPath, workspaceRoot)
+      .then((files) => !cancelled && setProjectFiles(files ?? []))
+      .catch(() => !cancelled && setProjectFiles([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [open, projectFiles, docPath, workspaceRoot]);
+  return projectFiles;
+}

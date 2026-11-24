@@ -1,0 +1,206 @@
+import { fill } from "../../i18n/fill";
+import { plural, type Lang, type Strings } from "../../i18n/strings";
+import { blockNames } from "../revision/markdown-forms";
+import type { InlineChatLabels } from "./quick-ask/InlineChat";
+import { pickerLabels } from "./ComposerPicker";
+import { permissionLabel } from "../../plugins/store/permissions";
+import { aiErrorTexts } from "../error-messages";
+import { toolActivityLabels } from "./tool-activity";
+import { MODES } from "../modes";
+import type { PanelMode } from "../../prefs/settings-values";
+
+const built = new WeakMap<Strings, Map<Lang, InlineChatLabels>>();
+
+/**
+ * The chat's user-facing strings, built once for every chat surface so no
+ * copy goes stale. `lang` picks the plural forms of the counts. The same
+ * object while the language is, so what is drawn from it can be kept.
+ */
+export function chatLabels(t: Strings, lang: Lang): InlineChatLabels {
+  const forT = built.get(t) ?? new Map<Lang, InlineChatLabels>();
+  built.set(t, forT);
+  const known = forT.get(lang);
+  if (known) return known;
+  const labels = buildLabels(t, lang);
+  forT.set(lang, labels);
+  return labels;
+}
+
+function buildLabels(t: Strings, lang: Lang): InlineChatLabels {
+  return {
+    placeholder: t.agentInputPlaceholder,
+    researchPlaceholder: t.paperTopicPlaceholder,
+    suggestionTab: t.composerSuggestionTab,
+    followUps: t.composerFollowUps,
+    queued: t.agentQueued,
+    queuedPaused: t.agentQueuedPaused,
+    queueContinue: t.agentQueueContinue,
+    queueEdit: t.agentQueueEdit,
+    queueRemove: t.agentQueueRemove,
+    queueInsert: t.agentQueueInsert,
+    picker: pickerLabels(t, lang),
+    send: t.agentSend,
+    stop: t.agentStop,
+    retry: t.agentRetry,
+    agentPermission: t.chatAgentPermission,
+    thinking: t.agentThinking,
+    thinkingFor: (n) => plural(t.agentThinkingFor, n, lang),
+    waitedFor: (n) => plural(t.agentWaitedFor, n, lang),
+    showEarlier: (n) => plural(t.chatShowEarlier, n, lang),
+    agentLooks: (n) => plural(t.chatAgentLooks, n, lang),
+    agentPlan: t.chatAgentPlan,
+    thoughtFor: (n) => plural(t.agentThoughtFor, n, lang),
+    generatingImage: t.agentGeneratingImage,
+    writingEdit: t.agentWritingEdit,
+    writingNotes: t.agentWritingNotes,
+    stoppedAtLimit: t.chatStoppedAtLimit,
+    continueAfterLimit: t.chatContinueAfterLimit,
+    proposalImage: t.proposalImage,
+    imageLimitReached: fill(t.imageLimitReached, {
+      setting: t.imagesPerRequestLabel,
+    }),
+    imageNoModel: fill(t.imageNoModel, { setting: t.imageModelLabel }),
+    attachFile: t.agentAttachFile,
+    attachmentTruncated: t.chatAttachmentTruncated,
+    attachmentNoVision: t.chatAttachmentNoVision,
+    selectedChars: (n) => plural(t.chatSelectedChars, n, lang),
+    selectedPicture: t.chatSelectedPicture,
+    selectionChip: (n) => plural(t.chatSelectionChip, n, lang),
+    messageCopy: t.copy,
+    messageCopyMarkdown: t.menuCopyAsMarkdown,
+    messageInsert: t.agentActionInsertAtCursor,
+    proposalTitle: t.agentProposalTitle,
+    proposalStatus: {
+      streaming: t.proposalStatusStreaming,
+      accepted: t.proposalStatusAccepted,
+      rejected: t.proposalStatusRejected,
+      replaced: t.proposalStatusReplaced,
+      invalid: t.proposalStatusInvalid,
+      expired: t.proposalStatusExpired,
+      joined: t.proposalStatusJoined,
+    },
+    proposalAccept: t.proposalAccept,
+    proposalPicturePainting: t.proposalPicturePainting,
+    proposalReject: t.proposalReject,
+    proposalAcceptAll: t.proposalAcceptAll,
+    proposalRejectAll: t.proposalRejectAll,
+    proposalGroupMore: t.proposalGroupMore,
+    proposalGroupLess: t.proposalGroupLess,
+    proposalRelocate: t.proposalRelocate,
+    proposalChangeCount: t.proposalChangeCount,
+    proposalTakeSentence: t.proposalTakeSentence,
+    proposalKeepSentence: t.proposalKeepSentence,
+    proposalBlocks: blockNames(t),
+    proposalShowInText: t.proposalShowInText,
+    proposalSourcesAsFootnotes: t.proposalSourcesAsFootnotes,
+    proposalAcceptSome: t.proposalAcceptSome,
+    commentTitle: t.reviewNoteBy,
+    commentLocate: t.proposalShowInText,
+    commentApplySuggestion: t.commentApplySuggestion,
+    filesChangedTitle: t.filesChangedTitle,
+    filesKeptTitle: t.filesKeptTitle,
+    filesNew: t.filesNew,
+    filesUndo: t.filesUndo,
+    filesApply: t.filesApply,
+    filesWaiting: (n: number) => plural(t.aiPendingCount, n, lang),
+    filesConflict: t.aiFileConflict,
+    filesCreated: t.aiCreatedPending,
+    filesKeep: t.aiKeepFile,
+    filesDiscard: t.aiDiscardFile,
+    filesDismiss: t.aiDismissConflict,
+    commentCount: t.reviewGroupNotes,
+    commentGroupMore: t.commentGroupMore,
+    memorySaved: t.memoryChipSaved,
+    memoryScopeProject: t.memoryScopeProject,
+    memoryScopePersonal: t.memoryScopePersonal,
+    memoryUndo: t.memoryChipUndo,
+    memoryMakePersonal: t.memoryMakePersonal,
+    memoryMakeProject: t.memoryMakeProject,
+    memoryUndone: t.memoryChipUndone,
+    memoryForgot: t.memoryChipForgot,
+    memoryRestored: t.memoryChipRestored,
+    memoryActionFailed: t.memoryActionFailed,
+    toolResult: t.toolResult,
+    sources: t.webSources,
+    useTheme: t.chatUseTheme,
+    themeInUse: t.themeGalleryInUse,
+    themeFallbackName: t.navTheme,
+    showCode: t.chatShowCode,
+    themeToWorkshop: t.themeToWorkshop,
+    permissionsAsk: t.pluginPermissionsAsk,
+    installPlugin: t.chatInstallPlugin,
+    updatePlugin: t.chatUpdatePlugin,
+    pluginInstalled: t.themeGalleryInstalled,
+    usageGuide: t.pluginUsageGuide,
+    exportPlugin: t.pluginExport,
+    pluginCantInstall: t.chatPluginCantInstall,
+    pluginCheck: {
+      dom: t.chatPluginCheckDom,
+      permission: t.chatPluginCheckPermission,
+      unregistered: t.chatPluginCheckUnregistered,
+      when: t.chatPluginCheckWhen,
+      runError: t.chatPluginRunError,
+      fix: t.chatPluginFix,
+      fixRequest: t.chatPluginFixRequest,
+    },
+    permission: (p) => permissionLabel(p, t),
+    language: lang,
+    aiErrors: aiErrorTexts(t),
+    toolActivity: toolActivityLabels(t),
+    diffCollapse: t.diffCollapse,
+    diffShow: t.diffShow,
+    pendingSummary: t.chatPendingSummary,
+    pendingReveal: t.chatPendingReveal,
+    quickAskPosition: t.quickAskPosition,
+    quickAskPrevEdit: t.quickAskPrevEdit,
+    quickAskNextEdit: t.quickAskNextEdit,
+    quickAskAcceptAllCount: t.quickAskAcceptAllCount,
+    quickAskRejectAllCount: t.quickAskRejectAllCount,
+    dropSelection: t.chatDropSelection,
+    showSelection: t.commentLocate,
+    atCursor: t.quickAskAtCursor,
+    relocateRequest: t.proposalRelocateRequest,
+    continueRequest: t.chatContinueRequest,
+    expandInline: t.chatExpandInline,
+    collapseInline: t.chatCollapseInline,
+    modes: modeLabels(t),
+    modeLabel: t.chatModeLabel,
+    modelLabel: t.chatModelLabel,
+    modeAndModelLabel: t.chatModeModelLabel,
+    webSearch: t.webSearchLabel,
+    deepThinking: t.agentDeepThinking,
+    deepThinkingHint: t.agentDeepThinkingHint,
+    toggleOnHint: t.toggleOnHint,
+    webSearchNeedsService: t.webSearchNeedsService,
+    close: t.chatClose,
+    continueInPanel: t.chatContinueInPanel,
+    newConversation: t.chatNewConversation,
+    closeConfirm: t.chatCloseConfirm,
+    closeConfirmAccept: t.chatCloseConfirmAccept,
+    closeConfirmReject: t.chatCloseConfirmReject,
+    closeConfirmCancel: t.chatCloseConfirmCancel,
+    actionNames: {
+      replace: t.agentActionReplace,
+      replace_selection: t.agentActionReplaceSelection,
+      insert_before: t.agentActionInsertBefore,
+      insert_after: t.agentActionInsertAfter,
+      delete: t.agentActionDelete,
+      append: t.agentActionAppend,
+      insert_at_cursor: t.agentActionInsertAtCursor,
+    },
+  };
+}
+
+/** Each mode's name and line, as the composer's picker shows them. */
+function modeLabels(t: Strings) {
+  const of = (mode: PanelMode) => ({
+    label: t[MODES[mode].label],
+    hint: t[MODES[mode].hint],
+  });
+  return {
+    write: of("write"),
+    review: of("review"),
+    create: of("create"),
+    research: of("research"),
+  };
+}

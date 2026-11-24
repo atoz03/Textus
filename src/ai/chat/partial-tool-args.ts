@@ -1,0 +1,176 @@
+import { withoutCitationMarkers } from "../citation-markers";
+import {
+  resolveBlockEdit,
+  type SentBlock,
+} from "../../editor/markdown/doc-blocks";
+import type { EditProposal } from "../types";
+import {
+  EDIT_ACTIONS,
+  needsAnchor,
+  type EditAction,
+} from "../../editor/markdown/edit-actions";
+
+/** A string field scanned out of an incomplete JSON fragment: what has
+ *  arrived of its value, and whether the closing quote has been seen. */
+export interface PartialString {
+  value: string;
+  complete: boolean;
+}
+
+/**
+ * Best-effort scanner for a propose_edit `arguments` string still streaming
+ * in: returns every flat string field whose value has started, however the
+ * fragment ends. Display only; parseProposal on the complete arguments wins.
+ */
+export function parsePartialToolArgs(
+  fragment: string,
+): Record<string, PartialString> {
+  const fields: Record<string, PartialString> = {};
+  const n = fragment.length;
+  let i = 0;
+
+  const skipWhitespace = () => {
+    while (i < n && /\s/.test(fragment[i])) i++;
+  };
+
+  /** Reads the JSON string starting at fragment[i] === '"', decoding
+   *  escapes, stopping cleanly if the fragment ends first. */
+  const readString = (): PartialString => {
+    i++;
+    let out = "";
+    while (i < n) {
+      const ch = fragment[i];
+      if (ch === '"') {
+        i++;
+        return { value: out, complete: true };
+      }
+      if (ch === "\\") {
+        if (i + 1 >= n) break; // escape cut off at the fragment boundary
+        const esc = fragment[i + 1];
+        if (esc === "u") {
+          if (i + 6 > n) break; // \uXXXX cut off mid-hex
+          const code = parseInt(fragment.slice(i + 2, i + 6), 16);
+          if (!Number.isNaN(code)) out += String.fromCharCode(code);
+          i += 6;
+        } else {
+          const simple: Record<string, string> = {
+            '"': '"',
+            "\\": "\\",
+            "/": "/",
+            b: "\b",
+            f: "\f",
+            n: "\n",
+            r: "\r",
+            t: "\t",
+          };
+          out += simple[esc] ?? esc;
+          i += 2;
+        }
+      } else {
+        out += ch;
+        i++;
+      }
+    }
+    i = n;
+    return { value: out, complete: false };
+  };
+
+  skipWhitespace();
+  if (fragment[i] !== "{") return fields;
+  i++;
+
+  for (;;) {
+    skipWhitespace();
+    if (i >= n || fragment[i] === "}") return fields;
+    if (fragment[i] === ",") {
+      i++;
+      continue;
+    }
+    if (fragment[i] !== '"') return fields; // malformed - stop guessing
+    const key = readString();
+    if (!key.complete) return fields;
+    skipWhitespace();
+    if (i >= n || fragment[i] !== ":") return fields;
+    i++;
+    skipWhitespace();
+    if (i >= n) return fields;
+    if (fragment[i] === '"') {
+      const value = readString();
+      fields[key.value] = value;
+      if (!value.complete) return fields;
+    } else {
+      while (i < n && fragment[i] !== "," && fragment[i] !== "}") i++;
+    }
+  }
+}
+
+/** A streaming proposal that already knows where it lands: `proposal.text`
+ *  holds what has arrived of the text so far (possibly empty). */
+interface DraftProposal {
+  proposal: EditProposal;
+  /** True once the `text` value's closing quote arrived. */
+  textComplete: boolean;
+}
+
+/**
+ * The earliest point a streaming propose_edit can be placed: the action is
+ * known and any anchor is quoted in full. Null until then.
+ */
+export function draftProposal(
+  fragment: string,
+  /** The document's blocks as they are now, for an edit that names its
+   *  block. */
+  blocks?: SentBlock[],
+): DraftProposal | null {
+  const fields = parsePartialToolArgs(fragment);
+  const action = fields.action;
+  if (!action?.complete) return null;
+  if (!EDIT_ACTIONS.includes(action.value as EditAction)) return null;
+  const anchored = needsAnchor(action.value as EditAction);
+  const anchor = fields.anchor;
+  // Named by its block: placed once the run's end is known too - its own
+  // `last_block`, or a field written after it (schema order: block,
+  // context, last_block, reason, text).
+  if (fields.block?.value && blocks !== undefined) {
+    if (!fields.block.complete) return null;
+    const runKnown =
+      fields.last_block?.complete || !!fields.reason || !!fields.text;
+    if (!runKnown) return null;
+    const text = withoutCitationMarkers(
+      fields.text?.value ?? "",
+      !fields.text?.complete,
+    );
+    const resolved = resolveBlockEdit(blocks, {
+      action: action.value,
+      block: fields.block.value,
+      lastBlock: fields.last_block?.value || undefined,
+      anchor: anchor?.complete && anchor.value ? anchor.value : undefined,
+      text,
+    });
+    if (!resolved) return null;
+    return {
+      proposal: { ...resolved, action: resolved.action as EditAction },
+      textComplete: fields.text?.complete ?? false,
+    };
+  }
+  if (anchored && !anchor?.complete) return null;
+  // Quoted without a block - text proposed and not decided yet - only
+  // once the text begins: a `block` the model writes after its quote
+  // comes before that, and the draft would otherwise be placed by the
+  // quote alone, nowhere.
+  if (anchored && action.value !== "delete" && !fields.text) return null;
+
+  return {
+    proposal: {
+      action: action.value as EditAction,
+      anchor: anchored ? anchor?.value : undefined,
+      // Without the citation markers an OpenAI model may put in: the anchor
+      // quotes the document.
+      text: withoutCitationMarkers(
+        fields.text?.value ?? "",
+        !fields.text?.complete,
+      ),
+    },
+    textComplete: fields.text?.complete ?? false,
+  };
+}

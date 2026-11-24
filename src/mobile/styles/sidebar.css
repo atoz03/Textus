@@ -1,0 +1,140 @@
+/* The sidebar on a phone (design: phone, pushed open): the rail and the
+   sidebar lie under the page's left edge, and the page, its bar too, moves
+   right by their width, a strip of it left at the right edge. Nothing
+   dims; a tap on that strip pushes it back (usePushedSidebar). */
+:root[data-window-chrome="mobile"] .app-shell {
+  --rail-width: 56px;
+  --sidebar-width: min(240px, calc(100vw - var(--rail-width) - 64px));
+}
+
+:root[data-window-chrome="mobile"] :is(.activity-rail, .sidebar) {
+  position: fixed;
+  top: 0;
+  z-index: 0;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  border-right: none;
+}
+
+/* Moved only while open: a moved box holds its contents' layers, so the
+   tabs rise over the bar's row only while the page is still (the bar is
+   see-through for them, base.css). Later in the page than the sidebar, it
+   is drawn over it as it slides. */
+:root[data-window-chrome="mobile"] :is(.window-bar, .main-pane) {
+  transition: transform calc(var(--dur-settle) * var(--motion-travel))
+    var(--ease-settle);
+}
+
+:root[data-window-chrome="mobile"]
+  .app-shell[data-sidebar="open"]
+  > :is(.window-bar, .main-pane) {
+  transform: translateX(calc(var(--rail-width) + var(--sidebar-width)));
+}
+
+/* The frame's paint, laid against the window as on the desktop: iOS has
+   no fixed backgrounds and a moved box loses them, so each piece places
+   the window-sized paint at its own offset, the page's by how far it is
+   pushed. */
+:root[data-window-chrome="mobile"] .app-shell {
+  --frame-shift: 0px;
+}
+
+:root[data-window-chrome="mobile"] .app-shell[data-sidebar="open"] {
+  --frame-shift: calc(var(--rail-width) + var(--sidebar-width));
+}
+
+:root[data-window-chrome="mobile"]
+  .app-shell
+  > :is(.activity-rail, .sidebar, .main-pane) {
+  background-attachment: scroll;
+  background-size: 100vw 100vh;
+  background-position: calc(-1 * var(--frame-shift)) 0;
+}
+
+:root[data-window-chrome="mobile"] .app-shell > .sidebar {
+  background-position: calc(-1 * var(--rail-width)) 0;
+}
+
+:root[data-window-chrome="mobile"] .app-shell > .activity-rail {
+  background-position: 0 0;
+}
+
+:root[data-window-chrome="mobile"] .main-pane {
+  width: 100vw;
+  flex: none;
+  background: var(--ui-frame-fill) fixed;
+}
+
+/* Pushed aside, the page is only the way back: a tap there closes. */
+:root[data-window-chrome="mobile"]
+  .app-shell[data-sidebar="open"]
+  > .main-pane::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-dock);
+}
+
+/* The panel's name on the tab row's line, the frame one surface with the
+   rail: no line inside it, as on the desktop with its rail. */
+:root[data-window-chrome="mobile"] .sidebar-header {
+  display: flex;
+  align-items: center;
+  height: var(--mobile-bar);
+  padding: 0 var(--pane-inset);
+  border-bottom: 0;
+}
+
+/* A tap leaves :hover on the row until something else is touched. */
+:root[data-window-chrome="mobile"] .tree-row:hover:not(.tree-row-active) {
+  background: none;
+}
+
+/* A long press on a file opens Textus's own menu, not the system's link
+   callout, and doesn't select the label. */
+:root[data-window-chrome="mobile"] .tree-row {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Rows and tabs a finger can hit (an iPad's too). */
+:root[data-window-chrome="mobile"] :is(.tree-row, .sidebar-tab) {
+  min-height: 48px;
+}
+
+:root[data-window-chrome="mobile"] .sidebar-tab {
+  min-width: 48px;
+}
+
+:root[data-window-chrome="mobile"] .sidebar-tab:hover:not(.sidebar-tab-active) {
+  background: none;
+}
+
+/* The page's sheet runs to the screen's foot, under the home indicator or
+   the gesture bar, square there as a sheet from below is. What is on it
+   stops above them: the island ends there, its paper goes on below. With
+   the keyboard up the web view ends at the keyboard and the sheet with it. */
+:root[data-window-chrome="mobile"][data-layout] {
+  --island-foot: var(--safe-bottom);
+}
+
+:root[data-window-chrome="mobile"] [data-island],
+:root[data-window-chrome="mobile"] .split-pane > .format-bar {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+:root[data-window-chrome="mobile"] [data-island]::after {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  height: var(--safe-bottom);
+  background: var(--island-paper);
+  box-shadow: var(--island-edge);
+  /* Its sides' edge only: none across its top, over the island's foot. */
+  clip-path: inset(0 -24px -24px);
+  content: "";
+  pointer-events: none;
+}

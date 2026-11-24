@@ -1,0 +1,180 @@
+import { inlineSentence } from "../revision/sentence-diff";
+import { counted } from "../../i18n/current";
+import { scaledPx } from "../../engine/tokens/chrome-scale";
+import { memo } from "react";
+import type { ReviewNote } from "./review-notes-plugin";
+import { CARD_WIDTH } from "./margin-room";
+import {
+  CHIP_HEIGHT,
+  type MarginItem,
+  type ReviewMarginLabels,
+} from "./margin-layout";
+import { RevisionCard, type CardPlace } from "./MarginCards";
+import { NoteCard } from "./NoteCards";
+import "./ReviewMargin.css";
+
+/** A group's line: how many notes and changes it holds. */
+function groupLabel(items: MarginItem[], labels: ReviewMarginLabels): string {
+  const notes = items.filter((i) => i.kind === "note").length;
+  const changes = items.length - notes;
+  return [
+    notes > 0 && counted(labels.reviewGroupNotes, notes),
+    changes > 0 && counted(labels.proposalChangeCount, changes),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** What a closed group's chip shows under its heading: its first card's
+ *  words, as each chip shows its own. */
+function groupGlimpse(items: MarginItem[]): string {
+  const first = items[0];
+  if (!first) return "";
+  return first.kind === "note"
+    ? first.note.comment
+    : inlineSentence(first.shows === "new" ? first.before : first.after);
+}
+
+/** One item's card: a note's, or a pending change's. */
+export function MarginCard({
+  item,
+  hot,
+  focused,
+  picked,
+  onPick,
+  onDone,
+  onAsk,
+  onEdit,
+  onDecide,
+  ...place
+}: Omit<CardPlace, "hot"> & {
+  item: MarginItem;
+  hot: string | null;
+  focused: string | null;
+  picked: ReadonlySet<string> | null;
+  onPick: (id: string) => void;
+  onDone: (id: string) => void;
+  onAsk: (note: ReviewNote) => void;
+  onEdit: (note: ReviewNote) => void;
+  onDecide: (callId: string, index: number, take: boolean | null) => void;
+}) {
+  return item.kind === "note" ? (
+    <NoteCard
+      {...place}
+      itemKey={item.key}
+      note={item.note}
+      hot={hot === item.key}
+      picked={picked ? picked.has(item.note.id) : null}
+      onPick={onPick}
+      onDone={onDone}
+      onAsk={onAsk}
+      onEdit={onEdit}
+    />
+  ) : (
+    <RevisionCard
+      {...place}
+      item={item}
+      hot={hot === item.key}
+      focused={focused === item.key}
+      onDecide={onDecide}
+    />
+  );
+}
+
+/** A run with more notes than its paragraph has lines: one chip, "8 notes",
+ *  that opens to its cards over the margin below without moving the others. */
+export const MarginGroup = memo(function MarginGroup({
+  groupKey,
+  items,
+  open,
+  onOpen,
+  picked,
+  onPick,
+  hot,
+  focused,
+  labels,
+  top,
+  left,
+  onHot,
+  onDone,
+  onAsk,
+  onEdit,
+  onDecide,
+}: {
+  groupKey: string;
+  items: MarginItem[];
+  open: boolean;
+  onOpen: (key: string | null) => void;
+  picked: ReadonlySet<string> | null;
+  onPick: (id: string) => void;
+  hot: string | null;
+  focused: string | null;
+  labels: ReviewMarginLabels;
+  top: number;
+  left: number;
+  onHot: (key: string, on: boolean) => void;
+  onDone: (id: string) => void;
+  onAsk: (note: ReviewNote) => void;
+  onEdit: (note: ReviewNote) => void;
+  onDecide: (callId: string, index: number, take: boolean | null) => void;
+}) {
+  const noHeight = () => {};
+  return (
+    <div
+      className={`review-note review-note-group${open ? " review-note-cut-open review-note-group-open" : " review-note-chip"}`}
+      style={{
+        top,
+        left,
+        width: scaledPx(CARD_WIDTH),
+        height: open ? undefined : scaledPx(CHIP_HEIGHT),
+      }}
+    >
+      <button
+        type="button"
+        className="review-note-group-head"
+        aria-expanded={open}
+        onClick={() => onOpen(open ? null : groupKey)}
+        data-group={groupKey}
+      >
+        <span className="review-note-by">
+          <span className="review-note-mark" aria-hidden="true">
+            AI
+          </span>
+          {groupLabel(items, labels)}
+        </span>
+        {!open && (
+          <span className="tx-truncate review-note-chip-text">
+            {groupGlimpse(items)}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="review-note-group-list">
+          {items.map((item) => (
+            <MarginCard
+              key={item.key}
+              item={item}
+              hot={hot}
+              focused={focused}
+              picked={picked}
+              onPick={onPick}
+              open
+              onOpen={onOpen}
+              cut={null}
+              chip={false}
+              labels={labels}
+              top={null}
+              left={left}
+              onHot={onHot}
+              onDone={onDone}
+              onAsk={onAsk}
+              onEdit={onEdit}
+              onDecide={onDecide}
+              onHeight={noHeight}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});

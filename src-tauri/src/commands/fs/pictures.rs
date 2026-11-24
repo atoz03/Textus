@@ -1,0 +1,207 @@
+//! Pictures on disk: where a pasted one is saved, a name that takes no other
+//! file's place, moving a draft's pictures, and which may go to the Trash.
+
+use super::*;
+use crate::app_dirs::AppDirs;
+
+/// Where a saved document's images go (Settings > Images > Folder), worked out
+/// for one document. Keep in step with image-folder.ts, which previews the rules.
+#[derive(Debug, PartialEq)]
+pub(crate) struct ImageFolder {
+    pub(crate) dir: PathBuf,
+    /// The folder as the markdown names it: relative to the document, with
+    /// forward slashes on every platform; "" for the document's own folder.
+    pub(crate) src_prefix: String,
+}
+
+impl ImageFolder {
+    /// The setting is "./" or a subfolder of it; never "..", nothing absolute, so
+    /// links travel with the document. An empty segment ("img//x") is refused.
+    pub(crate) fn resolve(doc_path: &Path, setting: &str) -> Result<Self, String> {
+        let invalid = || format!("invalid image folder: {setting:?}");
+        let doc_dir = doc_path.parent().ok_or_else(invalid)?;
+        let setting = setting.trim();
+        // A Windows drive ("C:\img", or "C:img", relative to that drive's current
+        // folder) is a root too.
+        if setting.is_empty()
+            || Path::new(setting)
+                .components()
+                .any(|c| matches!(c, Component::Prefix(_) | Component::RootDir))
+        {
+            return Err(invalid());
+        }
+        let segments: Vec<&str> = setting.split(['/', '\\']).collect();
+        let mut parts: Vec<&str> = Vec::new();
+        for (i, segment) in segments.iter().enumerate() {
+            match *segment {
+                // A trailing slash: "./", "img/".
+                "" if i > 0 && i == segments.len() - 1 => {}
+                "" | ".." => return Err(invalid()),
+                "." => {}
+                name => parts.push(name),
+            }
+        }
+        Ok(Self {
+            dir: parts
+                .iter()
+                .fold(doc_dir.to_path_buf(), |dir, p| dir.join(p)),
+            src_prefix: parts.join("/"),
+        })
+    }
+
+    /// The src the markdown gets for the file `name` in this folder.
+    pub(crate) fn src(&self, name: &str) -> String {
+        markdown_path(&if self.src_prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}/{name}", self.src_prefix)
+        })
+    }
+}
+
+/// A path as a Markdown link's destination: a space as %20, and what would
+/// end the link or be read as an escape or a fragment (`(`, `)`, `%`, `#`)
+/// escaped too, so it needs no angle brackets and reads back as written.
+/// The frontend's linkPath writes the same.
+pub(crate) fn markdown_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for c in path.chars() {
+        match c {
+            '%' => out.push_str("%25"),
+            ' ' => out.push_str("%20"),
+            '(' => out.push_str("%28"),
+            ')' => out.push_str("%29"),
+            '#' => out.push_str("%23"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+#[derive(Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
+pub struct SavedImage {
+    /// What goes into the markdown: a path relative to the document, or an
+    /// absolute path for a draft that has no folder yet.
+    pub(crate) src: String,
+    /// In an Obsidian vault that writes wiki links: the `![[…]]` to insert
+    /// instead of a Markdown image.
+    pub(crate) embed: Option<String>,
+    /// The file written, where it is the user's (in the document's folder),
+    /// for plugins to hear of; none for a draft's, kept by the app.
+    pub(crate) path: Option<String>,
+}
+
+/// Where the images of a document with no file yet are kept. They move into
+/// its image folder when it is first saved.
+pub(crate) fn draft_assets_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    app.path()
+        .own_data_dir()
+        .map(|dir| dir.join("assets"))
+        .map_err(|e| e.to_string())
+}
+
+/// `name` with "-n" before its extension: "a.png", "a-1.png", "a-2.png"...
+pub(crate) fn numbered_name(name: &str, n: usize) -> String {
+    crate::ids::numbered(name, n, crate::ids::Numbered::Dash)
+}
+
+/// Writes `bytes` into `dir` as `name`, or the first free `numbered_name`, and
+/// returns the name used. The name is claimed with create_new first, so two
+/// simultaneous saves can't take the same name. With `reuse`, an identical file is taken.
+pub(crate) async fn write_new_file(
+    dir: &Path,
+    name: &str,
+    bytes: &[u8],
+    reuse: bool,
+) -> std::io::Result<String> {
+    let (dir, name, bytes) = (dir.to_path_buf(), name.to_string(), bytes.to_vec());
+    tokio::task::spawn_blocking(move || write_new_file_sync(&dir, &name, &bytes, reuse))
+        .await
+        .map_err(std::io::Error::other)?
+}
+
+/// `write_new_file` for a caller already off the async runtime.
+pub(crate) fn write_new_file_sync(
+    dir: &Path,
+    name: &str,
+    bytes: &[u8],
+    reuse: bool,
+) -> std::io::Result<String> {
+    let mut claimed = false;
+    let name = super::dropped::into_free_name(
+        dir,
+        (0..10_000).map(|n| numbered_name(name, n)),
+        |path| {
+            drop(
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(path)?,
+            );
+            claimed = true;
+            Ok(())
+        },
+        |path| reuse && std::fs::read(path).is_ok_and(|held| held == bytes),
+    )?;
+    if claimed {
+        // Through a temp file: a crash mid-write must not leave a truncated
+        // image that the document already links to.
+        let path = dir.join(&name);
+        if let Err(e) = crate::atomic::write_sync(&path, bytes) {
+            let _ = std::fs::remove_file(&path);
+            return Err(e);
+        }
+    }
+    Ok(name)
+}
+
+#[derive(Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
+pub struct ImageMigration {
+    pub(crate) old: String,
+    /// New src (relative to the document) on success; None if this image failed
+    /// to move or copy (it stays at its old path).
+    pub(crate) new: Option<String>,
+}
+
+/// Copies `from` into `dest_dir` under its own name (numbered when another
+/// picture has it) and returns the name used.
+pub(crate) async fn copy_image(from: &Path, dest_dir: &Path) -> Option<String> {
+    let name = from.file_name()?.to_string_lossy().to_string();
+    let bytes = fs::read(from).await.ok()?;
+    fs::create_dir_all(dest_dir).await.ok()?;
+    write_new_file(dest_dir, &name, &bytes, true).await.ok()
+}
+
+/// Whether `path`, a picture an accepted AI picture replaced, may go to the
+/// Trash: a picture file in or under the document's folder, or among the drafts' images.
+#[cfg(desktop)]
+pub(crate) fn may_trash_picture(
+    app_assets: Option<&Path>,
+    doc_path: Option<&Path>,
+    path: &Path,
+) -> Result<PathBuf, String> {
+    if !crate::media::is_picture(path) {
+        return Err("Only a picture file goes to the Trash this way.".into());
+    }
+    let file =
+        std::fs::canonicalize(path).map_err(|e| format!("The old picture isn't there: {e}"))?;
+    if !file.is_file() {
+        return Err("The old picture isn't a file.".into());
+    }
+    let within = |dir: &Path| {
+        std::fs::canonicalize(dir)
+            .map(|dir| file.starts_with(dir))
+            .unwrap_or(false)
+    };
+    let in_doc_folder = doc_path.and_then(Path::parent).is_some_and(within);
+    let in_drafts = app_assets.is_some_and(within);
+    if !in_doc_folder && !in_drafts {
+        return Err(
+            "The old picture is outside the document's folder; it was left where it is.".into(),
+        );
+    }
+    Ok(file)
+}

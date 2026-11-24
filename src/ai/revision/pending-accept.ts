@@ -1,0 +1,261 @@
+import type { Ctx } from "@milkdown/kit/ctx";
+import { reanchoredPicture } from "./joined-edit";
+import { closeHistory } from "@milkdown/kit/prose/history";
+import { editorViewCtx } from "@milkdown/kit/core";
+import { isAnchored, plainText, resolveAnchored } from "./pending-place";
+import {
+  composeMarkdownEdit,
+  documentMarkdown,
+  matchTarget,
+  serializeBlocks,
+} from "../../editor/markdown/doc-markdown";
+import { applyEditRange, normalizeAiMarkdown } from "./apply-edit";
+import { replaceWithMarkdown } from "../../editor/markdown/parse-markdown-source";
+import {
+  citationsAsFootnotes,
+  footnoteLabels,
+  hasCitations,
+  withoutCitations,
+} from "../citations";
+import { isMobileApp } from "../../platform/capabilities";
+import {
+  pendingEditKey,
+  sentenceTake,
+  type PendingPreview,
+} from "./pending-types";
+import { composeSentences, trimBreaks } from "./sentence-diff";
+import { findInOrder } from "./sentence-locate";
+import type { CitationStyle } from "./usePendingEdits";
+import { markChangeSource } from "../../editor/change-source";
+import { Selection, type Transaction } from "@milkdown/kit/prose/state";
+import type { EditorView } from "@milkdown/kit/prose/view";
+
+/** What an Accept did: written, not yet (streaming), or nothing because
+ *  every sentence was kept; and the preview it settled. */
+export interface AcceptOutcome {
+  ok: boolean;
+  stillStreaming: boolean;
+  rejectedAll: boolean;
+  preview?: PendingPreview;
+}
+
+/** Writes `callId`'s proposal into the document in one undo step: the only
+ *  path a reply takes into it. Only touches the editor; the caller records it. */
+/** Writes the accepted edit: the proposal goes, where its new text stands
+ *  is kept for its green to fade there, and it is its own undo step, so an
+ *  undo lands exactly on the replaced text and brings the proposal back. */
+function land(
+  ctx: Ctx,
+  view: EditorView,
+  tr: Transaction,
+  preview: { from: number; to: number },
+  callId: string,
+  written: readonly { after: string }[],
+) {
+  const landed = findInOrder(
+    tr.doc,
+    tr.mapping.map(preview.from, -1),
+    tr.mapping.map(preview.to, 1),
+    written.map(
+      ({ after }) =>
+        plainText(ctx, trimBreaks(withoutCitations(after)))
+          ?.replace(/\n/g, "")
+          .trim() ?? "",
+    ),
+  );
+  keepCaretInside(view, tr, preview);
+  tr.setMeta(pendingEditKey, { type: "remove", callId, applied: true, landed });
+  closeHistory(tr);
+  view.dispatch(markChangeSource(tr, "ai").scrollIntoView());
+}
+
+/** A caret in the replaced text stays in the new text: mapped through a
+ *  whole-block replacement it would land in the block after, at its start. */
+function keepCaretInside(
+  view: EditorView,
+  tr: Transaction,
+  range: { from: number; to: number },
+) {
+  const { head } = view.state.selection;
+  if (head < range.from || head > range.to) return;
+  const from = tr.mapping.map(range.from, -1);
+  const to = tr.mapping.map(range.to, -1);
+  if (tr.selection.head >= from && tr.selection.head <= to) return;
+  tr.setSelection(Selection.near(tr.doc.resolve(to), -1));
+}
+
+export function writeAccept(
+  ctx: Ctx,
+  callId: string,
+  textOverride: string | undefined,
+  citationStyle?: () => CitationStyle,
+): AcceptOutcome {
+  let ok = false;
+  let stillStreaming = false;
+  let rejectedAll = false;
+  const settled: { preview?: PendingPreview } = {};
+  const done = (): AcceptOutcome => ({
+    ok,
+    stillStreaming,
+    rejectedAll,
+    preview: settled.preview,
+  });
+  const view = ctx.get(editorViewCtx);
+  const { state } = view;
+  const before = pendingEditKey.getState(state)?.previews ?? [];
+  const preview = before.find((p) => p.callId === callId);
+  if (!preview) return done();
+  // Still streaming: applying now would write a half-generated edit. Not a
+  // failure; the button works once the final add lands.
+  if (preview.streaming) {
+    stillStreaming = true;
+    return done();
+  }
+  // Defensive: the plugin already drops stale previews, but a silent no-op
+  // here would be worse.
+  if (
+    state.doc.textBetween(preview.from, preview.to, " ") !==
+    preview.expectedText
+  )
+    return done();
+
+  settled.preview = preview;
+  let replacement = preview.replacement;
+  // Decided sentence by sentence (the ✓ / ✕ in the text or the
+  // card): Accept writes the original with only the taken changes.
+  const take = sentenceTake(preview);
+  if (textOverride === undefined && preview.sentences && take) {
+    if (!take.some(Boolean)) {
+      // Every sentence kept: nothing to write - it is a rejection.
+      view.dispatch(
+        state.tr.setMeta(pendingEditKey, { type: "remove", callId }),
+      );
+      rejectedAll = true;
+      return done();
+    }
+    if (!take.every(Boolean))
+      textOverride = composeSentences(preview.sentences.hunks, take);
+  }
+  // Edited by the writer since: each taken change in its own place, back to
+  // front, as the whole range would write over their edits.
+  if (textOverride === undefined && preview.rebased && take) {
+    const taken = preview.sentences!.changes.filter((_, i) => take[i]);
+    let tr = state.tr;
+    for (const c of [...taken].sort((a, b) => b.from - a.from))
+      tr = replaceWithMarkdown(
+        tr,
+        ctx,
+        c.from,
+        c.to,
+        normalizeAiMarkdown(withoutCitations(c.after).replace(/\s+$/, "")),
+      );
+    land(ctx, view, tr, preview, callId, taken);
+    if (!isMobileApp) view.focus();
+    ok = true;
+    return done();
+  }
+  if (textOverride !== undefined) {
+    const { proposal } = preview;
+    if (
+      proposal.action === "replace_selection" ||
+      proposal.action === "append" ||
+      proposal.action === "insert_at_cursor"
+    ) {
+      replacement = textOverride;
+    } else {
+      const match = matchTarget(serializeBlocks(ctx, state.doc), proposal);
+      if (!match) return done();
+      replacement = composeMarkdownEdit(match, proposal.action, textOverride);
+    }
+  }
+  // Web citations ([2](url)): footnotes at the end of the document,
+  // or left out - the proposal card's "Add sources as footnotes".
+  let footnotes: string[] = [];
+  if (hasCitations(replacement)) {
+    const cite = citationStyle?.();
+    if (cite?.asFootnotes) {
+      ({ text: replacement, definitions: footnotes } = citationsAsFootnotes(
+        replacement,
+        cite.sources,
+        footnoteLabels(documentMarkdown(serializeBlocks(ctx, state.doc))),
+      ));
+    } else {
+      replacement = withoutCitations(replacement);
+    }
+  }
+  const tr = applyEditRange(
+    state,
+    ctx,
+    preview.from,
+    preview.to,
+    replacement,
+    footnotes,
+  );
+  // One transaction, so no frame paints a stale preview over the new text.
+  // Where the new text stands, so its green can fade out there.
+  const written =
+    preview.sentences && take
+      ? preview.sentences.changes.filter((_, i) => take[i])
+      : [{ after: textOverride ?? preview.proposal.text ?? "" }];
+  land(ctx, view, tr, preview, callId, written);
+  // Another proposal on the same block lost its text to this edit though
+  // its words are still there: find them again.
+  const after = pendingEditKey.getState(view.state)?.previews ?? [];
+  const lost = before.filter(
+    (p) =>
+      p.callId !== callId &&
+      !p.streaming &&
+      isAnchored(p.proposal) &&
+      !after.some((a) => a.callId === p.callId),
+  );
+  if (lost.length > 0) {
+    const doc = view.state.doc;
+    const blocks = serializeBlocks(ctx, doc);
+    const found: PendingPreview[] = [];
+    for (const p of lost) {
+      let proposal = p.proposal;
+      let resolved = resolveAnchored(ctx, doc, blocks, proposal);
+      // A picture after a paragraph this rewrite replaced, and left
+      // out: by the new text's paragraph in the same place.
+      const moved =
+        !resolved && proposal.image
+          ? reanchoredPicture(
+              proposal,
+              preview.proposal.anchor ?? "",
+              textOverride ?? preview.proposal.text ?? "",
+              blocks,
+            )
+          : null;
+      if (moved) {
+        proposal = moved;
+        resolved = resolveAnchored(ctx, doc, blocks, proposal);
+      }
+      if (!resolved) continue;
+      const { range, replacement: text, strikeRange } = resolved;
+      found.push({
+        ...p,
+        proposal,
+        from: range.from,
+        to: range.to,
+        expectedText: doc.textBetween(range.from, range.to, " "),
+        replacement: text,
+        strikeFrom: strikeRange?.from,
+        strikeTo: strikeRange?.to,
+        // Settled already: nothing streams in again.
+        streamSource: undefined,
+      });
+    }
+    if (found.length > 0)
+      view.dispatch(
+        view.state.tr.setMeta(pendingEditKey, {
+          type: "add",
+          previews: found,
+        }),
+      );
+  }
+  // On a phone, focusing would raise the keyboard over the AI sheet and send
+  // typing to the document instead of the composer.
+  if (!isMobileApp) view.focus();
+  ok = true;
+  return done();
+}

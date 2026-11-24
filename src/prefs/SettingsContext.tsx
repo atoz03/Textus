@@ -1,0 +1,172 @@
+import { localeOf } from "../i18n/strings";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  loadLocale,
+  localeLoaded,
+  resolveStrings,
+  type Strings,
+} from "../i18n/strings";
+import { readBoot } from "../storage/boot";
+import type { Settings } from "./settings-types";
+import { setCurrentLanguage } from "../i18n/current";
+import {
+  loadSettings,
+  persist,
+  readLocalSettings,
+  remoteVersion,
+  subscribeRemote,
+  WINDOW_OWN,
+  writeLocalSettings,
+} from "./settings-store";
+export {
+  type ShortcutAction,
+  type HeadingAction,
+  type Shortcuts,
+  defaultShortcuts,
+} from "./shortcut-defaults";
+export { type Settings } from "./settings-types";
+export {
+  type ThemeMode,
+  type AiProvider,
+  type ContentWidth,
+  type ImageAlign,
+  type EmbedDisplay,
+  type ProxyType,
+  THEME_MODES,
+  UI_TEXT_SCALES,
+  DOC_TEXT_SIZES,
+  DOC_LINE_SPACINGS,
+  DOC_LINE_HEIGHTS,
+  DOC_LETTER_SPACINGS,
+  LETTER_SPACING_BY,
+  type DocLetterSpacing,
+  type DocTextSize,
+  type DocLineSpacing,
+  type UiTextScale,
+  type DiagramEngine,
+  type ColorSwatchMode,
+  REVISION_DISPLAYS,
+  type RevisionDisplay,
+  type AiChangeMode,
+  type CompletionTone,
+  COMPLETION_TONES,
+  type SearchService,
+  SEARCH_SERVICES,
+  type GrammarStrictness,
+  type UserThemeMeta,
+  type ImageStorageMode,
+  type ImageHost,
+  type ImageNamingMode,
+  type AgentMode,
+  type PanelMode,
+  storedAgentMode,
+} from "./settings-values";
+export { normaliseSettings } from "./settings-normalise";
+export { loadSettings, resetSettingsStoreForTests } from "./settings-store";
+
+interface SettingsContextValue {
+  settings: Settings;
+  setSettings: (patch: Partial<Settings>) => void;
+  t: Strings;
+}
+
+const SettingsContext = createContext<SettingsContextValue | null>(null);
+
+export function SettingsProvider({ children }: { children: ReactNode }) {
+  const [settings, setSettingsState] = useState<Settings>(loadSettings);
+  // Read in the same render as the state above.
+  const renderedVersion = useRef(remoteVersion);
+  const wantedLanguage = useRef<string | null>(null);
+
+  useEffect(() => {
+    // A first launch writes the whole set of defaults at once, so the next
+    // launch reads the same, not a partial write's.
+    if (!readBoot() && readLocalSettings() === null)
+      writeLocalSettings({ ...loadSettings() });
+    // Another window changed something. The file store keeps this window's
+    // own fields (WINDOW_OWN) itself; localStorage, shared by all, doesn't.
+    const adopt = () => {
+      const incoming = loadSettings();
+      setSettingsState((prev) =>
+        readBoot()
+          ? incoming
+          : {
+              ...incoming,
+              ...Object.fromEntries(WINDOW_OWN.map((key) => [key, prev[key]])),
+            },
+      );
+    };
+    // Another window's language, once its strings are here too.
+    const adoptStore = () => {
+      const { language } = loadSettings();
+      if (localeLoaded(language)) adopt();
+      else
+        void loadLocale(language)
+          .catch(() => {})
+          .then(adopt);
+    };
+    const unsubscribe = subscribeRemote(adoptStore);
+    // This effect runs a task after the first render; a change landing in
+    // between reached the store with nobody subscribed. Catch up now.
+    if (remoteVersion !== renderedVersion.current) adoptStore();
+    return unsubscribe;
+  }, []);
+
+  // Read as the tree draws (counted(), the numbers' format): set before it
+  // does, not after, or a switch draws plurals in the language left.
+  setCurrentLanguage(settings.language);
+  useEffect(() => {
+    // The CSS :lang() font stacks key off it; the boot script sets the same.
+    document.documentElement.lang = localeOf(settings.language);
+  }, [settings.language]);
+
+  function setSettings(patch: Partial<Settings>) {
+    const apply = () => {
+      setSettingsState((prev) => ({ ...prev, ...patch }));
+      persist(patch);
+    };
+    // A language switched to takes effect once its strings have loaded, so
+    // nothing draws in it meanwhile with English. One that fails shows in
+    // English. Only the last one picked: an earlier one loading late
+    // doesn't take its place.
+    if (patch.language) wantedLanguage.current = patch.language;
+    if (patch.language && !localeLoaded(patch.language)) {
+      const lang = patch.language;
+      void loadLocale(lang)
+        .catch(() => {})
+        .then(() => {
+          if (wantedLanguage.current === lang) apply();
+        });
+    } else apply();
+  }
+
+  const t = resolveStrings(settings.language);
+
+  const value = useMemo(() => ({ settings, setSettings, t }), [settings, t]);
+
+  return (
+    <SettingsContext.Provider value={value}>
+      {children}
+    </SettingsContext.Provider>
+  );
+}
+
+/** The settings where a provider gives them; null outside one (a part
+ *  drawn on its own, as in its tests). */
+export function useSettingsIfAny(): SettingsContextValue | null {
+  return useContext(SettingsContext);
+}
+
+export function useSettings(): SettingsContextValue {
+  const ctx = useContext(SettingsContext);
+  if (!ctx) throw new Error("useSettings must be used within SettingsProvider");
+  return ctx;
+}

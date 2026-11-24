@@ -1,0 +1,1212 @@
+# Plugin API reference
+
+Made from [textus.d.ts](../textus.d.ts) by `scripts/plugin-reference.mjs` -
+change that file, then run the script; don't edit this page. How the
+parts fit together is in [the guide](guide.md).
+
+`textus` is a `Textus.Api`; `activate` is given a `PluginContext`;
+a webview's page has `acquireTextusApi()`, a `WebviewApi`.
+
+## Disposable
+
+| Member            |     |
+| ----------------- | --- |
+| `dispose(): void` |     |
+
+## Event
+
+Listens; the Disposable stops listening.
+
+```ts
+type Event<T> = (listener: (e: T) => void) => Disposable;
+```
+
+## Location
+
+A place in the folder: a file, and where in it. Used to open things, by links, search results, tasks and list items.
+
+- `block`: a block id of the document as it is now (editor.getBlocks, metadata) - for "read it, then change it", as Textus AI's edits are. An id is the hash of the block's Markdown: an edited block has a new one, and an old id finds nothing rather than the wrong block.
+
+- For a place kept for later (a link back from a PDF excerpt), give `heading` and `text` (a few words of it): Textus finds the words, then falls back to the heading, then to `line`.
+
+- `page`: a page of a PDF; `fragment`: anything after `#` a file editor understands, passed to it as is.
+
+| Member              |                                         |
+| ------------------- | --------------------------------------- |
+| `path: string`      |                                         |
+| `line?: number`     |                                         |
+| `ch?: number`       | The column in `line`, from 0. From 1.8. |
+| `heading?: string`  |                                         |
+| `block?: string`    |                                         |
+| `text?: string`     |                                         |
+| `page?: number`     |                                         |
+| `fragment?: string` |                                         |
+
+## Where
+
+Where something opens: a tab of its own (the default), the pane beside the one in front (splitting the window if it isn't), or in place of the tab in front.
+
+```ts
+type Where = "tab" | "beside" | "current";
+```
+
+## PluginContext
+
+What `exports.activate` is given.
+
+| Member                                                                                                      |                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `readonly subscriptions: Disposable[]`                                                                      |                                                                                                                                                                                                                                                                                                                                                      |
+| `readonly plugin: PluginInfo`                                                                               |                                                                                                                                                                                                                                                                                                                                                      |
+| `readonly storage: { global: StoragePlace; project: StoragePlace; document(path: string): DocumentPlace; }` | Places of the plugin's own: `global` for every folder, in Textus's config folder; `project` in the open folder's .textus/plugins/<id>/ (needs project.data; with no folder open, a hidden one in Textus's config folder); `document(path)` for one document - a diagram's zoom, a bookmark - which follows the document when it is renamed or moved. |
+| `readonly secrets: Secrets`                                                                                 | Secrets (API tokens): kept as Textus keeps its API keys, in a file only the user can read, apart from settings and storage - never synced, exported or shown. The plugin's own only.                                                                                                                                                                 |
+| `readonly log: Log`                                                                                         | Shown in the plugin's page in Settings › Extensions › Plugins.                                                                                                                                                                                                                                                                                       |
+
+## PluginInfo
+
+| Member                                        |                                |
+| --------------------------------------------- | ------------------------------ |
+| `readonly id: string`                         |                                |
+| `readonly version: string`                    |                                |
+| `readFile(path: string): Promise<Uint8Array>` | One of the plugin's own files. |
+| `readText(path: string): Promise<string>`     |                                |
+
+## StoragePlace
+
+| Member                                                 |                                |
+| ------------------------------------------------------ | ------------------------------ |
+| `get(key: string): Promise<unknown>`                   |                                |
+| `set(key: string, value: unknown): Promise<void>`      | `undefined` or `null` deletes. |
+| `delete(key: string): Promise<void>`                   |                                |
+| `keys(): Promise<string[]>`                            |                                |
+| `readText(path: string): Promise<string>`              |                                |
+| `writeText(path: string, text: string): Promise<void>` |                                |
+| `files(): Promise<string[]>`                           |                                |
+| `deleteFile(path: string): Promise<void>`              |                                |
+
+## DocumentPlace
+
+Values kept for one document.
+
+| Member                                            |                                |
+| ------------------------------------------------- | ------------------------------ |
+| `get(key: string): Promise<unknown>`              |                                |
+| `set(key: string, value: unknown): Promise<void>` | `undefined` or `null` deletes. |
+| `delete(key: string): Promise<void>`              |                                |
+| `keys(): Promise<string[]>`                       |                                |
+
+## Secrets
+
+| Member                                           |     |
+| ------------------------------------------------ | --- |
+| `get(key: string): Promise<string \| null>`      |     |
+| `set(key: string, value: string): Promise<void>` |     |
+| `delete(key: string): Promise<void>`             |     |
+
+## Log
+
+| Member                            |     |
+| --------------------------------- | --- |
+| `info(...args: unknown[]): void`  |     |
+| `warn(...args: unknown[]): void`  |     |
+| `error(...args: unknown[]): void` |     |
+
+## Api
+
+| Member                   |                                                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `env: Env`               |                                                                                                                   |
+| `l10n: L10n`             |                                                                                                                   |
+| `commands: Commands`     |                                                                                                                   |
+| `ui: Ui`                 |                                                                                                                   |
+| `layout: Layout`         |                                                                                                                   |
+| `views: Views`           |                                                                                                                   |
+| `editor: Editor`         |                                                                                                                   |
+| `files: Files`           |                                                                                                                   |
+| `metadata: Metadata`     |                                                                                                                   |
+| `git: Git`               | From 1.4.3: the folder's Git history (files.read; committing, git.commit). Desktop only.                          |
+| `ssh: Ssh`               | From 1.9 (Textus 1.4.6, preview): a folder on a server through the user's own ssh (permission ssh). Desktop only. |
+| `dates: Dates`           | From 1.3.10: no permission, nothing leaves the plugin's frame.                                                    |
+| `templates: Templates`   |                                                                                                                   |
+| `net: Net`               |                                                                                                                   |
+| `settings: Settings`     |                                                                                                                   |
+| `ai: Ai`                 |                                                                                                                   |
+| `plugins: Plugins`       |                                                                                                                   |
+| `uri: Uri`               |                                                                                                                   |
+| `export: Export`         |                                                                                                                   |
+| `schedule: Schedule`     | 1.1: jobs Textus fires on time (notifications, background).                                                       |
+| `notify: Notify`         | 1.1: system notifications (notifications).                                                                        |
+| `app: App`               | 1.1: whether Textus is in front, behind, or has no window.                                                        |
+| `appearance: Appearance` | 1.6: colours over the theme (appearance).                                                                         |
+| `text: Text`             | 1.7: text as the app reads it.                                                                                    |
+| `path: Path`             | From 1.8: paths worked out in the plugin's frame; no permission.                                                  |
+| `history: History`       | From 1.8: past versions kept elsewhere (Git, sync), offered by one plugin and read by another (files.read).       |
+| `comments: Comments`     | From 1.8, preview: the notes in a document's margin (comments and files.read).                                    |
+
+## Env
+
+| Member                                                                     |                                                                                                                                                                                                                                                                              |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `readonly language: string`                                                | Textus's UI language ("en", "zh", "zh-Hant", ...).                                                                                                                                                                                                                           |
+| `readonly appVersion: string`                                              |                                                                                                                                                                                                                                                                              |
+| `readonly apiVersion: string`                                              | This API's version: "1.10" from Textus 1.4.7 ("1.9": 1.4.6, "1.8": 1.4.4, "1.7": 1.4.3, "1.6": 1.4.2, "1.5": 1.3.13-rc.1, "1.4": 1.3.10, "1.3": 1.3.10-rc.1, "1.2": 1.3.9, "1.1": 1.3.0-beta.8). Prefer engines.textus; compare it as numbers, not as text ("1.10" > "1.9"). |
+| `readonly platform: "macos" \| "windows" \| "linux" \| "ios" \| "android"` |                                                                                                                                                                                                                                                                              |
+| `readonly theme: "light" \| "dark"`                                        |                                                                                                                                                                                                                                                                              |
+| `onDidChangeTheme: Event<"light" \| "dark">`                               |                                                                                                                                                                                                                                                                              |
+| `onDidChangeLanguage: Event<string>`                                       |                                                                                                                                                                                                                                                                              |
+| `readClipboard(): Promise<string>`                                         | Plain text on the system clipboard (needs clipboard).                                                                                                                                                                                                                        |
+| `writeClipboard(text: string): Promise<void>`                              |                                                                                                                                                                                                                                                                              |
+| `onDidCopy: Event<{ text: string; cut: boolean }>`                         | 1.3: the user copied or cut text from a document (needs clipboard): the Markdown that went on the clipboard, math source kept. Not what is copied elsewhere in Textus or in other apps.                                                                                      |
+
+## L10n
+
+| Member                                       |                                                                                   |
+| -------------------------------------------- | --------------------------------------------------------------------------------- |
+| `t(key: string, ...args: unknown[]): string` | A string of the manifest's `l10n` in the UI language; "{0}", "{1}"... are `args`. |
+
+## Commands
+
+| Member                                                                                                |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `register(id: string, run: (...args: unknown[]) => unknown): Disposable`                              | A command of the manifest's `contributes.commands`, or one of the plugin's own beyond them (`<plugin id>.<name>`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `registerEditorCommand(id: string, run: (editor: Editor, ...args: unknown[]) => unknown): Disposable` | A command that works on the document in front: only offered with a document open, and given the editor.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `setContext(key: string, value: string \| boolean \| null): Promise<void>`                            | From 1.6: sets a key the manifest's menu `when` clauses can read, named `<plugin id>.<name>` - `when: "jane.focus.on"`. A string or true; false, null or undefined unsets it. Gone when the plugin stops.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `execute(id: string, ...args: unknown[]): Promise<unknown>`                                           | A command of Textus's or of a plugin's. Textus's: "textus.save", "textus.closeTab" ({ save: true } closes once saved) and "textus.insertBlock" with a Format menu block at the caret - "h1" to "h6", "paragraph", "bullet-list", "ordered-list", "task-list", "blockquote", "code-block", "math-block", "rule" or "table". "textus.showFolder" with a folder's path inside the open one shows it in the sidebar, as double-clicking it does (1.3.12). "textus.offerPlugin" with { id } suggests an official plugin from the market: a card at the bottom right with its name. It never blocks editing and stays until the user acts; its permissions are still asked before it installs. Resolves true once it is installed and on (at once when it already is); false for an id the market has no official plugin for (or when the market can't be reached), for an installed plugin that can't be turned on, while another card is shown, when the install fails, on "Later", and on × - after which your plugin's offers of that plugin aren't shown again (the user can bring them back in Settings › Extensions). Don't await it in activate. From 1.3.9. |
+
+## Ui
+
+| Member                                                                                                                                                                                                                                                                                  |                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registerContextMenu(where: "editor" \| "fileTree", provide: (target: { path: string \| null; folder?: boolean; selectedText?: string; }) => \| { label: string; command: string; args?: unknown[] }[] \| Promise<{ label: string; command: string; args?: unknown[] }[]>): Disposable` | Items for a right-click menu - the editor's or the file tree's - worked out as it opens, from what it was opened on (the file; in the editor also the selected text). Each item runs a command with its args. Answers after 0.5 s are left out. No permission; the command needs its own. From 1.8.                                                  |
+| `notice(text: string, options?: { tone?: Tone; action?: string }): Promise<boolean>`                                                                                                                                                                                                    | A short note at the bottom of the window that goes by itself. With `action` ("Undo"), a button on it: resolves true when it was clicked before the note went, false otherwise (Textus 1.3.12).                                                                                                                                                       |
+| `message(text: string, options?: { tone?: Tone }): Promise<void>`                                                                                                                                                                                                                       | A box with one button; resolves when it is closed.                                                                                                                                                                                                                                                                                                   |
+| `confirm(text: string, options?: { okLabel?: string; danger?: boolean }): Promise<boolean>`                                                                                                                                                                                             |                                                                                                                                                                                                                                                                                                                                                      |
+| `input(options?: { prompt?: string; value?: string; placeholder?: string; }): Promise<string \| null>`                                                                                                                                                                                  |                                                                                                                                                                                                                                                                                                                                                      |
+| `pick(items: (string \| PickItem)[], options?: { placeholder?: string; multiple?: boolean; value?: string; commands?: boolean; search?: (query: string) => (string \| PickItem)[] \| Promise<(string \| PickItem)[]>; }): Promise<unknown>`                                             | The picked item's `value` (its label without one), or null. With `multiple`, the picked values, or null. `value` is the text in the box to start with. With `commands`, the items come first among the command palette's: one of the palette's runs and gives null, and Enter on text nothing matches gives `{ typed: text }` (Textus 1.3.0-beta.3). |
+| `pickDate(options?: { title?: string; value?: string; }): Promise<string \| null>`                                                                                                                                                                                                      | A date picked on Textus's month calendar, as `YYYY-MM-DD`, or null when cancelled; `value` is the one picked to start with (Textus 1.3.12).                                                                                                                                                                                                          |
+| `pickColor(options?: { title?: string; value?: string; }): Promise<string \| null>`                                                                                                                                                                                                     | A colour picked from the tones or typed, as `#rrggbb`, or null when cancelled (Textus 1.3.12).                                                                                                                                                                                                                                                       |
+| `form(options: { title?: string; okLabel?: string; fields: FormField[]; }): Promise<Record<string, unknown> \| null>`                                                                                                                                                                   | A small form: the values by key, or null when cancelled.                                                                                                                                                                                                                                                                                             |
+| `withProgress<T>(title: string, task: (report: (progress: { fraction?: number; message?: string }) => void, signal: AbortSignal) => Promise<T>): Promise<T>`                                                                                                                            | Shows `title` with a progress bar while `task` runs; `report` moves it (0 to 1) and changes its line; `signal` aborts when the user cancels. Resolves with what `task` resolves.                                                                                                                                                                     |
+| `statusItem(id: string, item: StatusItem): StatusItemHandle`                                                                                                                                                                                                                            | An item in the status bar; `update` changes it.                                                                                                                                                                                                                                                                                                      |
+
+## Tone
+
+```ts
+type Tone = "info" | "warning" | "error";
+```
+
+## PickItem
+
+| Member                 |     |
+| ---------------------- | --- |
+| `label: string`        |     |
+| `description?: string` |     |
+| `detail?: string`      |     |
+| `value?: unknown`      |     |
+| `picked?: boolean`     |     |
+
+## FormField
+
+```ts
+type FormField =
+  | {
+      key: string;
+      type: "text" | "multiline";
+      label: string;
+      value?: string;
+      placeholder?: string;
+    }
+  | { key: string; type: "number"; label: string; value?: number }
+  | { key: string; type: "boolean"; label: string; value?: boolean }
+  | { key: string; type: "date"; label: string; value?: string }
+  | { key: string; type: "color"; label: string; value?: string }
+  | {
+      key: string;
+      type: "choice";
+      label: string;
+      value?: string;
+      options: { value: string; label: string }[];
+    };
+```
+
+## StatusItem
+
+| Member             |                         |
+| ------------------ | ----------------------- |
+| `text: string`     |                         |
+| `tooltip?: string` |                         |
+| `command?: string` | Run when it is clicked. |
+
+## StatusItemHandle
+
+| Member                                    |     |
+| ----------------------------------------- | --- |
+| `update(item: Partial<StatusItem>): void` |     |
+
+## Layout
+
+| Member                                                                                                  |                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `open(target: string \| Location, options?: { where?: Where; asDocument?: boolean }): Promise<void>`    | A file - a document, or a file a plugin's editor opens - at the location given. Needs files.read, except for the file a view of the plugin's shows.                                                                                                                          |
+| `openView(viewId: string, options?: { where?: Where; title?: string; state?: unknown }): Promise<void>` | One of the plugin's views (`contributes.views` with `"type": "webview"` or `"list"`) in a tab.                                                                                                                                                                               |
+| `showSidebarTab(id: string): Promise<void>`                                                             | Opens the sidebar on a tab: a plugin's sidebar tab id, or `tree` (Files) or `outline`. From 1.3.10.                                                                                                                                                                          |
+| `openSettings(): Promise<void>`                                                                         | Opens the plugin's own page in its tab - its settings, version, permissions: where setup forms go, not a sidebar. From 1.3.13.                                                                                                                                               |
+| `openWebPage(url: string, options?: { where?: Where; title?: string }): Promise<void>`                  | A web page in a tab, for a host the plugin was granted.                                                                                                                                                                                                                      |
+| `openUntitled(text: string, options?: { where?: Where; title?: string }): Promise<void>`                | A new document, not yet saved.                                                                                                                                                                                                                                               |
+| `openExternal(url: string): Promise<void>`                                                              | In the system's browser.                                                                                                                                                                                                                                                     |
+| `activeTab(): Promise<TabInfo \| null>`                                                                 |                                                                                                                                                                                                                                                                              |
+| `tabs(): Promise<TabInfo[]>`                                                                            |                                                                                                                                                                                                                                                                              |
+| `split(): Promise<{ direction: "row" \| "column" \| null; panes: string[]; }>`                          | How the panes run at the outermost, side by side ("row") or one above the other ("column"), and the tab each pane shows, in reading order; or one.                                                                                                                           |
+| `onDidChangeActiveTab: Event<TabInfo \| null>`                                                          |                                                                                                                                                                                                                                                                              |
+| `onDidChangeLayout: Event<void>`                                                                        |                                                                                                                                                                                                                                                                              |
+| `panels(): Promise<PanelsState>`                                                                        | From 1.3.10: which of the window's panels are open - the sidebar (and the tab it shows) and Textus AI's. Read only; Zen mode closes them all. A panel added later is a new key.                                                                                              |
+| `onDidChangePanels: Event<PanelsState>`                                                                 |                                                                                                                                                                                                                                                                              |
+| `openFloating(viewId: string): Promise<void>`                                                           | Shows one of the plugin's floating views (`contributes.floatingViews`): a small transparent page of its own size, floating where the user left it. The user moves, folds and closes it; nothing floats until the plugin opens it, usually from a command. From Textus 1.3.6. |
+| `closeFloating(viewId: string): Promise<void>`                                                          |                                                                                                                                                                                                                                                                              |
+| `floatingViews(): Promise<FloatingViewState[]>`                                                         | The plugin's floating views that are open.                                                                                                                                                                                                                                   |
+| `onDidChangeFloating: Event<FloatingViewState>`                                                         | One of them opened, closed, folded or moved: stop animating while `visible` is false.                                                                                                                                                                                        |
+| `onDidTouchFloating: Event<{ view: string; kind: "poke" \| "pet" \| "moved"; }>`                        | The user clicked one ("poke"), clicked it three times in a moment ("pet") or dragged it somewhere ("moved").                                                                                                                                                                 |
+
+## FloatingViewState
+
+| Member                         |                                                                                     |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| `view: string`                 |                                                                                     |
+| `open: boolean`                |                                                                                     |
+| `visible: boolean`             | False while folded to a dot or closed.                                              |
+| `place: "desktop" \| "window"` |                                                                                     |
+| `side: "left" \| "right"`      | The half of the window or screen it sits in: a character there can face the middle. |
+
+## TabInfo
+
+| Member                                          |                                                                          |
+| ----------------------------------------------- | ------------------------------------------------------------------------ |
+| `id: string`                                    |                                                                          |
+| `title: string`                                 |                                                                          |
+| `kind: "document" \| "file" \| "view" \| "web"` | A document, a file a plugin's editor shows, a plugin's view, a web page. |
+| `path: string \| null`                          |                                                                          |
+| `plugin?: string`                               | For a view or a file editor: which plugin's, and which.                  |
+| `view?: string`                                 |                                                                          |
+
+## Views
+
+| Member                                                                                                                                                                     |                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registerList(id: string, provider: ListProvider): ListView`                                                                                                               | A list or tree drawn by Textus - in a sidebar tab or a view of `"type": "list"` - from the items the provider gives.                                                                                                                                                                                                                                                                                                |
+| `registerWebview(id: string, provider: { resolve(webview: Webview, context: { state: unknown }): void \| Promise<void>; }): Disposable`                                    | A page of the plugin's own: a sidebar tab, or a view of `"type": "webview"`.                                                                                                                                                                                                                                                                                                                                        |
+| `registerFileEditor(viewType: string, provider: { resolve(file: OpenFile, webview: Webview, context: { target: Location \| null }): void \| Promise<void>; }): Disposable` | Files of a type opened by the plugin (`contributes.customEditors`): a PDF, a Word document, a board.                                                                                                                                                                                                                                                                                                                |
+| `registerCodeBlock(language: string, provider: { render(block: CodeBlock, webview: Webview): void \| Promise<void>; }): Disposable`                                        | Code blocks of a language (`contributes.codeBlocks`) drawn by the plugin in the document: `tasks, `chart. Asked only for the blocks in sight; the block's source stays in the file.                                                                                                                                                                                                                                 |
+| `registerEmbed(id: string, provider: EmbedProvider): EmbedHandle`                                                                                                          | The content of `![[...]]` embeds of the kinds `contributes.embeds` names, asked only for embeds in sight; Textus draws it read-only and expands embeds inside it itself. One plugin draws each kind: the first turned on. From 1.3.9 (files.read).                                                                                                                                                                  |
+| `registerDatabaseView(id: string, provider: DatabaseViewProvider): Disposable`                                                                                             | Another way to show a database's rows - a timeline, a gallery - that the plugin drawing databases offers beside its own views. `render` gets the rows and answers HTML, which is shown without scripts, event attributes or `<style>` (style inline instead); an element with `data-row="<row path>"` opens that row when clicked. It gets rows only when the user picks it in a database. From 1.9 (Textus 1.4.6). |
+| `databaseViews(): Promise< { id: string; label: string; icon: string \| null; plugin: string }[] >`                                                                        | The database views plugins registered, `id` as `<plugin id>#<view id>`: for the plugin that draws databases. From 1.9 (Textus 1.4.6).                                                                                                                                                                                                                                                                               |
+| `renderDatabaseView(id: string, data: DatabaseViewData): Promise<string>`                                                                                                  | One of databaseViews() drawn for `data`: its HTML, cleaned. From 1.9 (Textus 1.4.6).                                                                                                                                                                                                                                                                                                                                |
+| `registerSettingsPage(provider: { resolve(webview: Webview): void \| Promise<void>; }): Disposable`                                                                        | The plugin's page in Settings (`contributes.settingsPage`).                                                                                                                                                                                                                                                                                                                                                         |
+
+## DatabaseViewProvider
+
+| Member                                                      |                                              |
+| ----------------------------------------------------------- | -------------------------------------------- |
+| `label: string`                                             |                                              |
+| `icon?: string`                                             | An SVG's markup, drawn in the text's colour. |
+| `render(data: DatabaseViewData): string \| Promise<string>` |                                              |
+
+## DatabaseViewData
+
+A database's rows as its view shows them: filtered and sorted.
+
+| Member                                                                   |                                                                               |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `rows: { path: string; name: string; props: Record<string, unknown> }[]` | Each row: its note's path, name, and properties.                              |
+| `columns: string[]`                                                      | The properties shown, in order.                                               |
+| `types: Record<string, string>`                                          | Each property's type: "text", "number", "date", "checkbox", "tags", "list"... |
+| `group?: string`                                                         | The property the view is grouped by, if any.                                  |
+| `date?: string`                                                          | The property its dates come from, if it has one.                              |
+
+## EmbedProvider
+
+| Member                                                                                                                       |                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `provideEmbed(target: EmbedTarget, context: { signal: AbortSignal }): EmbedContent \| null \| Promise<EmbedContent \| null>` | null: nothing to show (Textus shows the link's name, dimmed). |
+
+## EmbedTarget
+
+What `![[...]]` points at, as `metadata.resolveNote` resolves it.
+
+| Member             |     |
+| ------------------ | --- |
+| `path: string`     |     |
+| `heading?: string` |     |
+| `block?: string`   |     |
+| `alias?: string`   |     |
+
+## EmbedContent
+
+| Member             |                                                                                                                                                                                        |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `markdown: string` | Markdown, drawn read-only. Links and pictures in it are read from `target.path`'s folder. Leave `![[...]]` in it as is: Textus draws those itself, at most 5 deep and never in a loop. |
+| `title?: string`   | Shown over it, opening the source when clicked; the link's name without it.                                                                                                            |
+
+## EmbedHandle
+
+| Member            |                                   |
+| ----------------- | --------------------------------- |
+| `refresh(): void` | Asks again for every embed shown. |
+
+## ListProvider
+
+| Member                                                              |                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `items(parent?: ListItem): ListItem[] \| Promise<ListItem[]>`       | The items at the top, or under `parent` (one with `children`).                                                                                                                                                                  |
+| `onSelect?(item: ListItem): void \| Promise<void>`                  | An item clicked or Enter on it: by default, its `location` opens and its `command` runs.                                                                                                                                        |
+| `onCheck?(item: ListItem, checked: boolean): void \| Promise<void>` | Its checkbox ticked or unticked.                                                                                                                                                                                                |
+| `onMove?(item: ListItem, target: ListItem): void \| Promise<void>`  | An item dragged onto another; with it, the rows can be dragged. From 1.3.10.                                                                                                                                                    |
+| `filterPlaceholder?: string`                                        | What the field over the list says; without it, there is no field. The list filters itself by label, description and detail. A `%key%` of the manifest's `l10n` follows the UI language (from 1.4.3); plain text stays as given. |
+| `emptyText?: string`                                                | Shown when there are no items; a `%key%` as above.                                                                                                                                                                              |
+
+## ListItem
+
+| Member                                                                           |                                                                                                                                                               |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id?: string`                                                                    | Kept across refreshes: an open item stays open, a selected one selected.                                                                                      |
+| `label: string`                                                                  |                                                                                                                                                               |
+| `description?: string`                                                           |                                                                                                                                                               |
+| `detail?: string`                                                                |                                                                                                                                                               |
+| `group?: string`                                                                 | A group's heading above the items that share it.                                                                                                              |
+| `icon?: string`                                                                  | One of the app's icons ("file", "folder", "task", "link", "tag", "calendar", "clock", "star"), or any other text, such as a page's emoji, drawn in its place. |
+| `checkbox?: boolean`                                                             |                                                                                                                                                               |
+| `badge?: { text: string; tone?: "accent" \| "warning" \| "danger" \| "muted"; }` | A small mark after the label: "due", "overdue", "new".                                                                                                        |
+| `location?: Location`                                                            |                                                                                                                                                               |
+| `command?: { id: string; args?: unknown[] }`                                     |                                                                                                                                                               |
+| `children?: boolean`                                                             | Items under it, asked for when it is opened.                                                                                                                  |
+| `actions?: { label: string; command: string; args?: unknown[] }[]`               | Right-click actions.                                                                                                                                          |
+| `data?: unknown`                                                                 | Anything of the plugin's; given back as is.                                                                                                                   |
+
+## ListView
+
+| Member                           |                                                               |
+| -------------------------------- | ------------------------------------------------------------- |
+| `refresh(): void`                | Asks the provider again.                                      |
+| `setMessage(text: string): void` | A line over the list ("12 tasks"), or a `%key%`; "" for none. |
+
+## Webview
+
+A page of the plugin's.
+
+| Member                                         |                                              |
+| ---------------------------------------------- | -------------------------------------------- |
+| `readonly id: string`                          |                                              |
+| `html: string`                                 |                                              |
+| `postMessage(message: unknown): Promise<void>` |                                              |
+| `onDidReceiveMessage: Event<unknown>`          |                                              |
+| `onDidDispose: Event<void>`                    |                                              |
+| `asWebviewUri(path: string): string`           | A file of the plugin's, for the page's HTML. |
+| `setTitle(title: string): Promise<void>`       |                                              |
+
+## OpenFile
+
+The file a file editor was opened on.
+
+| Member                                   |                                                                                    |
+| ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| `readonly path: string`                  |                                                                                    |
+| `readonly fileName: string`              |                                                                                    |
+| `readFile(): Promise<Uint8Array>`        |                                                                                    |
+| `readText(): Promise<string>`            |                                                                                    |
+| `writeText(text: string): Promise<void>` | Needs files.write.                                                                 |
+| `onDidRequestReveal: Event<Location>`    | Asked to show another place in it (a link to `#page=12` clicked while it is open). |
+
+## CodeBlock
+
+A code block the plugin draws.
+
+| Member                                            |                                                                                                                                                               |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `readonly language: string`                       |                                                                                                                                                               |
+| `readonly source: string`                         |                                                                                                                                                               |
+| `readonly meta: Readonly<Record<string, string>>` | What follows the language on its fence, read as settings: ` ```chart height=300 title="Sales" legend` is `{ height: "300", title: "Sales", legend: "true" }`. |
+| `readonly path: string \| null`                   | The document it is in.                                                                                                                                        |
+| `readonly block: string`                          |                                                                                                                                                               |
+| `onDidChange: Event<string>`                      | Its source or meta changed (typed, undone); the page stays.                                                                                                   |
+| `setSource(source: string): Promise<boolean>`     | Replaces its source (needs editor.write), one undo step.                                                                                                      |
+
+## Editor
+
+| Member                                                                                                                                                                                                                                                                                                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getPath(): Promise<string \| null>`                                                                                                                                                                                                                                                                       | Its path; null for an unsaved one, and with no document.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `getText(): Promise<string \| null>`                                                                                                                                                                                                                                                                       | Its Markdown (editor.read).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `getSelection(): Promise<{ text: string; markdown: string \| null } \| null>`                                                                                                                                                                                                                              |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `getCursor(): Promise<Location \| null>`                                                                                                                                                                                                                                                                   | Where the caret is in the document's Markdown: its path, line and column (from 0); null with no document in front (editor.read). From 1.8.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `getBlocks(): Promise<Block[] \| null>`                                                                                                                                                                                                                                                                    | Its blocks as Textus AI is shown them (editor.read).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `getOutline(): Promise< { level: number; text: string; line: number }[] \| null >`                                                                                                                                                                                                                         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `edit(changes: Change \| Change[]): Promise<boolean>`                                                                                                                                                                                                                                                      | Changes it at once, as one undo step (editor.write). False when a change can't be placed (a block id from before an edit).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `insertText(text: string): Promise<boolean>`                                                                                                                                                                                                                                                               | At the caret, or in place of the selection (editor.write).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `replaceSelection(text: string): Promise<boolean>`                                                                                                                                                                                                                                                         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `propose(change: Change, options?: { reason?: string }): Promise<boolean>`                                                                                                                                                                                                                                 | Shown as a proposal the user accepts or rejects, as Textus AI's are (editor.propose).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `reveal(location: Omit<Location, "path"> & { path?: string }): Promise<boolean>`                                                                                                                                                                                                                           | Scrolls to a place in it and puts the caret there.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `registerCompletion(id: string, provider: CompletionProvider): Disposable`                                                                                                                                                                                                                                 | Completions as you type, for one of `contributes.completions` (editor.read): asked when what is before the caret matches its `pattern`. `insert` replaces the match; `$0` marks the caret. Shown in the / panel, grouped by plugin. 1.2: every matching provider is asked at once, and none holds up typing.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `registerPasteHandler(pattern: RegExp \| string, provide: (text: string) => string \| null \| Promise<string \| null>): Disposable`                                                                                                                                                                        | From 1.6 (editor.write): pasted text matching `pattern` is handed to `provide`, and the Markdown it answers goes in instead - a URL as a titled link, a spreadsheet's rows as a table. Answering null (or not within 1.5 s) lets the paste go on as usual; text no handler matches is never held. Several match: asked in plugin id order, the first answer wins. Not in code, not with files. textus.editor.registerPasteHandler(/^https?:\/\/\S+$/, async (url) => `[${await titleOf(url)}](${url})`);                                                                                                                                                                                                                  |
+| `registerDropHandler(match: { kinds?: ("image" \| "attachment" \| "note")[]; extensions?: string[]; }, provide: (file: { path: string; name: string; kind: "image" \| "attachment" \| "note"; fromSystem: boolean; document: string \| null; }) => string \| null \| Promise<string \| null>): Disposable` | From 1.10 (Textus 1.4.7, editor.write): a file dragged into a document's body that `match` names - by kind ("image", "attachment", "note") or by extension ("csv") - is handed to `provide`, and the Markdown it answers goes in where it is let go instead of Textus's picture or link. Answering null (or not within 1.5 s) lets Textus write it as usual. A file from a file manager (`fromSystem`) is handed over where it is, not copied; with Shift, on a document's edge or on a tab row the file opens and no handler is asked. Several match: asked in plugin id order, the first answer wins. textus.editor.registerDropHandler({ extensions: ["csv"] }, async (file) => csvToTable(await readCsv(file.path))); |
+| `blockTypes(): Promise<{ id: string; label: string; source: string }[]>`                                                                                                                                                                                                                                   | The blocks the `/` menu can offer now: Textus's own (`source` "textus": its id as `textus.insertBlock` takes it) and plugins'. From 1.8.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `registerBlockType(id: string, type: { label: string; keywords?: string; insert(): void \| Promise<void>; }): Disposable`                                                                                                                                                                                  | A block of the plugin's own in the `/` menu: `insert` puts it in at the caret (with the plugin's own calls, which need their permissions). `keywords` find it too ("kanban board"). From 1.8.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `registerOutline(provider: { provideOutline(blocks: Block[]): \| { text: string; level?: number; block: string }[] \| Promise<{ text: string; level?: number; block: string }[]>; }): Disposable`                                                                                                          | From 1.6 (editor.read): rows added to the outline of the document in front, under its headings - a screenplay's scenes, a novel's characters - each going to its block when clicked. Asked with its blocks as it changes (1.5 s to answer); `level` 1 to 6 sets how far in a row sits.                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `registerHover(provider: { provideHover(target: HoverTarget): HoverCard \| null \| Promise<HoverCard \| null>; }): Disposable`                                                                                                                                                                             | A card for what the pointer rests on (editor.read).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `registerDecorations(provider: { decorate(blocks: Block[], document?: { blocks: Block[]; path?: string \| null }): Decoration[] \| Promise<Decoration[]>; }): Disposable`                                                                                                                                  | Marks over the text (editor.read), asked for the blocks in sight and again when they change. 1.4.1: `document` is the whole document those blocks are of, which can be one beside the document in front; read it rather than `getBlocks`. From 1.8 also its `path` (null while it is unsaved).                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `registerDiagnostics(id: string, provider: { check(blocks: Block[], document: { blocks: Block[]; path: string \| null }): Diagnostic[] \| Promise<Diagnostic[]>; }): Disposable`                                                                                                                           | From 1.8: slips in the text (editor.read) - a Markdown rule broken, a space missing - asked for the blocks in sight once the document rests, with the whole document and its path. Answer within 200 ms or that round is skipped. Each is underlined in its severity's colour and explained on the grammar check's card, which offers its `fix`; nothing is changed until the user applies it.                                                                                                                                                                                                                                                                                                                            |
+| `registerSyntax(id: string, syntax: { pattern: RegExp \| string; style: "highlight" \| "underline" \| "muted" \| "spoiler" \| "ruby"; tone?: "accent" \| "warning" \| "danger" \| "success"; }): Disposable`                                                                                               | From 1.8, preview: inline syntax shown as it means - `\|\|a spoiler\|\|`, `{漢字\|かんじ}`. The words in the pattern's `text` group are styled and the rest of a match is hidden until the caret is in it; without that group all of it is styled. "ruby" sets the `note` group above the words. Only the look changes: the text stays as written, in reading views too, and an export keeps it. Not in code. Needs no permission.                                                                                                                                                                                                                                                                                        |
+| `onDidChangeActive: Event<{ path: string \| null }>`                                                                                                                                                                                                                                                       | Another document came to the front (or none).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `onDidChange: Event<{ path: string \| null; source: ChangeSource }>`                                                                                                                                                                                                                                       | Its text changed: once typing pauses, not on every key. 1.1: `source` says who changed it - "user" (typing, pasting, the keyboard), "ai" (Textus AI: an accepted proposal, a completion, a grammar fix), "disk" (the file changed and was read again), "plugin" (a plugin through this API) or "history" (undo, redo). When several did since the last event, "user" wins, then history, ai, plugin, disk.                                                                                                                                                                                                                                                                                                                |
+| `onDidChangeSelection: Event<{ text: string; empty: boolean; block: string \| null; anchor?: { line: number; ch: number }; head?: { line: number; ch: number }; }>`                                                                                                                                        | The selection settled. From 1.6 also whether it is only the caret and the id of the block its moving end is in (null past the blocks): a typewriter, a reading line, a linked preview.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `onDidChangeVisible: Event<{ first: string \| null; last: string \| null }>`                                                                                                                                                                                                                               | From 1.6: the first and last block in sight changed, once scrolling or an edit rests (editor.read).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `keys: EditorKeys`                                                                                                                                                                                                                                                                                         | The keyboard, for plugins that are a way of typing - Vim, Emacs (editor.input).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+
+## Block
+
+| Member                                                                                                                                                            |     |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| `id: string`                                                                                                                                                      |     |
+| `kind: \| "paragraph" \| "heading" \| "list" \| "quote" \| "code" \| "math" \| "table" \| "rule" \| "picture" \| "html" \| "footnote" \| "definition" \| "other"` |     |
+| `markdown: string`                                                                                                                                                |     |
+
+## Change
+
+One change, placed by block ids as Textus AI's are. Without `block`, `insert_at_cursor`, `replace_selection` and `append` need none. `anchor`: a few words inside the block, for part of it.
+
+| Member                                                                                                                           |     |
+| -------------------------------------------------------------------------------------------------------------------------------- | --- |
+| `action: \| "replace" \| "replace_selection" \| "insert_before" \| "insert_after" \| "delete" \| "append" \| "insert_at_cursor"` |     |
+| `text?: string`                                                                                                                  |     |
+| `block?: string`                                                                                                                 |     |
+| `lastBlock?: string`                                                                                                             |     |
+| `anchor?: string`                                                                                                                |     |
+
+## CompletionProvider
+
+| Member                                                                                                                                                                           |     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| `provideCompletions(context: CompletionContext): \| CompletionItem[] \| CompletionList \| null \| undefined \| Promise<CompletionItem[] \| CompletionList \| null \| undefined>` |     |
+
+## CompletionContext
+
+| Member                 |                                                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `text: string`         | Before the caret, in its paragraph or formula.                                                                                    |
+| `match: string`        | The part `pattern` matched, which an item replaces.                                                                               |
+| `inMath: boolean`      |                                                                                                                                   |
+| `query: string`        | From 1.3.9: the pattern's last capture group (the query); the match without one.                                                  |
+| `after: string`        | From 1.3.9: after the caret, to the end of its block (at most 200 characters): the "]]" Textus pairs with "[[".                   |
+| `path: string \| null` | From 1.3.9: the document's path; null for an unsaved one.                                                                         |
+| `signal: AbortSignal`  | From 1.3.9: aborts when Textus no longer needs the answer (the text moved on, the panel closed). An answer after that is dropped. |
+
+## CompletionList
+
+From 1.3.9: a whole list (up to 20,000 items) Textus filters itself as typing goes on, without asking again while the same pattern keeps matching from the same place. An array is the provider's own filtering: asked again on each key, at most 50 kept.
+
+| Member                    |     |
+| ------------------------- | --- |
+| `items: CompletionItem[]` |     |
+| `complete: true`          |     |
+
+## CompletionItem
+
+| Member                                       |                                                                                                                                                          |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `label: string`                              |                                                                                                                                                          |
+| `insert: string`                             | Replaces the match; `$0` marks the caret.                                                                                                                |
+| `detail?: string`                            |                                                                                                                                                          |
+| `icon?: string`                              | From 1.3.9: one of the app's icons ("file", "link", "tag", "calendar", "clock", "star", "heading", "block", "quote", "emoji") or an SVG of the plugin's. |
+| `keywords?: string`                          | From 1.3.9: also found by (an English name, an alias).                                                                                                   |
+| `replaceAfter?: number`                      | From 1.3.9: characters after the caret it replaces too: 2 for the "]]" in `after`.                                                                       |
+| `command?: { id: string; args?: unknown[] }` | From 1.3.9: run once it is inserted - the plugin's own command or one of Textus's.                                                                       |
+
+## HoverTarget
+
+```ts
+type HoverTarget =
+  | {
+      type: "document";
+      path: string;
+      heading: string | null;
+      block?: string | null;
+    }
+  | { type: "link"; url: string }
+  | { type: "citation"; key: string };
+```
+
+## HoverCard
+
+| Member                  |                                   |
+| ----------------------- | --------------------------------- |
+| `title: string \| null` |                                   |
+| `markdown: string`      | Markdown, shown without pictures. |
+
+## Decoration
+
+A mark over some of a block's text: the words `anchor` (all of the block without it).
+
+| Member                                                                |                                                                                                                                                                               |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `block: string`                                                       |                                                                                                                                                                               |
+| `anchor?: string`                                                     |                                                                                                                                                                               |
+| `style: "highlight" \| "underline" \| "muted" \| "badge" \| "gutter"` | From 1.8 also "gutter": a mark in the margin right of the block, beside its first line, or at the top of a list, quote, table or code (a change, a reading place, a warning). |
+| `tone?: "accent" \| "warning" \| "danger" \| "success"`               |                                                                                                                                                                               |
+| `text?: string`                                                       | For "badge": its text, after the words.                                                                                                                                       |
+| `tooltip?: string`                                                    |                                                                                                                                                                               |
+| `before?: boolean`                                                    | For "badge": before the words instead - a heading's number.                                                                                                                   |
+| `url?: string`                                                        | From 1.6: the words link here (http, https or mailto), followed with Cmd/Ctrl+click as a link is - a DOI, an RFC, an issue number made a link without changing the text.      |
+| `icon?: string`                                                       | For "gutter", from 1.8: the plugin's SVG (drawn in the tone) or one or two characters; a dot without.                                                                         |
+| `command?: { id: string; args?: unknown[] }`                          | For "gutter", from 1.8: a command of the plugin's a click runs; without one the mark is only shown.                                                                           |
+
+## Diagnostic
+
+A slip a check found, from 1.8.
+
+| Member                                                 |                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `block: string`                                        |                                                                                                                                                                                                                                                                     |
+| `anchor?: string`                                      | The words it is about, in the block's text; all of it without.                                                                                                                                                                                                      |
+| `severity: "error" \| "warning" \| "info"`             |                                                                                                                                                                                                                                                                     |
+| `message: string`                                      | What is wrong, in a sentence: on the card.                                                                                                                                                                                                                          |
+| `fix?: string \| { markdown: string; label?: string }` | What the card offers to apply: the words `anchor` becomes ("" deletes them), or the block's whole Markdown made anew, with its button's label - a fix of the Markdown itself, such as a list marker's spacing. Applied only if the block is as it was when checked. |
+
+## WillSave
+
+A document about to be saved.
+
+| Member                                             |                                                           |
+| -------------------------------------------------- | --------------------------------------------------------- |
+| `path: string`                                     |                                                           |
+| `text: string`                                     |                                                           |
+| `trigger: "manual" \| "auto"`                      |                                                           |
+| `blocks: (Block & { from: number; to: number })[]` | Its blocks in order; `from`/`to` are offsets into `text`. |
+
+## BlockEdit
+
+A block's new Markdown, by its id.
+
+| Member             |     |
+| ------------------ | --- |
+| `block: string`    |     |
+| `markdown: string` |     |
+
+## EditorKeys
+
+| Member                                                                                  |                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `capture(capture: { mode: "all" \| "some"; keys: string[] } \| null): Promise<boolean>` | Takes the editor's keys: "all" but the app's shortcuts, or "some" - only `keys`. null gives back your own capture. One plugin at a time: false while another holds them (its id is in your log). The boolean is from 1.3.9; older Textus answers undefined. |
+| `onKey: Event<string>`                                                                  | Deprecated: use onDidPressKey.                                                                                                                                                                                                                              |
+| `onDidPressKey: Event<string>`                                                          | From 1.7: onKey by the events' rule.                                                                                                                                                                                                                        |
+| `exec(op: EditorOp): Promise<EditorOpResult>`                                           |                                                                                                                                                                                                                                                             |
+
+## EditorOp
+
+```ts
+type EditorOp =
+  | {
+      op: "move";
+      unit: string;
+      count?: number;
+      select?: boolean;
+      visual?: boolean;
+      char?: string;
+      forward?: boolean;
+      till?: boolean;
+    }
+  | { op: "selectLines"; count?: number }
+  | { op: "visualStart" }
+  | { op: "delete"; copy?: boolean }
+  | { op: "deleteLines"; count?: number }
+  | { op: "copy" }
+  | { op: "copyLines"; count?: number }
+  | { op: "deleteChars"; count?: number; back?: boolean; copy?: boolean }
+  | { op: "insertText"; text: string }
+  | { op: "pasteLines"; text: string; above?: boolean }
+  | { op: "openLine"; above?: boolean }
+  | { op: "replaceChar"; char: string }
+  | { op: "collapse"; to?: "head" | "start" | "end" }
+  | { op: "undo" }
+  | { op: "redo" }
+  | { op: "cursor"; style: "bar" | "block" }
+  | { op: "scroll"; to: "center" | "top" | "bottom" }
+  | { op: "flash"; query: string }
+  | { op: "flashJump"; label: string; select?: boolean; extend?: boolean }
+  | { op: "flashClear" };
+```
+
+## EditorOpResult
+
+| Member            |     |
+| ----------------- | --- |
+| `text?: string`   |     |
+| `labels?: number` |     |
+| `empty: boolean`  |     |
+
+## Dates
+
+Dates written and read in Moment's tokens, as Obsidian's settings and templates name them: YYYY YY Q MMMM MMM MM M Do DD D dddd ddd gggg GGGG ww w WW W HH H hh h mm ss s A a, `[literal]`. Names, ordinals and where a week starts follow `language` (the UI's by default).
+
+| Member                                                                                             |                                                                                                                                                         |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `format(date: Date \| number \| string, format?: string, options?: { language?: string }): string` | `date` (a Date, a time in ms, or "YYYY-MM-DD") in `format` (default "YYYY-MM-DD").                                                                      |
+| `parse(text: string, format?: string, options?: { language?: string }): string \| null`            | The day a name written in `format` stands for, as "YYYY-MM-DD"; null when it isn't one. Days only: a week's or month's name ("2026-W45") reads as null. |
+
+## Templates
+
+Templates filled in as Obsidian's Templates core plugin and then the Templater plugin's common tags fill them.
+
+| Member                                                                                                                                                                                                                                                                                                                       |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fill(text: string, options?: { values?: Record<string, unknown>; date?: Date \| number \| string; now?: Date \| number \| string; title?: string; folder?: string; format?: string; dateFormat?: string; timeFormat?: string; language?: string; }): Promise<{ text: string; cursor: number \| null; skipped: string[]; }>` | `text` with {{date}}, {{time}}, {{title}}, {{date:FORMAT}}, {{date+1d}} and every {{key}} of `values` filled in (a list joined with ", ", nothing for null, a date in its format); then Templater's `<% tp.date.now(...) %>`, `tp.date.tomorrow/yesterday/weekday`, `tp.file.title`, `tp.file.folder`, `tp.file.creation_date` and `tp.file.cursor()`. Any other tag or script stays as written and is listed in `skipped`. With `format` (a periodic note's name format), also {{yesterday}}, {{tomorrow}}, {{weekday}} and {{monday}} … {{sunday:FORMAT}} for `date`'s week, as Periodic Notes fills them. {{date}} and {{time}} use the folder's Templates formats when the plugin may read files and the caller gives none. |
+
+## Files
+
+| Member                                                                                                                                             |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `root(): Promise<string \| null>`                                                                                                                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `list(dir?: string): Promise<FileEntry[]>`                                                                                                         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `find(glob?: string): Promise<{ path: string; rel: string }[]>`                                                                                    | The files whose path in the folder matches `glob` ("**\/_.md", "Daily/_.md"); every document without one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `stat(path: string): Promise<FileEntry \| null>`                                                                                                   |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `setBadge(path: string, badge: { text: string; tone?: "accent" \| "warning" \| "danger" \| "success"; tooltip?: string; } \| null): Promise<void>` | From 1.6: a short badge after the file's name in the sidebar (1 to 12 characters: "draft", "3", "★"), quiet or in a tone; null takes it off. One shows per file, the plugin last by id winning; gone when the plugin stops (files.read).                                                                                                                                                                                                                                                                                                                                                                            |
+| `read(path: string): Promise<Uint8Array>`                                                                                                          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `readText(path: string): Promise<string>`                                                                                                          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `write(path: string, data: Uint8Array \| ArrayBuffer \| string): Promise<void>`                                                                    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `writeText(path: string, text: string): Promise<void>`                                                                                             |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `create(path: string, text?: string, options?: { unique?: boolean }): Promise<string>`                                                             | A new file; fails if one is there. From 1.7, `unique` gives it a free name instead ("Note 2.md", "Note 3.md", as the app names its own), and the path written comes back, written as `path` was.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `process(path: string, change: (text: string) => string): Promise<string>`                                                                         | Reads, changes and writes a file without losing anything: open in a tab, the change goes into its editor as one undo step; on disk, it is written only if the file is unchanged since it was read (and `change` is run again otherwise). Return the text unchanged to write nothing.                                                                                                                                                                                                                                                                                                                                |
+| `blockId(path: string, line: number): Promise<string \| null>`                                                                                     | The `^id` of the block at `line` (from 0) of `path`, adding a new one (6 lowercase hex characters) where Obsidian reads it - the end of a paragraph's, heading's or list item's last line; a line of its own after a table, quote or code block - through `process`, every other byte kept. null when no block is there. From 1.3.9 (files.write).                                                                                                                                                                                                                                                                  |
+| `rename(from: string, to: string, options?: { updateLinks?: boolean }): Promise<void>`                                                             | With `updateLinks`, links to it in the folder's documents follow.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `trash(path: string): Promise<void>`                                                                                                               | To the system's Trash, never deleted for good: Recently Deleted on iOS. Android has none: it fails with a message ending "[noTrash]".                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `createFolder(path: string): Promise<void>`                                                                                                        |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `frontmatter: Frontmatter`                                                                                                                         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `onDidCreate: Event<{ path: string }>`                                                                                                             | A file a plugin made, and one the app made: a new document, a picture pasted or dropped, a note made by following a link, a file Textus AI wrote (from 1.4.2). A plugin's own path is as it gave it, the app's is whole.                                                                                                                                                                                                                                                                                                                                                                                            |
+| `onDidChange: Event<{ path: string }>`                                                                                                             |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `onDidChangeOnDisk: Event<{ path: string; before: string; after: string }>`                                                                        | An open document's file was changed by something else - another app, a sync, git, an AI agent - and its tab took the new text: `before` is what it had saved, `after` what is on disk now, so a plugin keeping versions can record both. Its whole path. Files no tab holds aren't watched. From 1.4.3.                                                                                                                                                                                                                                                                                                             |
+| `onDidRename: Event<{ from: string; to: string }>`                                                                                                 |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `onDidDelete: Event<{ path: string }>`                                                                                                             | A file or folder a plugin moved to the Trash, and from 1.4.2 one the sidebar did (its whole path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `onWillSave(listener: (e: WillSave) => string \| BlockEdit[] \| void \| Promise<string \| BlockEdit[] \| void>): Disposable`                       | A document is about to be saved (files.write). Plugins are asked one after another in plugin id order, each given the text as the one before left it, at most a second each. Return the blocks you changed (`{ block, markdown }`, by the ids in `blocks`) - only those are written back - or the whole text, which is written back block by block. Code, math, HTML and link definition blocks stay as the user wrote them, and each block keeps its line endings. A change that would change again when run a second time is skipped for this save. `trigger`, `blocks` and `BlockEdit[]` answers are from 1.3.9. |
+| `onDidSave: Event<{ path: string; text: string; trigger: "manual" \| "auto"; }>`                                                                   | 1.1: `trigger` is "manual" for File › Save or Save As, "auto" for autosave.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `onDidChangeRoot: Event<{ path: string \| null }>`                                                                                                 |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `conventions(path?: string): Promise<FolderConventions>`                                                                                           | How the folder of `path` (a document or folder, from the root; the open folder when left out) is written, whichever app made it - Obsidian, Logseq, Foam, Dendron, a site generator, git, or the folder's own `.textus/settings.json` "conventions". Read it instead of other apps' settings files; a field no app sets is null, for Textus's own settings. From 1.3.9 (files.read).                                                                                                                                                                                                                                |
+| `registerProvider(scheme: string, provider: FileProvider): Disposable`                                                                             | From 1.9 (Textus 1.4.6, preview): paths of the plugin's own scheme (`ssh://host/home/me/notes`), read and written by `provider`, so a folder it serves opens in the sidebar and its documents in tabs like any other. Paths are whole URLs. A scheme is one plugin's; file, content, http(s), data, blob, asset, tauri, textus and mailto are never a plugin's.                                                                                                                                                                                                                                                     |
+| `openFolder(url: string): Promise<void>`                                                                                                           | From 1.9 (Textus 1.4.6, preview): opens a folder the plugin provides (its `registerProvider` scheme) as the window's folder.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `registerConventionReader(id: string, reader: ConventionReader): Disposable`                                                                       | From 1.9 (Textus 1.4.6, files.read): reads the folder conventions of an app Textus doesn't read itself (Logseq, Zettlr...). The app finds `marker`, a file from the app's folder, in the open folder and the folders above it, and hands `read` its text once (again when it changes). What `read` answers is offered to the user like any other app's settings, never applied by itself; folders are from the app's folder, and ones leading out of it are left out. `notes`: the app keeps notes linked by name, so wikilinks are found from its folder.                                                          |
+| `setConvention(key: "linkStyle", value: LinkStyle \| null): Promise<void>`                                                                         | From 1.7 (files.write): sets how the open folder writes something, in its `.textus/settings.json` "conventions", keeping the rest; null clears it. Only `linkStyle` for now.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `appSettings(app: "obsidian", file: string, path?: string): Promise<unknown \| null>`                                                              | From 1.3.10: a settings file of the nearest Obsidian vault - `appSettings("obsidian", "bookmarks.json")` reads `.obsidian/bookmarks.json` - parsed as JSON, found above the open folder too; null where there is none. A file at the settings folder's top only. Read only (files.read).                                                                                                                                                                                                                                                                                                                            |
+| `onDidChangeConventions: Event<{ root: string }>`                                                                                                  | The open folder's conventions changed: another folder, or its app's settings edited. From 1.3.9.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+
+## FileProvider
+
+A remote or virtual folder's files (files.registerProvider). Each path is a whole URL; a name taken is refused, never replaced.
+
+| Member                                                              |                                                                  |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `list(path: string): Promise<{ name: string; folder: boolean }[]>`  |                                                                  |
+| `readText(path: string): Promise<string>`                           |                                                                  |
+| `read(path: string): Promise<Uint8Array>`                           |                                                                  |
+| `writeText(path: string, text: string): Promise<void>`              |                                                                  |
+| `create(dir: string, name: string, folder: boolean): Promise<void>` |                                                                  |
+| `rename(path: string, name: string): Promise<void>`                 |                                                                  |
+| `move(path: string, into: string): Promise<void>`                   |                                                                  |
+| `delete(path: string): Promise<void>`                               | For good: a remote folder has no Trash. The user is asked first. |
+
+## ConventionReader
+
+| Member                                                                                                          |                                                                       |
+| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `label: string`                                                                                                 | The app's name, as a card offering its settings shows it.             |
+| `marker: string`                                                                                                | The file that says the folder is the app's, e.g. "logseq/config.edn". |
+| `notes?: boolean`                                                                                               |                                                                       |
+| `read(request: { root: string; text: string; }): FoundConventions \| null \| Promise<FoundConventions \| null>` |                                                                       |
+
+## FoundConventions
+
+What an app sets, as a reader answers it.
+
+| Member                                                          |                                                               |
+| --------------------------------------------------------------- | ------------------------------------------------------------- |
+| `linkStyle?: "wiki" \| "markdown"`                              |                                                               |
+| `linkPath?: "shortest" \| "relative" \| "absolute"`             |                                                               |
+| `updateLinks?: "always" \| "ask" \| "never"`                    |                                                               |
+| `attachments?: string`                                          | As FolderConventions' `attachments`, inside the app's folder. |
+| `softBreaks?: boolean`                                          |                                                               |
+| `templates?: string`                                            | Folders and files from the app's folder.                      |
+| `daily?: { folder: string; format: string; template?: string }` |                                                               |
+| `newNotes?: string`                                             |                                                               |
+| `ignore?: string[]`                                             |                                                               |
+
+## ConventionSetting
+
+One setting of a folder and where it came from.
+
+| Member         |                                                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `value: T`     |                                                                                                                                                                                      |
+| `app: string`  | "textus", "typora", "obsidian", "logseq", "dendron", "foam", "vscode", "mkdocs", "hugo", "docusaurus", "jekyll", "quarto", "git", or from 1.9 a plugin's reader, `<plugin id>#<id>`. |
+| `root: string` | The folder these settings belong to.                                                                                                                                                 |
+
+## PeriodicNotes
+
+A kind of periodic note: its folder (full path), file name format (moment.js tokens, `[literal]` text) and template file (full path). An Obsidian vault with no daily notes settings keeps them at its top.
+
+| Member                     |     |
+| -------------------------- | --- |
+| `folder: string`           |     |
+| `format: string`           |     |
+| `template: string \| null` |     |
+
+## FolderConventions
+
+| Member                                                                                        |                                                                                                                                              |
+| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sources: { app: string; root: string; notes?: boolean }[]`                                   | The apps found, nearest first; from 1.9 `notes` when the app keeps notes linked by name, found from its folder.                              |
+| `linkStyle: ConventionSetting<string> \| null`                                                | "wiki" or "markdown".                                                                                                                        |
+| `linkPath: ConventionSetting<string> \| null`                                                 | "shortest", "relative" or "absolute".                                                                                                        |
+| `linkRoot: ConventionSetting<string> \| null`                                                 | The folder a link starting with "/" is read from.                                                                                            |
+| `updateLinks: ConventionSetting<string> \| null`                                              | On a rename: "always", "ask" or "never".                                                                                                     |
+| `attachments: ConventionSetting<string> \| null`                                              | Where pictures go: "/" the root, "./" beside the document, "./sub" below it, else a folder from the root; `${filename}` the document's name. |
+| `softBreaks: ConventionSetting<boolean> \| null`                                              | Whether a single newline shows as a line break.                                                                                              |
+| `templates: ConventionSetting<string> \| null`                                                | The templates folder, a full path.                                                                                                           |
+| `daily: ConventionSetting<PeriodicNotes> \| null`                                             | Daily notes: folder (full path), file name format (moment.js tokens, `[literal]` text), template file (full path).                           |
+| `weekly: ConventionSetting<PeriodicNotes> \| null`                                            | From 1.3.10: weekly and monthly notes (Periodic Notes), only where turned on.                                                                |
+| `monthly: ConventionSetting<PeriodicNotes> \| null`                                           |                                                                                                                                              |
+| `templateFormats: ConventionSetting<{ date: string \| null; time: string \| null; }> \| null` | From 1.3.10: how a template writes {{date}} and {{time}} (Obsidian's Templates settings); null where unset.                                  |
+| `newNotes: ConventionSetting<string> \| null`                                                 | Where new notes go, as `attachments` names a folder.                                                                                         |
+| `ignore: string[]`                                                                            | Paths the app hides.                                                                                                                         |
+
+## FileEntry
+
+| Member                       |     |
+| ---------------------------- | --- |
+| `name: string`               |     |
+| `path: string`               |     |
+| `rel: string`                |     |
+| `isDir: boolean`             |     |
+| `size: number`               |     |
+| `modifiedMs: number \| null` |     |
+
+## Frontmatter
+
+| Member                                                                                                                   |                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get(path: string): Promise<Record<string, unknown>>`                                                                    | The YAML at the top of a document, as an object; {} for none. From 1.8 read by a full YAML parser (block text, lists of maps).              |
+| `update(path: string, change: (frontmatter: Record<string, unknown>) => Record<string, unknown> \| void): Promise<void>` | Changes it through files.process; the rest of the file untouched. From 1.8 the keys that didn't change, and every comment, stay as written. |
+
+## GitChange
+
+| Member                                                                                     |                                     |
+| ------------------------------------------------------------------------------------------ | ----------------------------------- |
+| `path: string`                                                                             |                                     |
+| `state: \| "modified" \| "added" \| "deleted" \| "renamed" \| "untracked" \| "conflicted"` |                                     |
+| `staged: boolean`                                                                          | In the index already (`git add`ed). |
+
+## GitCommit
+
+| Member            |                                                                 |
+| ----------------- | --------------------------------------------------------------- |
+| `hash: string`    |                                                                 |
+| `at: number`      | When it was committed, in ms since 1970.                        |
+| `author: string`  |                                                                 |
+| `subject: string` |                                                                 |
+| `path: string`    | The file's path in this commit; it may have been renamed since. |
+
+## Git
+
+| Member                                                                                                                                  |                                                                                                                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status(): Promise<{ branch: string \| null; upstream: string \| null; ahead: number; behind: number; changes: GitChange[]; } \| null>` | The branch (null when detached) and the changed files of the open folder; null when it is in no repository or git isn't there. Hidden files are left out.                               |
+| `log(path: string, options?: { limit?: number }): Promise<GitCommit[]>`                                                                 | `path`'s commits, newest first, through renames (100, at most 500).                                                                                                                     |
+| `show(hash: string, path: string): Promise<string \| null>`                                                                             | The file as commit `hash` had it at `path` (a GitCommit's path); null when it had none there, or it isn't text.                                                                         |
+| `commit(message: string, paths: string[]): Promise<string>`                                                                             | Commits the changes of `paths` only, with `message`, as the user's git does (hooks, signing): the new commit's hash. git.commit.                                                        |
+| `fetch(): Promise<void>`                                                                                                                | Takes the remote's branches, as `git fetch --prune` does, with the user's credentials (nothing is asked for: a remote wanting a password typed refuses, saying so). git.sync. From 1.9. |
+| `push(): Promise<void>`                                                                                                                 | Sends the branch to the remote branch it follows; one following none goes to `origin` under its name. git.sync. From 1.9.                                                               |
+| `pull(): Promise<void>`                                                                                                                 | Takes the remote branch's commits in, as the user's `git pull` would; on a conflict it is undone, the folder left as it was, and it refuses saying so. git.sync. From 1.9.              |
+
+## Ssh
+
+A link to a server: the user's own `ssh` (their config, agent, keys and known hosts) running SFTP only. Each host is asked of the user once per plugin. An unknown host key or a password is never answered for the user: the link fails saying what to do. Paths are the server's, absolute.
+
+| Member                                                                              |                                                            |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `hosts(): Promise<string[]>`                                                        | The hosts named in `~/.ssh/config` (and its Includes).     |
+| `connect(host: string): Promise<number>`                                            | A link to `host`, as the user's ssh names it: its session. |
+| `home(session: number): Promise<string>`                                            | The folder the link starts in: the user's home there.      |
+| `list(session: number, path: string): Promise<{ name: string; folder: boolean }[]>` |                                                            |
+| `read(session: number, path: string): Promise<Uint8Array>`                          |                                                            |
+| `readText(session: number, path: string): Promise<string>`                          |                                                            |
+| `write(session: number, path: string, data: string \| Uint8Array): Promise<void>`   | Writes the file whole.                                     |
+| `create(session: number, path: string, folder?: boolean): Promise<void>`            | A new empty file or folder; a name taken is refused.       |
+| `rename(session: number, from: string, to: string): Promise<void>`                  | Moves or renames; a name taken is refused.                 |
+| `delete(session: number, path: string): Promise<void>`                              | Deletes a file or an empty folder for good.                |
+| `close(session: number): Promise<void>`                                             |                                                            |
+
+## Metadata
+
+| Member                                                                                                                                                                         |                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `get(path: string): Promise<DocumentMetadata \| null>`                                                                                                                         |                                                                                                                                                                                                                                                                                                                                                        |
+| `all(): Promise<DocumentMetadata[]>`                                                                                                                                           | Every document, without its blocks: titles, links and tags - what a graph is drawn from.                                                                                                                                                                                                                                                               |
+| `backlinks(path: string): Promise<{ path: string; line: number; text: string }[]>`                                                                                             | The documents linking to `path`, with where.                                                                                                                                                                                                                                                                                                           |
+| `resolveLink(link: string, from: string): Promise<string \| null>`                                                                                                             | Where a link written in `from` goes: a [[wiki link]] or a relative path; null for none. 1.2: the same as `(await resolveNote(link, from))?.path` for a target that exists.                                                                                                                                                                             |
+| `resolveNote(link: string, from: string): Promise<ResolvedLink \| null>`                                                                                                       | Where a link goes, exactly as a click takes it: `link` as written - "[[Note#^id\|alias]]", "![[Note#Heading]]", "[[#^id]]", or a Markdown link's target "Note.md#my-heading" / "../a/Note" - from the document `from` (needed for relative links and same-note anchors). null when `link` is no link to a file (a web URL). From 1.3.9 (files.read).   |
+| `linkTo(to: string, from: string, options?: { heading?: string; block?: string; alias?: string; style?: "wiki" \| "markdown"; embed?: boolean; }): Promise<string>`            | The link Textus writes to `to` from `from`: the folder's style (in an Obsidian vault, its "new link format" and wiki or Markdown links; `[[wiki]]` by the shortest name elsewhere), with `#heading`, `#^block` and `\|alias` as given - `[[#Heading]]` within one note. `style` overrides wiki or Markdown; `embed` adds "!". From 1.3.9 (files.read). |
+| `tags(): Promise<{ tag: string; count: number }[]>`                                                                                                                            |                                                                                                                                                                                                                                                                                                                                                        |
+| `setTask(location: Location, status: string): Promise<void>`                                                                                                                   | Sets the box of the task at `location` (a Task's) to `status`: "x" done, " " open, or any one character. Needs files.write. From 1.8.                                                                                                                                                                                                                  |
+| `tasks(filter?: { done?: boolean; path?: string; tag?: string; }): Promise<Task[]>`                                                                                            |                                                                                                                                                                                                                                                                                                                                                        |
+| `search(query: string, options?: { limit?: number }): Promise<{ hits: (Location & { rel: string; line: number; text: string; location: Location; })[]; truncated: boolean; }>` | The documents' lines holding `query`, ignoring case.                                                                                                                                                                                                                                                                                                   |
+| `onDidChange: Event<{ paths: string[] }>`                                                                                                                                      | Documents were added, changed or removed.                                                                                                                                                                                                                                                                                                              |
+
+## ResolvedLink
+
+| Member                   |                                                                                                                       |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `path: string`           | Absolute. For a note that doesn't exist: where a click creates it.                                                    |
+| `exists: boolean`        |                                                                                                                       |
+| `kind: "note" \| "file"` | "note": a Markdown document; "file": anything else (a PDF, a picture).                                                |
+| `heading?: string`       | The last level of "#A#B"; never a "^id".                                                                              |
+| `block?: string`         | A "^id", without the "^".                                                                                             |
+| `alias?: string`         |                                                                                                                       |
+| `line: number \| null`   | Where the heading or block is; null for the top, or when it isn't found (the note opens at its top, as a click does). |
+
+## DocumentMetadata
+
+| Member                                                                                              |                                                                                                                              |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `path: string`                                                                                      |                                                                                                                              |
+| `rel: string`                                                                                       |                                                                                                                              |
+| `title: string`                                                                                     | The first heading's text, or the file's name.                                                                                |
+| `frontmatter: Record<string, unknown>`                                                              |                                                                                                                              |
+| `headings: { level: number; text: string; line: number }[]`                                         |                                                                                                                              |
+| `links: { target: string; resolved: string \| null; line: number; text: string; wiki: boolean; }[]` |                                                                                                                              |
+| `tags: string[]`                                                                                    |                                                                                                                              |
+| `tasks: Task[]`                                                                                     |                                                                                                                              |
+| `blockIds: { id: string; line: number; text: string }[]`                                            | From 1.3.9: the block ids ("^abc123") in it, with the first words of their block - for [[Note#^ completion. Also from `all`. |
+| `aliases: string[]`                                                                                 | From 1.3.9: front matter `aliases` / `alias`, as strings.                                                                    |
+| `blocks?: { id: string; kind: Block["kind"]; line: number }[]`                                      | Only from `get`.                                                                                                             |
+| `modifiedMs: number \| null`                                                                        |                                                                                                                              |
+
+## Task
+
+| Member                |                                                           |
+| --------------------- | --------------------------------------------------------- |
+| `text: string`        |                                                           |
+| `done: boolean`       | Anything but a space in its box.                          |
+| `status: string`      | The character in its box: " ", "x", "-", "/"... From 1.8. |
+| `due: string \| null` | From 📅 2026-11-01 or due:2026-11-01.                     |
+| `tags: string[]`      |                                                           |
+| `path: string`        |                                                           |
+| `line: number`        |                                                           |
+| `location: Location`  |                                                           |
+
+## Net
+
+| Member                                                                                                                                                                                                                                                                                                             |                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fetch(url: string, init?: { method?: string; headers?: Record<string, string>; body?: Uint8Array \| ArrayBuffer \| string; signal?: AbortSignal; }): Promise<{ status: number; ok: boolean; headers: Record<string, string>; bytes(): Promise<Uint8Array>; text(): Promise<string>; json(): Promise<unknown>; }>` | HTTPS to the hosts granted (`network:<host>`); no cookies. Each plugin's requests share kept connections (HTTP/2 where the server has it). `signal` aborted stops the request at once; it then rejects with an `AbortError` (from 1.7). |
+
+## Settings
+
+| Member                                                |                                                                         |
+| ----------------------------------------------------- | ----------------------------------------------------------------------- |
+| `get(key: string): Promise<unknown>`                  | The project's value, else the general one, else the manifest's default. |
+| `set(key: string, value: unknown): Promise<void>`     | One of the plugin's own settings, for every folder.                     |
+| `onDidChange: Event<{ key: string; value: unknown }>` |                                                                         |
+
+## Ai
+
+Tools for Textus AI (ai.tools): each one named in the manifest's contributes.aiTools, run here when the model calls it.
+
+| Member                                                                                                                                                                                                 |                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registerTool(name: string, run: (args: Record<string, unknown>) => string \| Promise<string> \| unknown): Disposable`                                                                                 |                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `state(): Promise<AiState>`                                                                                                                                                                            | What Textus AI is doing and with which service and model - never what is said. From 1.3.6.                                                                                                                                                                                                                                                                                                                      |
+| `onDidChangeState: Event<AiState>`                                                                                                                                                                     |                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `registerInlineCompletion(id: string, source: { label?: string; provide(request: { before: string; after: string; path: string \| null; }): string \| null \| Promise<string \| null>; }): Disposable` | Grey text after the caret when typing pauses: `provide` answers the words to offer, or null; it is waited for at most 5 seconds. The user picks one source at a time in Settings › Textus AI › Chat & writing ("Suggestions from"), Textus AI or one of these. editor.read. From 1.4.4 (API 1.8, preview).                                                                                                      |
+| `available(): Promise<boolean>`                                                                                                                                                                        | Whether the user's writing model can be asked now: Textus AI is on (never on iOS or iPadOS). ai.model. From 1.4.4 (API 1.8, preview).                                                                                                                                                                                                                                                                           |
+| `complete(request: AiRequest, options?: { signal?: AbortSignal }): Promise<string>`                                                                                                                    | The user's writing model's answer, as text (ai.model). The first call asks the user; each plugin has 100,000 tokens a month (counted roughly: a CJK character is one, other text one per four characters), and the user is asked before more. Refused when the user says no or Textus AI is off. From 1.4.4 (API 1.8, preview). From 1.9 `signal` stops it (an AbortError), the answer unwritten and uncounted. |
+| `stream(request: AiRequest, onText: (text: string) => void, options?: { signal?: AbortSignal }): Promise<string>`                                                                                      | complete(), the answer coming in as it is written: each piece to `onText` in order, the whole answer returned at the end. The same permission, question and tokens as complete(); stopped by `signal`, what was written so far is counted. From 1.9 (Textus 1.4.6, preview).                                                                                                                                    |
+
+## AiRequest
+
+`prompt` for one question, or `messages` for a conversation whose next turn is asked for; at most 200,000 characters with `system`.
+
+| Member                                                          |     |
+| --------------------------------------------------------------- | --- |
+| `system?: string`                                               |     |
+| `prompt?: string`                                               |     |
+| `messages?: { role: "user" \| "assistant"; content: string }[]` |     |
+
+## PanelsState
+
+| Member                                    |                                                                                       |
+| ----------------------------------------- | ------------------------------------------------------------------------------------- |
+| `sidebar: { open: boolean; tab: string }` | `tab`: the sidebar tab's id ("tree" for the files, "outline", or a plugin's view id). |
+| `ai: { open: boolean }`                   |                                                                                       |
+
+## AiState
+
+| Member                                                    |                                                             |
+| --------------------------------------------------------- | ----------------------------------------------------------- |
+| `state: "idle" \| "thinking" \| "writing" \| "proposing"` |                                                             |
+| `model: { provider: string; id: string \| null } \| null` | null before Textus AI is first used.                        |
+| `ended?: "done" \| "failed" \| "stopped"`                 | On going idle after a request: finished, failed or stopped. |
+
+## Plugins
+
+| Member                                                                                              |                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get<T = Record<string, (...args: unknown[]) => Promise<unknown>>>(id: string): Promise<T \| null>` | What another plugin's `activate` returned, its functions callable from here (their arguments and answers as JSON); starts it if it isn't running. null when it isn't installed or turned on. |
+
+## Export
+
+| Member                                                                                                                                                                                                                       |                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registerFormat(id: string, format: { label?: string; extension: string; export(document: { markdown: string; html: string; path: string \| null; }): string \| Uint8Array \| Promise<string \| Uint8Array>; }): Disposable` | A format in File › Export: `export` turns the document into the file's contents, text or bytes, and Textus asks where to save it and writes it. `html` is the standalone page File › Export › HTML writes, pictures inside it. From 1.4.4 (API 1.8).                                                  |
+| `mathCss(): Promise<string>`                                                                                                                                                                                                 | KaTeX's stylesheet with its fonts inline, as Textus draws formulas: for a plugin page or a saved file that shows KaTeX's markup without loading anything from the web. About 400 KB. From 1.4.2 (API 1.6).                                                                                            |
+| `onWillExport(listener: (page: { format: "html" \| "pdf"; path: string \| null; html: string; }) => \| { css?: string; html?: string } \| void \| Promise<{ css?: string; html?: string } \| void>): Disposable`             | An HTML or PDF export's page, before it is written (editor.read): `css` is added to its styles, `html` replaces its content. Scripts and handlers in the HTML are taken out. Plugins are asked in plugin id order, each given the HTML as the one before left it, and waited for at most two seconds. |
+
+## Uri
+
+| Member                                                                                                                   |                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `registerHandler(handler: (uri: { path: string; query: Record<string, string>; }) => void \| Promise<void>): Disposable` | Links `textus://<plugin id>/<path>?<query>` opened from outside Textus (a browser, another app). |
+
+## ChangeSource
+
+Who changed the document (editor.onDidChange).
+
+```ts
+type ChangeSource = "user" | "ai" | "disk" | "plugin" | "history";
+```
+
+## Job
+
+A job Textus keeps for the plugin and fires on time while it runs - with a window open or, in background mode, with none - even after a restart. One of `at`, `every`, `daily`; then `notify`, `run` or both.
+
+- `at`: once, "2026-11-02T09:00" (local) or with an offset.
+
+- `every`: "15m", "1h", "1h30m", "1d": 15 minutes at least, counted from when it was set.
+
+- `daily`: "HH:MM", local time; across daylight saving it keeps the time on the clock.
+
+- `catchUp`: a time missed while Textus wasn't running fires once on its next start ("once", the default) or is let go ("skip").
+
+- `notify`: shown as a system notification (needs notifications).
+
+- `run`: the name of a function the manifest's `background` code exports, called as `exports[run](job, ctx)` (needs background).
+
+| Member                       |     |
+| ---------------------------- | --- |
+| `at?: string`                |     |
+| `every?: string`             |     |
+| `daily?: string`             |     |
+| `catchUp?: "once" \| "skip"` |     |
+| `notify?: Notification`      |     |
+| `run?: string`               |     |
+
+## ScheduledJob
+
+A job as Textus keeps it: what was set, when it is due next (Unix ms; null once an `at` fired) and when it last fired.
+
+| Member                      |     |
+| --------------------------- | --- |
+| `id: string`                |     |
+| `catchUp: "once" \| "skip"` |     |
+| `nextDue: number \| null`   |     |
+| `lastFired: number \| null` |     |
+
+## Notification
+
+A system notification. A click brings Textus up with `open.path` (a file of the open folder - or, from a job, of the folder open when it was set - absolute or relative to it; needs files.read) open at `open.line`. macOS asks the user to allow notifications the first time.
+
+| Member                                   |     |
+| ---------------------------------------- | --- |
+| `title: string`                          |     |
+| `body?: string`                          |     |
+| `open?: { path: string; line?: number }` |     |
+
+## Schedule
+
+| Member                                             |                                                                                                                   |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `set(id: string, job: Job): Promise<ScheduledJob>` | Adds the job, or replaces the plugin's job of that id (letters, digits, `-`, `_`, `.`; at most 32 jobs a plugin). |
+| `clear(id: string): Promise<boolean>`              | Whether there was one to take away.                                                                               |
+| `list(): Promise<ScheduledJob[]>`                  |                                                                                                                   |
+
+## Notify
+
+| Member                                            |     |
+| ------------------------------------------------- | --- |
+| `show(notification: Notification): Promise<void>` |     |
+
+## App
+
+| Member                                                            |                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `readonly state: "active" \| "inactive" \| "background"`          | "active": a Textus window has the focus; "inactive": windows are open, none focused; "background": no window (background code, or every window closed in background mode). On iOS and Android only "active" (on screen) and "background" (the user left the app). |
+| `onDidChangeState: Event<"active" \| "inactive" \| "background">` |                                                                                                                                                                                                                                                                   |
+| `onDidActivity: Event<{ kind: "typing" \| "saved" }>`             | The user typed (heard once typing pauses) or saved by hand - that it happened, with nothing of the document. From 1.3.6.                                                                                                                                          |
+
+## OpenColor
+
+A colour Textus's look is drawn from, which a plugin may set.
+
+```ts
+type OpenColor =
+  | "--doc-bg"
+  | "--doc-text"
+  | "--doc-muted"
+  | "--doc-accent"
+  | "--doc-mark"
+  | "--doc-code-bg"
+  | "--ui-bg"
+  | "--ui-text"
+  | "--ui-accent"
+  | "--ui-frame-tint"
+  | "--ui-frame-paint"
+  | "--tone-blue"
+  | "--tone-green"
+  | "--tone-orange"
+  | "--tone-purple"
+  | "--tone-red"
+  | "--tone-teal"
+  | "--tone-yellow"
+  | "--tone-pink"
+  | "--tone-gray";
+```
+
+## FrameTexture
+
+Bundled grain for the frame; no plugin images or network requests. From 1.8.
+
+| Member                       |                                                              |
+| ---------------------------- | ------------------------------------------------------------ |
+| `opacity: number`            | Grain opacity, from 0 to 1. Zero leaves the paint unchanged. |
+| `color?: "black" \| "white"` | Defaults to black in light mode, white in dark mode.         |
+
+## Appearance
+
+From 1.6 (permission `appearance`): a palette over whichever theme is on. Only the colours the others are drawn from are open; borders, hovers and the like follow. Values are colours; `--ui-frame-paint` (the frame round the pages: bar, rail, sidebar) may also be a `linear-`, `radial-` or `conic-gradient(...)` of colours, laid across the whole window. No plugin images, `url()` or `var()`. When UI colours are supplied, text is kept readable; a frame-only layer leaves other surfaces alone: below 4.5:1 on its background (or any of the paint's colours) it is moved toward ink or white. The user's Custom CSS still wins.
+
+const layer = await textus.appearance.setColors( { "--ui-frame-paint": "linear-gradient(120deg, #f3d9c4, #d6dcec)" }, { scheme: "light" }, ); ctx.subscriptions.push(layer);
+
+| Member                                                                                                                                                         |                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `readonly supportsFrameTexture?: boolean`                                                                                                                      | From 1.8: `setColors` takes `frameTexture`.                                                                                                                                                                                        |
+| `setColors(colors: Partial<Record<OpenColor, string>>, options?: { scheme?: "light" \| "dark" \| "both"; frameTexture?: FrameTexture; }): Promise<Disposable>` | Lays `colors` over the theme, for light, dark or both (the default); disposing it, or the plugin stopping, takes it away. Several plugins: per colour the one last by id wins. Rejects naming the first colour or value not taken. |
+| `colors(): Promise<Record<OpenColor, string>>`                                                                                                                 | The open colours as the window shows them now (theme and every plugin's), as `rgb(...)`; the paint as rendered (including bundled texture), or "". No permission.                                                                  |
+| `onDidChange: Event<{ theme: string; scheme: "light" \| "dark" }>`                                                                                             | The theme (its id, for keeping a palette per theme), the scheme or a plugin's colours changed.                                                                                                                                     |
+
+## JobRun
+
+What a job's `run` is given, in the manifest's `background` code: a frame of its own, started for the run and stopped after it (30 seconds at most). That code reaches `files` (in the folder open when the job was set), `net`, `settings.get`, `schedule`, `notify`, `app`, `l10n`, `env` and the context's storage, secrets and log - not the editor, UI, layout, views, commands or metadata.
+
+exports.remind = async (job, ctx) => { ... };
+
+| Member       |                                                                   |
+| ------------ | ----------------------------------------------------------------- |
+| `id: string` | The job's id.                                                     |
+| `due: Date`  | When it was due: well before now for one caught up after a start. |
+
+## Text
+
+From 1.7: text read as the app reads it.
+
+| Member                                                                            |                                                                                                                                            |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `count(markdown: string): Promise<{ words: number; characters: number }>`         | Words and characters as the status bar counts them.                                                                                        |
+| `splitFrontmatter(text: string): Promise<{ yaml: string \| null; body: string }>` | A note's front matter (its YAML, null with none) and the rest.                                                                             |
+| `compareNames(a: string, b: string): number`                                      | Names in the file tree's order: "Week2" before "Week10", case and accents aside, in the UI language. For `Array.sort`.                     |
+| `parseYaml(yaml: string): Promise<Record<string, unknown>>`                       | YAML read in full (YAML 1.2): block text, lists of maps, quoting. {} for YAML that isn't a map; rejects YAML that can't be read. From 1.8. |
+| `stringifyYaml(value: unknown): Promise<string>`                                  | A value written as YAML, without a trailing line break. From 1.8.                                                                          |
+
+## HistoryVersion
+
+One past version of a document, as a source keeps it.
+
+| Member            |                       |
+| ----------------- | --------------------- |
+| `id: string`      |                       |
+| `at: string`      | When, as an ISO date. |
+| `label?: string`  |                       |
+| `author?: string` |                       |
+
+## Comments
+
+The notes in a document's margin: the writer's own and plugins', the same ones the user sees. While the document is open they are changed in its editor, else in the file Textus keeps them in.
+
+| Member                                                                            |                                                                                                                                                       |
+| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list(path: string): Promise<Comment[]>`                                          |                                                                                                                                                       |
+| `add(location: { path: string; text: string }, comment: string): Promise<string>` | A note on the first place `text` (words of one paragraph) is in the file, signed with the plugin's name; its id. Refused when the words aren't there. |
+| `resolve(path: string, id: string): Promise<boolean>`                             | Takes a note away (the writer's too); false when it isn't there.                                                                                      |
+| `onDidChange: Event<{ path: string }>`                                            | A document's notes changed, by the user or a plugin.                                                                                                  |
+
+## Comment
+
+| Member                   |                                                              |
+| ------------------------ | ------------------------------------------------------------ |
+| `id: string`             |                                                              |
+| `text: string`           | The words it is on.                                          |
+| `comment: string`        |                                                              |
+| `author: string \| null` | The plugin that left it, by name; null for the writer's own. |
+
+## History
+
+Where a document's past versions are kept besides Textus's own: a plugin offers its source (Git, a sync service), another - Version History - lists them all and reads a version. Needs files.read. From 1.8.
+
+| Member                                                                                                                                                                                                                      |                                                              |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `registerSource(id: string, source: { label: string; versions(path: string): HistoryVersion[] \| Promise<HistoryVersion[]>; read(path: string, version: string): string \| null \| Promise<string \| null>; }): Disposable` | Offers a source named `id` among the plugin's own.           |
+| `sources(): Promise<{ id: string; label: string; plugin: string }[]>`                                                                                                                                                       | Every source offered now; `id` is "<plugin id>/<source id>". |
+| `versions(source: string, path: string): Promise<HistoryVersion[]>`                                                                                                                                                         | A source's versions of `path`, newest first.                 |
+| `read(source: string, path: string, version: string): Promise<string>`                                                                                                                                                      | One version's text.                                          |
+
+## Path
+
+Paths as Textus writes them: "/" between parts on every system; a "\\" in what is given is read as one. From 1.8.
+
+| Member                                         |                                                                                                              |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `join(...parts: string[]): string`             | The parts joined, "." and ".." worked out: join("a", "../b") is "b".                                         |
+| `normalize(path: string): string`              | "." and ".." worked out, "/" between parts, no "/" at the end.                                               |
+| `dirname(path: string): string`                | The folder it is in: "." for a bare name, "/" at the top.                                                    |
+| `basename(path: string, ext?: string): string` | The last part; without `ext` when it ends so.                                                                |
+| `extname(path: string): string`                | From the last "." of the last part (".md"), "" for none or a name that starts with its only dot (".textus"). |
+| `relative(from: string, to: string): string`   | How to get from the folder `from` to `to`: "../ideas/a.md".                                                  |
+
+## MenuItem
+
+An item of a page's menu (`WebviewApi.menu`); `items` makes it a submenu (one level).
+
+| Member                                |     |
+| ------------------------------------- | --- |
+| `label: string`                       |     |
+| `value?: unknown`                     |     |
+| `checked?: boolean`                   |     |
+| `danger?: boolean`                    |     |
+| `disabled?: boolean`                  |     |
+| `items?: (MenuItem \| "separator")[]` |     |
+
+## WebviewApi
+
+| Member                                                                                                                                                                                             |                                                                                                                                                                                                                                                                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `readonly language: string`                                                                                                                                                                        |                                                                                                                                                                                                                                                                                                                                       |
+| `t(key: string, ...args: unknown[]): string`                                                                                                                                                       |                                                                                                                                                                                                                                                                                                                                       |
+| `postMessage(message: unknown): void`                                                                                                                                                              |                                                                                                                                                                                                                                                                                                                                       |
+| `onMessage(fn: (message: unknown) => void): Disposable`                                                                                                                                            | Deprecated: use onDidReceiveMessage.                                                                                                                                                                                                                                                                                                  |
+| `onDidReceiveMessage(fn: (message: unknown) => void): Disposable`                                                                                                                                  | From 1.7: onMessage by the name host.js's webview has.                                                                                                                                                                                                                                                                                |
+| `readonly visible: boolean`                                                                                                                                                                        | From 1.7: whether the page is in sight.                                                                                                                                                                                                                                                                                               |
+| `onDidChangeVisibility(fn: (visible: boolean) => void): Disposable`                                                                                                                                | From 1.7: told as the page goes out of sight and comes back. Out of sight it may be let go to save memory and is rebuilt when shown, from `getState()`: set what it should keep here.                                                                                                                                                 |
+| `getState(): unknown`                                                                                                                                                                              |                                                                                                                                                                                                                                                                                                                                       |
+| `setState<T>(state: T): T`                                                                                                                                                                         |                                                                                                                                                                                                                                                                                                                                       |
+| `menu(items: (MenuItem \| "separator")[], at?: Element \| { x: number; y: number }): Promise<unknown>`                                                                                             | Textus's own menu over the page, for a right-click or a dropdown, under `at` (an element) or at a point of the page. Resolves to the chosen item's value (its label without one), or null when the menu is closed without a choice. A page draws no menu of its own.                                                                  |
+| `textItems(field: Element): Promise<(MenuItem \| "separator")[]>`                                                                                                                                  | A text field's menu items (undo, redo, cut, copy, paste, select all) in Textus's language, for a page's own right-click menu; each value is the action `editText` takes (1.3.12).                                                                                                                                                     |
+| `editText(field: Element, action: string): Promise<void>`                                                                                                                                          | One of those actions in `field`, the clipboard through Textus.                                                                                                                                                                                                                                                                        |
+| `onExport(provider: (options: { theme: "light" \| "dark"; }) => string \| null \| Promise<string \| null>): Disposable`                                                                            | How the page looks as a picture, asked when the document is exported (a code block's page): an SVG's markup or an image's `data:` URL, for a page of `theme`. Without it, or answering null, the block exports as its source.                                                                                                         |
+| `readonly dates: Dates`                                                                                                                                                                            | From 1.7: dates as `textus.dates` has them.                                                                                                                                                                                                                                                                                           |
+| `drag: { reorder(container: Element, options: { items: string; axis?: "x" \| "y"; handle?: string; onDrop(from: number, to: number): void; }): Disposable; }`                                      | From 1.7: a list dragged into a new order, the app's way: the item lifts, the others make room; `onDrop(from, to)` once let go somewhere new. `handle`: only from inside it. Esc puts it back. A finger lifts it once held still a moment; a press in a text field is the field's. Near the edge of its scroller the drag scrolls it. |
+| `popover(content: Element, anchor: Element, options?: { label?: string; role?: string; align?: "start" \| "end" }): { element: Element; close(value?: unknown): void; closed: Promise<unknown>; }` | From 1.7: `content` in the window's floating card under `anchor` (above with no room), kept on screen; a press outside or Esc closes it, the focus back on `anchor`. `closed` resolves with what `close(value)` was given, null otherwise.                                                                                            |
+| `pickDate(value: string \| null, anchor: Element): Promise<string \| null>`                                                                                                                        | From 1.7: a month under `anchor` to pick a day on: "YYYY-MM-DD", or null when closed without one.                                                                                                                                                                                                                                     |
+| `monthDays(year: number, month: number, options?: { weekStart?: number }): { date: string; day: number; inMonth: boolean; today: boolean }[]`                                                      | From 1.7: a month's 42 days from the week's first day in the UI language (or `weekStart`, 0 Sunday to 6 Saturday: a vault's own), for a calendar a page draws itself (`tx-calendar`).                                                                                                                                                 |
+| `resizeHandle(handle: Element, options: { axis?: "x" \| "y"; min?: number; max?: number; get(): number; set(px: number): void; done?(px: number): void; }): Disposable`                            | From 1.7: an edge dragged (or moved with the arrow keys) to resize something: `get` the size now, `set` it as it moves, `done` at the end.                                                                                                                                                                                            |

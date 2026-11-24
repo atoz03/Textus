@@ -1,0 +1,46 @@
+import { thisWindow } from "../../platform/this-window";
+import { editInFocus } from "../../engine/controls/edit-in-focus";
+import { EDIT_ACTION_EVENT, sendAppEvent } from "../../utils/events";
+import type {
+  LocalMenuAction,
+  MenuAction,
+} from "../../registry/menu/app-menu-model";
+import { canToggleFullscreen, hasAppMenu } from "../../platform/capabilities";
+import { emitMenuEvent, runMenuItemHere } from "../../platform/menu-events";
+
+/** Runs a menu entry's action as a click on it would: a native id through
+ *  the backend, a local one here. */
+export function runMenuAction(action: MenuAction): void {
+  if ("local" in action) runLocalMenuAction(action.local);
+  else if (!hasAppMenu) emitMenuEvent(action.native);
+  else
+    void runMenuItemHere(action.native).catch(() => {
+      // A failed menu command is the backend's to report.
+    });
+}
+
+/** Whether `action` opens a field to type in (Find, Replace). */
+export function opensField(action: MenuAction): boolean {
+  return (
+    "native" in action &&
+    (action.native === "find-replace" || action.native === "replace")
+  );
+}
+
+/** Items with no native id to fire (predefined items in the native menu),
+ *  run on this side instead. */
+export function runLocalMenuAction(action: LocalMenuAction): void {
+  if (action === "select-all" || action === "undo" || action === "redo") {
+    editInFocus(action);
+    return;
+  }
+  if (action === "fullscreen") {
+    if (!canToggleFullscreen) return;
+    void (async () => {
+      const win = thisWindow();
+      await win.setFullscreen(!(await win.isFullscreen()));
+    })();
+    return;
+  }
+  sendAppEvent(EDIT_ACTION_EVENT, action);
+}

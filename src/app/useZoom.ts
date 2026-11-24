@@ -1,0 +1,488 @@
+import { tabElement } from "../engine/layout/tab-element";
+import { islandAt } from "../engine/frame/frame-store";
+import { tabInUse, windowLayout } from "../engine/layout/store";
+import { paneById } from "../engine/layout/tree";
+import { useEffect, useRef } from "react";
+import { onFlush } from "../storage/pending-writes";
+import {
+  caretStaysWhereTextWas,
+  pinchFromTouches,
+} from "../platform/capabilities";
+import { listenToTouchPinch, type PinchAt } from "./touch-pinch";
+import {
+  blockAt,
+  holdBlock,
+  holdText,
+  keepNextFrame,
+  textAt,
+  type HeldText,
+} from "../engine/controls/scroll-hold";
+import { listenToThisWindow, unlistenAll } from "../platform/events";
+import type { EditorView } from "@codemirror/view";
+import { zoomPanesOf, type ZoomPane } from "../engine/zoom/zoom-panes";
+import { contentZoom } from "../engine/zoom/tab-zoom";
+import {
+  clearTabZooms,
+  keepWindowZoomIn,
+  setTabZoom,
+  setWindowZoom,
+} from "../engine/zoom/tab-zoom";
+import { windowTabs } from "../engine/layout/store";
+import {
+  endPreview,
+  showPreview,
+  startPreview,
+  type ZoomPreview,
+} from "./zoom-preview";
+
+/// Document zoom, each tab its own (or, with zoomTogether, all documents
+/// one), scoped to the editor content; the window chrome stays at 100%. Published as `--content-zoom` on the tab's own
+/// element (the window's default on the root, for tabs not zoomed yet).
+/// Fed by trackpad pinch, mod+wheel and the View menu; a tab that shows no
+/// document (Settings, an AI conversation, a plugin's page) isn't zoomed.
+
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 3;
+/// Multiplicative step for the menu/keyboard Zoom In/Out items.
+const MENU_STEP = 1.1;
+/// Wheel events this close together are one gesture: a scroll's own carry
+/// on as a scroll, whatever key goes down meanwhile.
+const SCROLL_GESTURE_MS = 250;
+/// Trailing delay before persisting, so only the resting value is saved.
+const PERSIST_DELAY_MS = 400;
+/// A wheel pinch (no gesture end of its own) has ended after this still.
+const PINCH_REST_MS = 150;
+
+function clamp(zoom: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+}
+
+/// Snaps near-100% values to exactly 1, so text isn't left blurry at 98%.
+function snap(zoom: number): number {
+  const clamped = clamp(zoom);
+  return Math.abs(clamped - 1) < 0.03 ? 1 : clamped;
+}
+
+/// The tab a zoom is for: the one under the pointer, else the one in use;
+/// null when it shows no document.
+function zoomTab(x: number | null, y: number | null): HTMLElement | null {
+  const island = x !== null && y !== null ? islandAt(x, y) : null;
+  const front = island && paneById(windowLayout().root, island.paneId)?.front;
+  const id = (front && tabElement(front) && front) || tabInUse();
+  return zoomPanesOf(id).length ? tabElement(id) : null;
+}
+
+/// In `tab`: the pane under the pointer, else the focused one, else the
+/// first on screen, a rendered one first. Split view's panes sit side by
+/// side, hence the x.
+function zoomPane(
+  tab: HTMLElement,
+  x: number | null,
+  y: number | null,
+): ZoomPane | null {
+  const panes = zoomPanesOf(tab.dataset.tabId!).sort(
+    (a, b) => Number(a.kind === "source") - Number(b.kind === "source"),
+  );
+  const shown = panes.filter((pane) => {
+    if (pane.kind === "rendered" && !pane.content()) return false;
+    const box = pane.scroller.getBoundingClientRect();
+    return box.width > 0 && box.height > 0;
+  });
+  const under = (pane: ZoomPane) => {
+    const box = pane.scroller.getBoundingClientRect();
+    return (
+      (x === null || (x >= box.left && x <= box.right)) &&
+      y !== null &&
+      y >= box.top &&
+      y <= box.bottom
+    );
+  };
+  return (
+    shown.find(under) ??
+    shown.find((pane) => pane.scroller.contains(document.activeElement)) ??
+    shown[0] ??
+    null
+  );
+}
+
+/// Keeps the line at viewport y `line` in place: the character at `x` on
+/// it (or `held`, read off a pinch's preview), else the block under it
+/// keeps its share of its height. Scaling the offset alone drifts as text
+/// rewraps.
+function holdRendered(
+  scroller: HTMLElement,
+  content: Element,
+  x: number,
+  line: number,
+  prev: number,
+  next: number,
+  setZoomVar: () => void,
+  held = textAt(content, x, line),
+) {
+  if (held) {
+    holdText(scroller, held, setZoomVar);
+    return;
+  }
+  const blocks = content.querySelector(".ProseMirror");
+  const block = blocks && blockAt(blocks, line);
+  if (block) {
+    holdBlock(scroller, block, line, setZoomVar);
+    return;
+  }
+  // Below the last block: the column's padding is outside the zoomed node,
+  // so only the distance INTO the content scales.
+  const top = scroller.getBoundingClientRect().top;
+  const anchor = line - top;
+  const contentTop = () =>
+    content.getBoundingClientRect().top - top + scroller.scrollTop;
+  const before = contentTop();
+  const into = Math.max(0, scroller.scrollTop + anchor - before);
+  setZoomVar();
+  scroller.scrollTop = contentTop() + (into * next) / prev - anchor;
+}
+
+/// The same for the source editor's scroller, whose text grows by its font
+/// size (the pane isn't zoomed). CodeMirror keeps a line of its own still
+/// while heights change and only knows the new ones once it measures, so
+/// the line under the pointer is handed to it to put back.
+function holdSource(
+  source: HTMLElement,
+  cm: EditorView,
+  line: number,
+  prev: number,
+  next: number,
+  setZoomVar: () => void,
+) {
+  // Steps that come before CodeMirror has measured keep the first one's
+  // anchor: until then its heights are the old zoom's.
+  let held = heldSource.get(source);
+  if (!held) {
+    const block = cm.lineBlockAtHeight(line - cm.documentTop);
+    held = {
+      pos: block.from,
+      into: line - cm.documentTop - block.top,
+      line,
+      zoom: prev,
+    };
+    heldSource.set(source, held);
+    cm.requestMeasure({
+      read: () => null,
+      write: () => heldSource.delete(source),
+    });
+  }
+  setZoomVar();
+  const scroll = (cm.constructor as typeof EditorView).scrollIntoView;
+  cm.dispatch({
+    effects: scroll(held.pos, {
+      y: "start",
+      yMargin:
+        held.line -
+        source.getBoundingClientRect().top -
+        (held.into * next) / held.zoom,
+    }),
+  });
+}
+
+/** A phone's WebKit places its own caret only as the selection changes:
+ *  the text zoomed and scrolled under it, the caret stayed where the text
+ *  was. The same selection set again has it placed anew. */
+export function caretAgain(tab: HTMLElement) {
+  const selection = document.getSelection();
+  const { anchorNode, anchorOffset, focusNode, focusOffset } = selection ?? {};
+  if (!selection || !anchorNode || !focusNode || !tab.contains(focusNode))
+    return;
+  // Typing in a field (find, a table cell's input): its caret is its own.
+  const active = document.activeElement;
+  if (
+    active instanceof HTMLInputElement ||
+    active instanceof HTMLTextAreaElement ||
+    (active instanceof HTMLElement &&
+      active.isContentEditable &&
+      !active.contains(focusNode))
+  )
+    return;
+  selection.removeAllRanges();
+  selection.setBaseAndExtent(
+    anchorNode,
+    anchorOffset!,
+    focusNode,
+    focusOffset!,
+  );
+}
+
+/** A source pane's anchor while a zoom waits for CodeMirror's measure. */
+const heldSource = new WeakMap<
+  HTMLElement,
+  { pos: number; into: number; line: number; zoom: number }
+>();
+
+/**
+ * Applies `initialZoom` on mount and owns every zoom input for this window.
+ * The live value is a ref, since pinch updates arrive per frame; `persist`
+ * gets it once it comes to rest.
+ */
+export function useZoom(
+  initialZoom: number,
+  persist: (zoom: number) => void,
+  /** Every document zoomed together (settings.zoomTogether). */
+  together: boolean,
+) {
+  const zoomRef = useRef(snap(initialZoom));
+  const persistRef = useRef(persist);
+  persistRef.current = persist;
+  const togetherRef = useRef(together);
+  togetherRef.current = together;
+
+  // Turned on: every document takes the window's one zoom.
+  useEffect(() => {
+    if (!together) return;
+    clearTabZooms();
+  }, [together]);
+
+  useEffect(() => {
+    let raf = 0;
+    let persistTimer: ReturnType<typeof setTimeout> | undefined;
+    // The viewport point the next apply holds still (null: the focused
+    // pane's centre).
+    let anchorClientX: number | null = null;
+    let anchorClientY: number | null = null;
+    // The tab the next apply zooms, and to what.
+    let target: HTMLElement | null = null;
+
+    // The character a pinch's preview showed at its line, held as it lands.
+    let previewText: HeldText | null = null;
+
+    const apply = () => {
+      const tab = target;
+      if (!tab) return;
+      zoomTo(tab);
+      previewText = null;
+      if (caretStaysWhereTextWas) caretAgain(tab);
+    };
+
+    const zoomTo = (tab: HTMLElement) => {
+      const next = zoomRef.current;
+      const prev = contentZoom(tab);
+      const setZoomVar = () => {
+        // Together: the window's own zoom, which every document reads.
+        if (togetherRef.current) setWindowZoom(next);
+        else setTabZoom(tab.dataset.tabId!, next);
+      };
+      // Zoom leaves scrollTop alone, so without this the text under the
+      // pointer slides with every step.
+      const pane =
+        prev === next ? null : zoomPane(tab, anchorClientX, anchorClientY);
+      if (!pane) {
+        setZoomVar();
+        return;
+      }
+      const box = pane.scroller.getBoundingClientRect();
+      const line = Math.min(
+        box.bottom,
+        Math.max(box.top, anchorClientY ?? box.top + box.height / 2),
+      );
+      if (pane.kind === "source")
+        holdSource(pane.scroller, pane.view, line, prev, next, setZoomVar);
+      else
+        holdRendered(
+          pane.scroller,
+          pane.content()!,
+          anchorClientX ?? box.left + box.width / 2,
+          line,
+          prev,
+          next,
+          setZoomVar,
+          previewText ?? undefined,
+        );
+      // Split panes sync on scroll, and the held pane may not have moved:
+      // let the other follow it.
+      if (!pane.scroller.closest(".split-view")) return;
+      const held = pane.scroller.scrollTop;
+      pane.scroller.dispatchEvent(new Event("scroll"));
+      // The follower writes back through the same handler when its own
+      // reflow moves it - CodeMirror re-measures after a resize and shifts
+      // its scrollTop, so the position the sync expects is not the one it
+      // finds and the pane under the pointer gets pulled with it. One frame
+      // later, put that pane back where the step left it and let the other
+      // follow again.
+      keepNextFrame(pane.scroller, held, () =>
+        pane.scroller.dispatchEvent(new Event("scroll")),
+      );
+    };
+
+    const applyFrame = () => {
+      raf = 0;
+      apply();
+    };
+
+    // Saves a pending zoom, from the timer or when the window closes: the
+    // zoom new tabs start at. Tabs on the old default keep it.
+    const persistNow = () => {
+      if (persistTimer === undefined) return;
+      clearTimeout(persistTimer);
+      persistTimer = undefined;
+      // Each on its own: the tabs on the old default keep it. Together, the
+      // window's one zoom is every tab's.
+      if (!togetherRef.current)
+        keepWindowZoomIn(windowTabs().map((tab) => tab.id));
+      setWindowZoom(zoomRef.current);
+      persistRef.current(zoomRef.current);
+    };
+    const unregisterFlush = onFlush(persistNow);
+
+    // `snapped: false` mid-pinch, so the 100% snap zone doesn't feel sticky.
+    // `to` the zoom from the tab's own; `tab` fixed for a pinch's gesture.
+    const setZoom = (
+      to: (current: number) => number,
+      snapped = true,
+      point: { clientX: number; clientY: number } | null = null,
+      tab = zoomTab(point?.clientX ?? null, point?.clientY ?? null),
+    ): boolean => {
+      // Not a document (the start page, Settings, a conversation): no zoom.
+      if (!tab) return false;
+      // Steps that come before the next frame build on each other.
+      const pending = raf !== 0 && target === tab;
+      target = tab;
+      anchorClientX = point?.clientX ?? null;
+      anchorClientY = point?.clientY ?? null;
+      const zoom = to(pending ? zoomRef.current : contentZoom(tab));
+      zoomRef.current = snapped ? snap(zoom) : clamp(zoom);
+      if (!raf) raf = requestAnimationFrame(applyFrame);
+      clearTimeout(persistTimer);
+      persistTimer = setTimeout(persistNow, PERSIST_DELAY_MS);
+      return true;
+    };
+
+    // A pinch drawn as a preview (zoom-preview.ts) until it ends: then the
+    // real zoom, at once, holding the line the preview held.
+    let preview: ZoomPreview | null = null;
+    let pinchRest: ReturnType<typeof setTimeout> | undefined;
+    const commitPreview = () => {
+      const shown = preview;
+      if (!shown) return;
+      preview = null;
+      clearTimeout(pinchRest);
+      const box = shown.column.getBoundingClientRect();
+      const point = { clientX: box.left + box.width / 2, clientY: shown.line };
+      // Read while still drawn scaled: what the fingers see, panned or not.
+      previewText = textAt(shown.column, point.clientX, point.clientY);
+      endPreview(shown);
+      setZoom(() => zoomRef.current, true, point, shown.tab);
+      // In this frame, or the column shows at its old size for one.
+      if (raf) {
+        cancelAnimationFrame(raf);
+        applyFrame();
+      }
+    };
+    const previewTo = (zoom: number) => {
+      zoomRef.current = clamp(zoom);
+      showPreview(preview!, zoomRef.current);
+    };
+
+    // The restored zoom is the starting state, not a step to anchor.
+    if (zoomRef.current !== 1) setWindowZoom(zoomRef.current);
+
+    // A pinch: scale is cumulative from its start, so the zoom then is the
+    // base it multiplies. WebKit's gesture events (a trackpad, an iPhone)
+    // or, where a web view has none, two fingers' touches.
+    let pinchBase = 1;
+    let pinchTab: HTMLElement | null = null;
+    const pinchStart = ({ clientX, clientY }: PinchAt) => {
+      pinchTab = zoomTab(clientX, clientY);
+      pinchBase = pinchTab ? contentZoom(pinchTab) : 1;
+      commitPreview();
+      preview = pinchTab && startPreview(pinchTab, pinchBase, clientY);
+      return pinchTab !== null;
+    };
+    const pinchChange = (at: PinchAt) => {
+      const { scale } = at;
+      if (scale > 0 && preview) previewTo(pinchBase * scale);
+      else if (scale > 0 && pinchTab)
+        setZoom(() => pinchBase * scale, false, at, pinchTab);
+    };
+    const pinchEnd = (at: PinchAt) => {
+      if (preview) commitPreview();
+      else if (pinchTab) setZoom(() => zoomRef.current, true, at, pinchTab);
+      pinchTab = null;
+    };
+    const gesture = (handle: (at: PinchAt) => void) => (e: Event) => {
+      e.preventDefault();
+      handle(e as Event & PinchAt);
+    };
+    const onGestureStart = gesture(pinchStart);
+    const onGestureChange = gesture(pinchChange);
+    const onGestureEnd = gesture(pinchEnd);
+    const unlistenTouchPinch = pinchFromTouches
+      ? listenToTouchPinch(window, {
+          start: pinchStart,
+          change: pinchChange,
+          end: pinchEnd,
+        })
+      : () => {};
+
+    // mod+wheel zoom. Exponential, so steps are proportional to the current
+    // level. Chromium reports trackpad pinch as ctrl+wheel too. As in VS
+    // Code, a gesture that began as a scroll stays one: Cmd pressed while
+    // the page still moves (a trackpad's glide) doesn't turn it into a zoom.
+    // Only a real scroll marks one: a skipped zoom step must not, or a
+    // pinch begun just after a scroll would be skipped to its end.
+    // Chromium's pinch (Windows' trackpad) is ctrl+wheel in fractions of a
+    // line, a mouse wheel's whole steps; a pinch is never a scroll's tail.
+    let lastScroll = -Infinity;
+    const onWheel = (e: WheelEvent) => {
+      const modified = e.metaKey || e.ctrlKey;
+      if (!modified) {
+        lastScroll = e.timeStamp;
+        return;
+      }
+      const pinch = e.ctrlKey && !Number.isInteger(e.deltaY);
+      if (!pinch && e.timeStamp - lastScroll < SCROLL_GESTURE_MS) return;
+      if (pinch && pinchPreview(e)) return;
+      // A pinch moves in small steps: snapped, each would fall back.
+      if (setZoom((z) => z * Math.exp(-e.deltaY * 0.0015), !pinch, e))
+        e.preventDefault();
+    };
+
+    // Chromium's pinch, as a preview until it rests.
+    const pinchPreview = (e: WheelEvent): boolean => {
+      if (!preview) {
+        const tab = zoomTab(e.clientX, e.clientY);
+        const base = tab ? contentZoom(tab) : 1;
+        preview = tab && startPreview(tab, base, e.clientY);
+        if (!preview) return false;
+        zoomRef.current = base;
+      }
+      e.preventDefault();
+      previewTo(zoomRef.current * Math.exp(-e.deltaY * 0.0015));
+      clearTimeout(pinchRest);
+      pinchRest = setTimeout(commitPreview, PINCH_REST_MS);
+      return true;
+    };
+
+    window.addEventListener("gesturestart", onGestureStart);
+    window.addEventListener("gesturechange", onGestureChange);
+    window.addEventListener("gestureend", onGestureEnd);
+    window.addEventListener("wheel", onWheel, { passive: false });
+
+    const unlistenMenu = unlistenAll(
+      listenToThisWindow("menu-zoom-in", () => setZoom((z) => z * MENU_STEP)),
+      listenToThisWindow("menu-zoom-out", () => setZoom((z) => z / MENU_STEP)),
+      listenToThisWindow("menu-zoom-reset", () => setZoom(() => 1)),
+    );
+
+    return () => {
+      window.removeEventListener("gesturestart", onGestureStart);
+      window.removeEventListener("gesturechange", onGestureChange);
+      window.removeEventListener("gestureend", onGestureEnd);
+      window.removeEventListener("wheel", onWheel);
+      unlistenTouchPinch();
+      if (raf) cancelAnimationFrame(raf);
+      clearTimeout(pinchRest);
+      if (preview) endPreview(preview);
+      clearTimeout(persistTimer);
+      unregisterFlush();
+      unlistenMenu();
+    };
+    // Mount-only: everything reactive comes in through the refs above.
+  }, []);
+}

@@ -1,0 +1,152 @@
+name: Android release
+
+# Builds the signed Android APK (arm64) for a release and attaches it to the
+# draft as Textus_<version>_android_arm64.apk. release.yml calls this before
+# publishing, so a failed build keeps the release a draft. The project in
+# src-tauri/gen/android is not committed: it is generated here and finished
+# by scripts/android-prepare.sh, as on a developer's machine.
+#
+# Needs ANDROID_KEYSTORE (the .jks, base64), ANDROID_KEY_ALIAS,
+# ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_PASSWORD in the release
+# environment. The APK must be signed by the certificate below, or Android
+# refuses it as an update.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (for example v1.4.3)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: release
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NDK_VERSION: 27.2.12479018
+      # The apksigner the check uses: a known one, not whatever is newest
+      # on the runner (whose output or Java may differ).
+      BUILD_TOOLS: 36.0.0
+      SIGNER_SHA256: 559b0eb511a274a75704f9ae12390da2a75f774b91714eeb50c4769148ce4f0a
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # What android-cache.yml saved on main (a tag can restore only the
+      # default branch's caches): most of Gradle's downloads are then local.
+      - uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'package-lock.json', 'scripts/android-prepare.sh') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      # Gradle's downloads come from Maven Central, which answers a burst of
+      # requests with 429: its retries wait seconds and grow, not 125 ms.
+      - name: Gradle retries downloads with a back-off
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties <<'PROPS'
+          systemProp.org.gradle.internal.repository.max.retries=6
+          systemProp.org.gradle.internal.repository.initial.backoff=2000
+          PROPS
+
+      - name: Install the NDK and build tools
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" "build-tools;$BUILD_TOOLS" > /dev/null
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: android
+          save-if: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm ci
+
+      - name: Write the signing key
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in ANDROID_KEYSTORE ANDROID_KEY_ALIAS ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not set: the APK can't be signed."
+              exit 1
+            fi
+          done
+          dir="$RUNNER_TEMP/android-signing"
+          mkdir -p "$dir"
+          printf '%s' "$ANDROID_KEYSTORE" | base64 -d > "$dir/textus.jks"
+          printf 'keystore=textus.jks\nalias=%s\nstorePassword=%s\nkeyPassword=%s\n' \
+            "$ANDROID_KEY_ALIAS" "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_PASSWORD" \
+            > "$dir/keystore.properties"
+          echo "TEXTUS_ANDROID_KEYSTORE=$dir/keystore.properties" >> "$GITHUB_ENV"
+
+      - name: Build the APK
+        run: |
+          npx tauri android init --ci
+          sh scripts/android-prepare.sh
+          # A download refused by Maven Central (429) or cut off is tried
+          # again after a pause; any other failure stops at once. The Rust
+          # library is built by then, so a retry is Gradle's part only.
+          # pipefail: the build's own exit status, not tee's.
+          set -o pipefail
+          log="$RUNNER_TEMP/android-build.log"
+          for wait in 60 180 0; do
+            if npx tauri android build --ci --apk --target aarch64 2>&1 | tee "$log"; then
+              exit 0
+            fi
+            if [ "$wait" = 0 ] || ! grep -Eq 'status code 429|Could not (GET|HEAD|resolve)|Read timed out|Connection reset' "$log"; then
+              exit 1
+            fi
+            echo "::warning::Gradle's downloads failed; trying again in ${wait}s."
+            sleep "$wait"
+          done
+
+      - name: Check the signature and attach the APK
+        run: |
+          apk=src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+          certs=$("$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" verify --print-certs "$apk" 2>&1) || true
+          signer=$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          if [ "$signer" != "$SIGNER_SHA256" ]; then
+            printf '%s\n' "$certs"
+            echo "::error::The APK is signed by '$signer', not Textus's key: phones would refuse it as an update."
+            exit 1
+          fi
+          out="$RUNNER_TEMP/Textus_${RELEASE_TAG#v}_android_arm64.apk"
+          cp "$apk" "$out"
+          gh release upload "$RELEASE_TAG" "$out" --clobber
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/android-signing"

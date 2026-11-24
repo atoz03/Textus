@@ -1,0 +1,531 @@
+// @vitest-environment jsdom
+import { localeOf } from "../i18n/strings";
+import TABLES from "./appearance-tables.json";
+import { BUILTIN_CONTENT_THEMES } from "./builtin-themes";
+import { DEFAULT_SETTINGS } from "./settings-types";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { useEffect, useLayoutEffect } from "react";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import {
+  loadSettings,
+  normaliseSettings,
+  resetSettingsStoreForTests,
+  SettingsProvider,
+  type Settings,
+  UI_TEXT_SCALES,
+  useSettings,
+} from "./SettingsContext";
+import { AppearanceSync } from "../theme/apply-appearance";
+import { changeSettings } from "./settings-store";
+import { storage } from "../platform/ipc";
+import { resetBootForTests } from "../storage/boot";
+import {
+  flushPendingWrites,
+  resetPendingWritesForTests,
+} from "../storage/pending-writes";
+import { keepInList, resetUiStateForTests } from "../storage/ui-state";
+import { installTestLocalStorage } from "../dev/test-local-storage";
+
+// The file-backed path, run when Rust booted the window with a snapshot.
+
+const handlers: Record<string, (event: { payload: unknown }) => void> = {};
+
+vi.mock("../platform/ipc", () => ({
+  themes: { loadThemeCss: vi.fn().mockResolvedValue(null) },
+  storage: {
+    settingsGet: vi.fn(),
+    settingsPatch: vi.fn(),
+    settingsFillDefaults: vi.fn(),
+    uiStateGet: vi.fn().mockResolvedValue({}),
+    uiStatePatch: vi.fn().mockResolvedValue(null),
+    historyList: vi.fn().mockResolvedValue([]),
+  },
+}));
+vi.mock("../platform/events", () => ({
+  listenToThisWindow: (
+    event: string,
+    handler: (event: { payload: unknown }) => void,
+  ) => {
+    handlers[event] = handler;
+    return Promise.resolve(() => {});
+  },
+}));
+
+function boot(settings: Record<string, unknown>, extra: object = {}) {
+  (window as unknown as { __BOOT__: unknown }).__BOOT__ = {
+    settings,
+    rev: 3,
+    uiState: {},
+    label: "main",
+    ...extra,
+  };
+}
+
+function remote(patch: Record<string, unknown>, rev: number, from = "w2") {
+  act(() => handlers["settings-changed"]({ payload: { rev, patch, from } }));
+}
+
+const setter: { current?: ReturnType<typeof useSettings>["setSettings"] } = {};
+const lastSet = (patch: Partial<Settings>) => setter.current!(patch);
+function Probe() {
+  const { settings, setSettings, t } = useSettings();
+  useEffect(() => {
+    setter.current = setSettings;
+  });
+  return (
+    <div data-testid="probe">
+      {settings.theme}|{settings.zoom}|{settings.customCss}|{t.settingsTitle}|
+      {settings.agentWorkspaceRoot}
+    </div>
+  );
+}
+
+beforeAll(installTestLocalStorage);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
+  resetBootForTests();
+  resetSettingsStoreForTests();
+  resetUiStateForTests();
+  resetPendingWritesForTests();
+  vi.mocked(storage.settingsGet).mockReturnValue(new Promise(() => {}));
+  vi.mocked(storage.settingsFillDefaults).mockReturnValue(
+    new Promise(() => {}),
+  );
+  let rev = 3;
+  vi.mocked(storage.settingsPatch).mockImplementation(async () => ++rev);
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  delete (window as unknown as { __BOOT__?: unknown }).__BOOT__;
+});
+
+describe("file-backed settings", () => {
+  it("reads the boot snapshot, not localStorage", () => {
+    localStorage.setItem(
+      "catvinci-settings",
+      JSON.stringify({ theme: "light" }),
+    );
+    boot({ theme: "dark", language: "ja", languageChosen: true });
+    const settings = loadSettings();
+    expect(settings.theme).toBe("dark");
+    expect(settings.language).toBe("ja");
+    expect(storage.settingsGet).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends only the fields that changed, and nothing to localStorage", () => {
+    boot({ theme: "light", languageChosen: true });
+    render(
+      <SettingsProvider>
+        <Probe />
+      </SettingsProvider>,
+    );
+    act(() => lastSet({ theme: "dark", contentWidth: "auto" }));
+    // contentWidth is already "auto" (the default) - nothing to send for it.
+    expect(storage.settingsPatch).toHaveBeenCalledWith({ theme: "dark" });
+    expect(localStorage.getItem("catvinci-settings")).toBeNull();
+    expect(loadSettings().theme).toBe("dark");
+  });
+
+  it("takes a document text size picked in Settings", () => {
+    boot({ languageChosen: true });
+    render(
+      <SettingsProvider>
+        <Probe />
+      </SettingsProvider>,
+    );
+    act(() => lastSet({ docTextSize: 24 }));
+    expect(storage.settingsPatch).toHaveBeenCalledWith({ docTextSize: 24 });
+    expect(loadSettings().docTextSize).toBe(24);
+  });
+
+  it("sends every keystroke at once, so a quick quit can't lose it", () => {
+    // Rust coalesces the disk writes and flushes on exit; a debounce here would
+    // lose the last keystrokes before Cmd+Q.
+    boot({ languageChosen: true });
+    render(
+      <SettingsProvider>
+        <Probe />
+      </SettingsProvider>,
+    );
+    act(() => lastSet({ customCss: "/* a */" }));
+    act(() => lastSet({ customCss: "/* ab */" }));
+    act(() => lastSet({ customCss: "/* abc */" }));
+    expect(storage.settingsPatch).toHaveBeenCalledTimes(3);
+    expect(storage.settingsPatch).toHaveBeenLastCalledWith({
+      customCss: "/* abc */",
+    });
+    expect(loadSettings().customCss).toBe("/* abc */");
+  });
+
+  it("applies other windows' changes, except zoom, the AI's folder and its own echo", () => {
+    boot({
+      theme: "light",
+      zoom: 1.5,
+      agentWorkspaceRoot: "/a",
+      languageChosen: true,
+    });
+    render(
+      <SettingsProvider>
+        <Probe />
+      </SettingsProvider>,
+    );
+    const probe = screen.getByTestId("probe");
+    remote({ theme: "dark", zoom: 2, agentWorkspaceRoot: "/b" }, 10);
+    expect(probe.textContent).toContain("dark|1.5|");
+    // Each window works in the folder it opened.
+    expect(probe.textContent).toContain("|/a");
+    // An event this window's own patch caused is not applied twice (here:
+    // it would be a stale value).
+    remote({ theme: "light" }, 11, "main");
+    expect(probe.textContent).toContain("dark|");
+    expect(loadSettings().zoom).toBe(1.5);
+    // What a conversation reads (the store), too: not the other window's.
+    expect(loadSettings().agentWorkspaceRoot).toBe("/a");
+    // Its own, changed from outside React, reaches the window.
+    act(() => changeSettings({ agentWorkspaceRoot: "/c" }));
+    expect(probe.textContent).toContain("|/c");
+  });
+
+  it("corrects a stale boot snapshot once the live values arrive", async () => {
+    let answer!: (s: { value: Record<string, unknown>; rev: number }) => void;
+    vi.mocked(storage.settingsGet).mockReturnValue(
+      new Promise((resolve) => (answer = resolve)),
+    );
+    boot({ theme: "light", zoom: 1.25, languageChosen: true });
+    render(
+      <SettingsProvider>
+        <Probe />
+      </SettingsProvider>,
+    );
+    await act(async () =>
+      answer({
+        value: { theme: "dark", zoom: 3, languageChosen: true },
+        rev: 7,
+      }),
+    );
+    // The window keeps its own zoom.
+    expect(screen.getByTestId("probe").textContent).toContain("dark|1.25|");
+  });
+
+  it("keeps a change that lands before the provider has subscribed", () => {
+    boot({ theme: "light", languageChosen: true });
+    // A child's layout effect runs after the provider's first render but before
+    // its passive effect subscribes.
+    function EarlyEvent() {
+      useLayoutEffect(() => {
+        // Straight to the handler: render() is already inside act().
+        handlers["settings-changed"]({
+          payload: { rev: 10, patch: { theme: "dark" }, from: "w2" },
+        });
+      }, []);
+      return null;
+    }
+    render(
+      <SettingsProvider>
+        <EarlyEvent />
+        <Probe />
+      </SettingsProvider>,
+    );
+    expect(screen.getByTestId("probe").textContent).toContain("dark|");
+  });
+
+  it("writes fresh defaults out when Rust has nothing stored", async () => {
+    vi.mocked(storage.settingsFillDefaults).mockImplementation(
+      async (defaults) => ({ value: defaults, rev: 4 }),
+    );
+    boot({});
+    expect(loadSettings().languageChosen).toBe(false);
+    // Only ever as defaults for the fields still missing - never a patch.
+    expect(storage.settingsPatch).not.toHaveBeenCalled();
+    const sent = vi.mocked(storage.settingsFillDefaults).mock.calls[0][0];
+    expect(sent.languageChosen).toBe(false);
+    expect(sent.onboardingShown).toBe(false);
+    await act(async () => {});
+    expect(loadSettings().languageChosen).toBe(false);
+  });
+
+  it("treats a new profile's seeded settings as no choices yet", async () => {
+    vi.mocked(storage.settingsFillDefaults).mockImplementation(
+      async (defaults) => ({
+        value: { ...defaults, disabledBuiltinSkills: ["poem"] },
+        rev: 2,
+      }),
+    );
+    // What Rust seeds a new profile with: the optional skills off.
+    boot({ disabledBuiltinSkills: ["poem"] }, { newProfile: true, rev: 1 });
+    const settings = loadSettings();
+    expect(settings.languageChosen).toBe(false);
+    expect(settings.onboardingShown).toBe(false);
+    const sent = vi.mocked(storage.settingsFillDefaults).mock.calls[0][0];
+    expect(sent.languageChosen).toBe(false);
+    expect(sent.disabledBuiltinSkills).toBeUndefined();
+    expect(storage.settingsGet).not.toHaveBeenCalled();
+    await act(async () => {});
+    expect(loadSettings().languageChosen).toBe(false);
+  });
+
+  it("doesn't put the defaults back over changes when it reloads with an empty snapshot", async () => {
+    // A window booted after a corrupt settings.json replays an empty snapshot on
+    // every reload; Rust only fills missing fields and answers with the live ones.
+    vi.mocked(storage.settingsFillDefaults).mockResolvedValue({
+      value: { theme: "dark", languageChosen: true, onboardingShown: true },
+      rev: 9,
+    });
+    boot({});
+    render(
+      <SettingsProvider>
+        <Probe />
+      </SettingsProvider>,
+    );
+    await act(async () => {});
+    expect(screen.getByTestId("probe").textContent).toContain("dark|");
+    expect(loadSettings().languageChosen).toBe(true);
+    expect(storage.settingsPatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("closing the window", () => {
+  it("waits for Rust to take a change that is still on its way", async () => {
+    let answer!: (rev: number) => void;
+    vi.mocked(storage.settingsPatch).mockReturnValue(
+      new Promise((resolve) => (answer = resolve)),
+    );
+    boot({ languageChosen: true });
+    render(
+      <SettingsProvider>
+        <Probe />
+      </SettingsProvider>,
+    );
+    act(() => lastSet({ customCss: "p { color: red }" }));
+    // Sent at once - nothing waits for a pause in the typing.
+    expect(storage.settingsPatch).toHaveBeenCalledWith({
+      customCss: "p { color: red }",
+    });
+    // The window is closing while the patch is still on its way.
+    let flushed = false;
+    void flushPendingWrites().then(() => (flushed = true));
+    await act(async () => {});
+    // Not until Rust has answered: destroying the window now could drop it.
+    expect(flushed).toBe(false);
+    await act(async () => answer(5));
+    expect(flushed).toBe(true);
+    // The close sent nothing again: there was nothing held back.
+    expect(storage.settingsPatch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("language", () => {
+  it("falls back to English for a language it doesn't know", () => {
+    expect(normaliseSettings({ language: "it" }).language).toBe("en");
+    expect(normaliseSettings({ language: "ja" }).language).toBe("ja");
+    expect(normaliseSettings({ language: "zh-Hant" }).language).toBe("zh-Hant");
+  });
+
+  it("starts a new installation in the system's language", () => {
+    const spy = vi.spyOn(navigator, "language", "get");
+    spy.mockReturnValue("zh-TW");
+    expect(normaliseSettings(null).language).toBe("zh-Hant");
+    spy.mockReturnValue("pt-BR");
+    expect(normaliseSettings(null).language).toBe("pt");
+    spy.mockReturnValue("it-IT");
+    expect(normaliseSettings(null).language).toBe("en");
+    spy.mockRestore();
+  });
+
+  it("renders instead of crashing on an unknown stored language", () => {
+    boot({ language: "klingon", languageChosen: true });
+    render(
+      <SettingsProvider>
+        <Probe />
+      </SettingsProvider>,
+    );
+    expect(screen.getByTestId("probe").textContent).toContain("Settings");
+    expect(document.documentElement.lang).toBe("en");
+  });
+
+  it("sets the document language for the CSS :lang() font stacks", () => {
+    expect(localeOf("zh")).toBe("zh-CN");
+    expect(localeOf("zh-Hant")).toBe("zh-TW");
+    expect(localeOf("ja")).toBe("ja");
+    expect(localeOf("en")).toBe("en");
+    boot({ language: "zh", languageChosen: true });
+    render(
+      <SettingsProvider>
+        <Probe />
+      </SettingsProvider>,
+    );
+    expect(document.documentElement.lang).toBe("zh-CN");
+  });
+});
+
+describe("file icon theme", () => {
+  it("keeps a file icon theme it can't see yet, and drops one that isn't a name", () => {
+    // The plugin giving it loads after the settings: kept, not reset.
+    expect(
+      normaliseSettings({ fileIconTheme: "jane.icons#neon" }).fileIconTheme,
+    ).toBe("jane.icons#neon");
+    expect(normaliseSettings({ fileIconTheme: 3 }).fileIconTheme).toBe("");
+  });
+});
+
+describe("files dropped on the file tree", () => {
+  it("asks before copying unless the user said not to", () => {
+    expect(normaliseSettings({ language: "en" }).confirmTreeCopy).toBe(true);
+    expect(normaliseSettings({ confirmTreeCopy: "no" }).confirmTreeCopy).toBe(
+      true,
+    );
+    expect(normaliseSettings({ confirmTreeCopy: false }).confirmTreeCopy).toBe(
+      false,
+    );
+  });
+});
+
+describe("interface text size", () => {
+  it("keeps a size it offers and falls back to 100% for any other", () => {
+    expect(normaliseSettings({ uiTextScale: 1.25 }).uiTextScale).toBe(1.25);
+    expect(normaliseSettings({ uiTextScale: 3 }).uiTextScale).toBe(1);
+    expect(normaliseSettings({ uiTextScale: "big" }).uiTextScale).toBe(1);
+    expect(normaliseSettings(null).uiTextScale).toBe(1);
+  });
+
+  it("reads a size it no longer offers as the nearest of small, medium and large", () => {
+    expect(normaliseSettings({ uiTextScale: 0.9 }).uiTextScale).toBe(0.85);
+    expect(normaliseSettings({ uiTextScale: 1.1 }).uiTextScale).toBe(1);
+  });
+
+  it("puts the size on the page for the UI's type scale, and takes it off at 100%", () => {
+    boot({ uiTextScale: 0.85, languageChosen: true });
+    render(
+      <SettingsProvider>
+        <AppearanceSync />
+        <Probe />
+      </SettingsProvider>,
+    );
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue("--ui-text-scale")).toBe("0.85");
+    act(() => lastSet({ uiTextScale: 1 }));
+    expect(root.style.getPropertyValue("--ui-text-scale")).toBe("");
+  });
+
+  it("is applied by the boot script for the same sizes", () => {
+    // The table the boot script is handed (settings/app.rs) is this one.
+    expect(TABLES.uiTextScales).toEqual([...UI_TEXT_SCALES]);
+    expect(TABLES.layouts[0]).toBe(DEFAULT_SETTINGS.layout);
+    expect(TABLES.contentThemes).toEqual(
+      BUILTIN_CONTENT_THEMES.map((theme) => theme.id).filter(
+        (id) => id !== "default",
+      ),
+    );
+  });
+});
+
+describe("heading shortcuts", () => {
+  const levels = (shortcuts: Settings["shortcuts"]) =>
+    [1, 2, 3, 4, 5, 6].map(
+      (n) => shortcuts[`setHeading${n}` as keyof Settings["shortcuts"]],
+    );
+  const TYPORA = ["mod+1", "mod+2", "mod+3", "mod+4", "mod+5", "mod+6"];
+  /** Stored shortcuts without the heading levels. */
+  const WITHOUT_LEVELS = Object.fromEntries(
+    Object.entries(normaliseSettings(null).shortcuts).filter(
+      ([action]) => !action.startsWith("setHeading"),
+    ),
+  );
+
+  it("start a new installation on Mod+1..6", () => {
+    const settings = normaliseSettings(null);
+    expect(levels(settings.shortcuts)).toEqual(TYPORA);
+    expect(settings.shortcuts.setParagraph).toBe("");
+  });
+
+  it("give an action the stored shortcuts lack its default", () => {
+    const settings = normaliseSettings({
+      shortcuts: { toggleZenMode: "mod+shift+j" },
+    });
+    expect(levels(settings.shortcuts)).toEqual(TYPORA);
+    expect(settings.shortcuts.toggleZenMode).toBe("mod+shift+j");
+  });
+
+  it("keep a level cleared, and every combo the user chose", () => {
+    const settings = normaliseSettings({
+      shortcuts: {
+        ...normaliseSettings(null).shortcuts,
+        setHeading2: "",
+        setHeading3: "alt+3",
+      },
+    });
+    expect(levels(settings.shortcuts)).toEqual([
+      "mod+1",
+      "",
+      "alt+3",
+      "mod+4",
+      "mod+5",
+      "mod+6",
+    ]);
+  });
+
+  it("leave a default unbound when another action has its combo", () => {
+    const settings = normaliseSettings({
+      shortcuts: { ...WITHOUT_LEVELS, toggleZenMode: "mod+2" },
+    });
+    expect(settings.shortcuts.toggleZenMode).toBe("mod+2");
+    expect(levels(settings.shortcuts)).toEqual([
+      "mod+1",
+      "",
+      "mod+3",
+      "mod+4",
+      "mod+5",
+      "mod+6",
+    ]);
+  });
+
+  it("keep the actions of a newer build", () => {
+    const stored = { ...WITHOUT_LEVELS, someLaterAction: "mod+7" };
+    expect(normaliseSettings({ shortcuts: stored }).shortcuts).toMatchObject({
+      someLaterAction: "mod+7",
+    });
+  });
+
+  it("save a level cleared so it stays cleared", () => {
+    boot({ languageChosen: true });
+    render(
+      <SettingsProvider>
+        <Probe />
+      </SettingsProvider>,
+    );
+    const shortcuts = { ...loadSettings().shortcuts, setHeading2: "" };
+    act(() => lastSet({ shortcuts }));
+    expect(storage.settingsPatch).toHaveBeenCalledWith({ shortcuts });
+    // What the next launch reads.
+    const next = normaliseSettings({ shortcuts });
+    expect(next.shortcuts.setHeading2).toBe("");
+    expect(next.shortcuts.setHeading1).toBe("mod+1");
+  });
+});
+
+describe("a list every window adds to", () => {
+  it("keeps another window's entry when this one adds its own", async () => {
+    boot({ languageChosen: true }, { uiState: { foldedBlocks: [] } });
+    // Another window folded a block since this one booted.
+    vi.mocked(storage.uiStateGet).mockResolvedValue({
+      foldedBlocks: ["other.md#2"],
+    });
+    keepInList("foldedBlocks", "mine.md#1", true, { max: 300 });
+    await flushPendingWrites();
+    expect(storage.uiStatePatch).toHaveBeenLastCalledWith({
+      foldedBlocks: ["other.md#2", "mine.md#1"],
+    });
+  });
+});

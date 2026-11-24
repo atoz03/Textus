@@ -1,0 +1,333 @@
+/* The docked Agent panel on the right of the editor window: the message
+   list flexes, the composer sits on the bottom edge. */
+
+.agent-panel {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  min-width: 0;
+  /* The window bar is a fixed strip over the top of the layout. */
+  padding-top: var(--window-bar-height);
+  background: var(--ui-surface);
+  border-left: 1px solid var(--ui-border);
+  color: var(--ui-text);
+  /* Full width at once, sliding in from beside it: a width animation
+     reflowed the document every frame. .app-shell is overflow: clip, so
+     focusing the composer can't scroll the window mid-slide. */
+  animation: motion-nudge-in-end var(--dur-slow) var(--ease-out);
+}
+
+/* It leaves the way it came; the editor takes the room back once it has
+   gone. */
+.agent-panel[data-state="closing"] {
+  animation: motion-nudge-out-end var(--dur-base) var(--ease-in) forwards;
+}
+
+.agent-panel-mount {
+  flex: 1;
+  min-width: 0;
+  /* As a column (the phone's bottom sheet) the mount must be allowed to
+     be shorter than its conversation, or the message list never scrolls
+     and the composer is laid out below the screen. */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-panel-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.5;
+}
+
+.agent-panel-header {
+  /* The history list drops down across it. */
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: calc(44px * var(--chrome-scale));
+  padding: 4px 8px 4px 12px;
+}
+
+/* The project's name for what the AI keeps, while its view shows. */
+.agent-panel-heading {
+  margin: 0;
+  color: var(--ui-text);
+  font-size: var(--text-footnote);
+  font-weight: 600;
+}
+
+/* The project button stays lit while its view shows. */
+.agent-panel-actions .inline-chat-header-button[aria-pressed="true"] {
+  background: var(--ui-selected);
+  color: var(--ui-text);
+}
+
+.agent-panel-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.agent-panel-body[hidden] {
+  display: none;
+}
+
+.agent-panel-memory {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  animation: motion-fade-in var(--dur-base) var(--ease-out);
+}
+
+.agent-panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-panel-body .inline-chat-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+/* The composer is a box of its own on the panel's foot, so no rule above
+   it; the / and @ lists keep theirs. */
+.agent-panel-body .inline-chat-bar {
+  flex: 0 0 auto;
+}
+
+/* Short of room (a phone's keyboard under a half sheet) the list scrolls
+   inside, after the empty state has gone, rather than cover the sheet's top. */
+.agent-panel-body .inline-chat-skill-menu {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.agent-panel-body .inline-chat-skill-menu {
+  border-top: 1px solid var(--chat-hairline, var(--ui-border));
+}
+
+.agent-panel-body .inline-chat-bar {
+  padding: 8px 8px 8px;
+}
+
+/* Nothing said yet: the spark and what to do, in the middle of the
+   panel's empty height rather than as a line in its top corner. */
+.agent-panel-empty {
+  /* The panel's own words, not a conversation's: a right-click on them
+     opens the panel's menu (WebKit selects a word first where it can). */
+  -webkit-user-select: none;
+  user-select: none;
+  /* Of everything over the composer, it gives up its room first. */
+  flex: 1 100 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  gap: 12px;
+  min-height: 0;
+  margin: 0;
+  /* No padding top or bottom: padding is the one part of a box that never
+     gives way, and with the keyboard up it held 64px the / list needed. */
+  padding: 0 28px;
+  /* Short of room (the / list or the keyboard up on a phone) it is cut,
+     never squashed - and it drops what no longer fits whole (below), so
+     the cut never runs through the hint's line. */
+  overflow: hidden;
+  container: agent-empty / size;
+  text-align: center;
+  animation: motion-fade-in var(--dur-slow) var(--ease-out);
+}
+
+/* An early container-query engine restarted the fade of everything inside
+   it every few frames; there the spark and hint simply stay. */
+:root[data-early-containers] .agent-panel-empty {
+  container-type: normal;
+}
+
+/* The (empty) message list after it gives it the room, padding included. */
+.agent-panel-body .agent-panel-empty + .inline-chat-messages {
+  flex: 0 0 auto;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.agent-panel-empty-mark {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+  color: var(--ui-accent-text);
+}
+
+.agent-panel-empty-mark svg {
+  width: 24px;
+  height: 24px;
+}
+
+.agent-panel-empty-text {
+  max-width: 26em;
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: 1.55;
+  color: var(--ui-muted);
+  text-wrap: pretty;
+}
+
+/* Short of room the spark goes first, then the hint once even its line
+   has none (spark, gap and line take about 82px; some air around them). */
+@container agent-empty (height < 110px) {
+  .agent-panel-empty-mark {
+    display: none;
+  }
+}
+
+@container agent-empty (height < 28px) {
+  .agent-panel-empty-text {
+    display: none;
+  }
+}
+
+/* Narrow windows: the panel lies over the page instead of squeezing the
+   text column to nothing. */
+@media (max-width: 760px) {
+  .agent-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-dock);
+    max-width: 92vw;
+    box-shadow: var(--shadow-edge-end);
+    animation: motion-edge-in-end var(--dur-slow) var(--ease-spring);
+  }
+
+  .agent-panel[data-state="closing"] {
+    animation: motion-edge-out-end var(--dur-base) var(--ease-in) forwards;
+  }
+}
+
+@media print {
+  .agent-panel {
+    display: none;
+  }
+}
+
+/* The project bar: which folder the agent works in, and the style profile /
+   library kept in it. */
+.project-bar {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--chat-hairline, var(--ui-border));
+  font-size: var(--text-secondary);
+}
+
+.project-bar-empty {
+  color: var(--ui-muted);
+}
+
+.project-bar-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.project-bar-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 60%;
+  padding: 4px 4px;
+  border: none;
+  border-radius: var(--shape-s);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (any-hover: hover) {
+  .project-bar-folder:hover {
+    background: var(--ui-hover);
+  }
+}
+
+.project-bar-icon {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.project-bar-name {
+  font-weight: 600;
+}
+
+.project-bar-chevron {
+  flex-shrink: 0;
+  transform: rotate(90deg);
+  opacity: 0.55;
+}
+
+.project-bar-naming {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.project-bar-naming input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--shape-s);
+  background: var(--ui-surface);
+  color: inherit;
+  font: inherit;
+}
+
+.project-bar-naming button {
+  color: inherit;
+}
+
+.project-bar-status {
+  margin-top: 4px;
+  color: var(--ui-muted);
+}
+
+.agent-panel-placeholder {
+  position: absolute;
+  inset: var(--window-bar-height) 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 28px;
+  text-align: center;
+  font-size: var(--text-body);
+  color: var(--ui-muted);
+}
+
+/* The empty state shows the composer's mode: a switch brings in the new
+   icon and line (a new element each, keyed by the mode). */
+.agent-panel-empty-mark .chat-mode-icon {
+  display: inline-flex;
+}
+
+.agent-panel-empty-mark .chat-mode-icon,
+.agent-panel-empty-text {
+  animation: motion-fade-in var(--dur-fast) var(--ease-out);
+}

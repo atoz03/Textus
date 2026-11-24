@@ -1,0 +1,400 @@
+/* @textus/plugin-ui: the base every plugin webview gets, so a panel looks
+   like the rest of Textus without its own CSS. Uses only the theme variables
+   plugins are given. */
+
+:root {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* Scroll bars as Textus draws its own (ds-surfaces.css): thin, and shown
+   only while their scroller moves (webview.js) or under the pointer. */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--shape-pill);
+  background: color-mix(in srgb, var(--ui-muted) 35%, transparent) padding-box;
+}
+@media (any-hover: hover) {
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--ui-muted) 55%, transparent);
+  }
+}
+:not(.is-scrolling)::-webkit-scrollbar-thumb:not(:hover) {
+  background-color: transparent;
+}
+/* WebKit restyles a bar only when its element's own style changes. */
+.is-scrolling {
+  column-rule-color: transparent;
+}
+
+/* The page fills its frame: a panel's background reaches the bottom of
+   the sidebar, however little is in it. */
+html {
+  height: 100%;
+}
+body {
+  min-height: 100%;
+}
+html,
+body {
+  margin: 0;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.5;
+}
+
+/* A sidebar tab's page reads as the file tree beside it: list-size text,
+   its controls with it; headings keep theirs. */
+:root[data-sidebar] {
+  --text-body: var(--text-list);
+  --text-secondary: var(--text-list);
+}
+
+/* A floating view has no page behind it: only what the plugin draws. A
+   sidebar tab's page lies on the sidebar, in its colour. */
+:root:is([data-floating], [data-sidebar]),
+:root:is([data-floating], [data-sidebar]) body {
+  background: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Hidden is hidden, whatever display a class gives (a tx-empty, a bar). */
+[hidden] {
+  display: none !important;
+}
+
+a {
+  color: var(--ui-accent-text);
+}
+
+.muted {
+  color: var(--ui-muted);
+}
+
+/* The app's small button (design-system.css .tx-button.small): a capsule
+   of the text's colour, its hover a tint of it. Weightless (:where), so a
+   page's own class for a button wins. */
+:where(button, .button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font: inherit;
+  font-size: var(--text-secondary);
+  min-height: var(--control-height-sm);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  background: transparent;
+  color: var(--ui-text);
+  cursor: pointer;
+}
+@media (any-hover: hover) {
+  :where(button:not(:disabled), .button):hover {
+    background: color-mix(in srgb, currentColor 8%, transparent);
+  }
+}
+/* The primary action is ink, as the app's: text colour as fill. */
+button.primary {
+  background: var(--ui-primary, var(--ui-text));
+  border-color: var(--ui-primary, var(--ui-text));
+  color: var(--ui-on-primary, var(--ui-bg));
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* The app's icon button: a circle, borderless. */
+button.icon {
+  width: var(--control-height-sm);
+  padding: 0;
+  border-color: transparent;
+  border-radius: 50%;
+}
+/* The shared icon button keeps its own height (ds-buttons.css), not a text
+   button's taller one: a circle, not an oval, on a phone. */
+.tx-icon-button {
+  min-height: 0;
+}
+
+/* The small shared controls keep their look; a finger gets a 44pt target
+   around them, as the app's own (mobile/styles/base.css). */
+@media (pointer: coarse) {
+  :where(.tx-icon-button, .tx-button, button.icon, input.ui-check) {
+    position: relative;
+  }
+  :is(.tx-icon-button, .tx-button, button.icon, input.ui-check)::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+
+input:not([type="checkbox"], [type="radio"]),
+select,
+textarea {
+  min-height: var(--control-height-sm);
+  font: inherit;
+  font-size: var(--text-secondary);
+  color: var(--ui-text);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  padding: var(--space-1) var(--space-2);
+}
+/* A field one types into - a line or several - is a rounded rectangle,
+   not a capsule (design-language.md 6): capsules are for controls. */
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
+textarea {
+  border-radius: var(--shape-s);
+  corner-shape: superellipse(1.25);
+}
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: -1px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-subtle);
+  color: var(--ui-text);
+}
+.toolbar .spacer {
+  flex: 1;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.list > li,
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--shape-s);
+  color: var(--ui-text);
+}
+.list > li.clickable:hover,
+.row.clickable:hover {
+  background: var(--ui-hover);
+  cursor: pointer;
+}
+.list > li.active {
+  background: var(--ui-selected);
+  color: var(--ui-selected-text);
+}
+
+.empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--ui-muted);
+}
+
+h1,
+h2,
+h3 {
+  color: var(--ui-text);
+  font-weight: 600;
+}
+h2 {
+  font-size: var(--text-body-large);
+}
+h3 {
+  font-size: var(--text-body);
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+  background: var(--doc-code-bg);
+  border-radius: var(--shape-xs);
+}
+
+.danger {
+  color: var(--ui-danger);
+}
+
+/* motion-enter and motion-exit come with the app's motion.css, put in every
+   page ahead of this. */
+
+/* Each child of .motion-cascade arrives a --dur-stagger after the one before.
+   The first twenty are spaced; any after come with the twentieth. */
+.motion-cascade > * {
+  animation: motion-enter var(--dur-base) var(--ease-out) backwards;
+}
+.motion-cascade > :nth-child(2) {
+  animation-delay: calc(var(--dur-stagger) * 1);
+}
+.motion-cascade > :nth-child(3) {
+  animation-delay: calc(var(--dur-stagger) * 2);
+}
+.motion-cascade > :nth-child(4) {
+  animation-delay: calc(var(--dur-stagger) * 3);
+}
+.motion-cascade > :nth-child(5) {
+  animation-delay: calc(var(--dur-stagger) * 4);
+}
+.motion-cascade > :nth-child(6) {
+  animation-delay: calc(var(--dur-stagger) * 5);
+}
+.motion-cascade > :nth-child(7) {
+  animation-delay: calc(var(--dur-stagger) * 6);
+}
+.motion-cascade > :nth-child(8) {
+  animation-delay: calc(var(--dur-stagger) * 7);
+}
+.motion-cascade > :nth-child(9) {
+  animation-delay: calc(var(--dur-stagger) * 8);
+}
+.motion-cascade > :nth-child(10) {
+  animation-delay: calc(var(--dur-stagger) * 9);
+}
+.motion-cascade > :nth-child(11) {
+  animation-delay: calc(var(--dur-stagger) * 10);
+}
+.motion-cascade > :nth-child(12) {
+  animation-delay: calc(var(--dur-stagger) * 11);
+}
+.motion-cascade > :nth-child(13) {
+  animation-delay: calc(var(--dur-stagger) * 12);
+}
+.motion-cascade > :nth-child(14) {
+  animation-delay: calc(var(--dur-stagger) * 13);
+}
+.motion-cascade > :nth-child(15) {
+  animation-delay: calc(var(--dur-stagger) * 14);
+}
+.motion-cascade > :nth-child(16) {
+  animation-delay: calc(var(--dur-stagger) * 15);
+}
+.motion-cascade > :nth-child(17) {
+  animation-delay: calc(var(--dur-stagger) * 16);
+}
+.motion-cascade > :nth-child(18) {
+  animation-delay: calc(var(--dur-stagger) * 17);
+}
+.motion-cascade > :nth-child(19) {
+  animation-delay: calc(var(--dur-stagger) * 18);
+}
+.motion-cascade > :nth-child(20) {
+  animation-delay: calc(var(--dur-stagger) * 19);
+}
+
+/* What is about to change, for the moment before it does: a tint, set and
+   taken off, never faded. */
+.motion-mark {
+  background-color: var(--motion-mark-bg);
+  border-radius: var(--shape-xs);
+}
+
+/* The window's floating card, for what page-kit.js puts over a page: a
+   tooltip, a popover, a date picker. */
+.floating-surface {
+  font-family: var(--font-sans);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--shape-m);
+  box-shadow: var(--shadow-popover);
+}
+.tooltip {
+  border-radius: var(--shape-s);
+}
+.tx-popover {
+  position: fixed;
+  z-index: 50;
+  padding: var(--space-3);
+  animation: motion-pop-in var(--dur-base) var(--ease-out);
+}
+
+/* A month under a button: its name between ‹ and ›, then its days. */
+.tx-date-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 224px;
+}
+.tx-date-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ui-text);
+  font-size: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* Something's edge pulled to resize it: a line on hover or focus. */
+.tx-resize-handle {
+  cursor: col-resize;
+  touch-action: none;
+}
+.tx-resize-handle[aria-orientation="horizontal"] {
+  cursor: row-resize;
+}
+.tx-resize-handle:is(:hover, :focus-visible) {
+  background: var(--ui-accent);
+  outline: none;
+}
+
+/* The page itself marked tx-scroll-fade: its edges fade over the frame,
+   not masked along the whole page. */
+:root.tx-scroll-fade:is([data-more-left], [data-more-right]) {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+:root.tx-scroll-fade[data-more-right]::after,
+:root.tx-scroll-fade[data-more-left]::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: 40;
+  width: var(--space-6);
+  pointer-events: none;
+}
+:root.tx-scroll-fade[data-more-right]::after {
+  right: 0;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--doc-bg, var(--ui-bg))
+  );
+}
+:root.tx-scroll-fade[data-more-left]::before {
+  left: 0;
+  background: linear-gradient(
+    to left,
+    transparent,
+    var(--doc-bg, var(--ui-bg))
+  );
+}

@@ -1,0 +1,349 @@
+import { splitHere } from "./split-here";
+import type { FormatBarSide } from "../../prefs/settings-values";
+import { PLUGIN_SETTINGS } from "../../registry/menu/plugin-menu";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { useSyncExternalStore } from "react";
+import {
+  subscribeTracking,
+  trackingShown,
+} from "../../ai/margin/track-changes-state";
+import {
+  OPEN_AGENT_PANEL_EVENT,
+  TRACK_CHANGES_EVENT,
+  SHOW_SIDEBAR_TAB_EVENT,
+  sendAppEvent,
+} from "../../utils/events";
+import { menuIpc, windowIpc } from "../../platform/ipc";
+import { editInFocus } from "../../engine/controls/edit-in-focus";
+import { hasNativeMenuBar } from "../../platform/capabilities";
+import {
+  nativeMenuChecks,
+  type MenuChecks,
+} from "../../registry/menu/app-menu-model";
+import { nativeMenuAccelerators, nativeMenuLabels } from "./native-menu-text";
+import { listenToThisWindow, unlistenAll } from "../../platform/events";
+import { runCommand } from "../../registry/commands";
+import { lazyModule } from "../../lazy/lazy-module";
+import {
+  EDIT_ACTION_EVENT,
+  INSERT_BLOCK_EVENT,
+  TOGGLE_MARK_EVENT,
+  SHOW_REPLACE_EVENT,
+  FIND_NEXT_EVENT,
+  INSERT_LINK_EVENT,
+} from "../../utils/events";
+import type { DocTab, HelpDoc } from "../../document/doc-tabs";
+import type { Strings } from "../../i18n/strings";
+import type { PandocSettings } from "../../export/pandoc-options";
+import type { DiagramEngine, Shortcuts } from "../../prefs/SettingsContext";
+import { closeSplit } from "../../engine/layout/store";
+import { pickIsland } from "../../engine/layout/island-numbers";
+import { afterComposition } from "../../utils/ime";
+import { islandKeyOf } from "./island-key";
+import { APP_ACTIONS, type AppActionHandlers } from "./app-actions";
+import { copyPath } from "../../clipboard/copy-path";
+import { openReportProblem } from "../report/report-open";
+import type { PdfLayout } from "../../export/pdf-page";
+
+interface MenuBridgeHandlers extends AppActionHandlers {
+  activeTabId: string;
+  /** The heading keys: with the islands' numbers up they go to an island. */
+  shortcuts: Shortcuts;
+  /** Read inside handlers, with pending edits flushed so an export carries
+   *  what is on screen. */
+  liveTabs: () => DocTab[];
+  t: Strings;
+  pdfPageNumbers: boolean;
+  pdfLayout: PdfLayout;
+  pdfLightColors: boolean;
+  diagramEngine: DiagramEngine;
+  /** Settings › Editor › Export, for a Pandoc export. */
+  pandocSettings: PandocSettings;
+  onOpenSettings: () => void;
+  /** Textus › Check for Updates…: Settings › About, checking. */
+  onCheckUpdates: () => void;
+  /** Settings › Extensions › Plugins, at plugin `id`'s page if given. */
+  onOpenPluginSettings: (id?: string) => void;
+  /** View › Format Bar: put on an edge, or hidden (null). */
+  onFormatBar: (side: FormatBarSide | null) => void;
+  /** Opens the sidebar on the tab with this id. */
+  showSidebarTab: (id: string) => void;
+  /** Opens Textus AI's panel; left open if it is. */
+  onOpenAgentPanel: () => void;
+  onToggleReadOnly: () => void;
+  /** View › Mode › Default: the rendered editor, the document writable. */
+  onViewModeDefault: () => void;
+  addBlankTab: () => void;
+  openFileDialog: () => Promise<void>;
+  openRecentFile: (path: string) => Promise<void>;
+  openFolderDialog: () => Promise<void>;
+  openFolder: (path: string) => void;
+  closeFolder: () => void;
+  saveTab: (tabId: string) => Promise<boolean>;
+  saveTabAs: (tabId: string) => Promise<boolean>;
+  requestCloseTab: (tabId: string) => void;
+  /** File > Reopen Closed Tab (close-flow.ts). */
+  reopenClosedTab: () => void;
+  openHelpTab: (doc: HelpDoc) => void;
+  startWelcomeTutorial: () => void;
+  /** Help > Join the Community: the website's page in the UI's language. */
+  openCommunity: () => void;
+  /** Help > Online Tutorials: the website's page in the UI's language. */
+  openTutorials: () => void;
+  /** Help > Sponsor Textus: the website's page in the UI's language. */
+  openSponsor: () => void;
+  /** The phone menu's Documents. */
+  onOpenDocuments: () => void;
+  /** The phone menu's Share (iOS share sheet). */
+  shareActiveTab: () => Promise<void>;
+}
+
+// Export loads the first time it is asked for, not with the window.
+const exporters = lazyModule(
+  "exporters",
+  () => import("../../export/exporters"),
+);
+const pluginExport = lazyModule(
+  "plugin-export",
+  () => import("../../export/plugin-export"),
+);
+
+/** View › Format Bar's items: an edge, or hidden. */
+const FORMAT_BAR_PICKS: (FormatBarSide | null)[] = [
+  "top",
+  "left",
+  "right",
+  null,
+];
+
+/** Subscribes the frontend's handlers to the menu events from Rust. */
+export function useMenuBridge(handlers: MenuBridgeHandlers): void {
+  // Subscribed once: re-subscribing raced Tauri's async unlisten, so one
+  // click could run several times.
+  const latest = useRef(handlers);
+  useLayoutEffect(() => {
+    latest.current = handlers;
+  });
+
+  useEffect(() => {
+    const h = () => latest.current;
+    const activeTabNow = () => {
+      const { liveTabs, activeTabId } = h();
+      return liveTabs().find((tb) => tb.id === activeTabId);
+    };
+    return unlistenAll(
+      // The actions a key runs too: defined once (app-actions.ts).
+      ...APP_ACTIONS.map((action) =>
+        listenToThisWindow(`menu-${action.menu}`, () => action.run(h())),
+      ),
+      listenToThisWindow("menu-settings", () => h().onOpenSettings()),
+      listenToThisWindow("menu-check-updates", () => h().onCheckUpdates()),
+      listenToThisWindow("menu-manage-plugins", () =>
+        h().onOpenPluginSettings(),
+      ),
+      listenToThisWindow<string>("menu-plugin-command", (event) =>
+        event.payload.startsWith(PLUGIN_SETTINGS)
+          ? h().onOpenPluginSettings(
+              event.payload.slice(PLUGIN_SETTINGS.length),
+            )
+          : runCommand(event.payload),
+      ),
+      // File > New Tab (menu.rs).
+      listenToThisWindow("menu-new-file", () => h().addBlankTab()),
+      listenToThisWindow("menu-open-file", () => void h().openFileDialog()),
+      listenToThisWindow<string>(
+        "menu-open-recent",
+        (event) => void h().openRecentFile(event.payload),
+      ),
+      // A project's documents from the start page, in order: the last in front.
+      listenToThisWindow<string[]>("open-project-documents", (event) => {
+        void (async () => {
+          for (const path of event.payload) await h().openRecentFile(path);
+        })();
+      }),
+      listenToThisWindow("menu-open-folder", () => void h().openFolderDialog()),
+      listenToThisWindow<string>("menu-open-recent-folder", (event) =>
+        h().openFolder(event.payload),
+      ),
+      listenToThisWindow("menu-close-folder", () => h().closeFolder()),
+      listenToThisWindow("menu-help-report", openReportProblem),
+      listenToThisWindow("menu-documents", () => h().onOpenDocuments()),
+      listenToThisWindow("menu-share", () => void h().shareActiveTab()),
+      listenToThisWindow(
+        "menu-save-file",
+        () => void h().saveTab(h().activeTabId),
+      ),
+      listenToThisWindow(
+        "menu-save-file-as",
+        () => void h().saveTabAs(h().activeTabId),
+      ),
+      listenToThisWindow("menu-copy-path", () => {
+        const path = activeTabNow()?.path;
+        if (path) copyPath(path);
+      }),
+      listenToThisWindow("menu-export-pdf", () => {
+        const tab = activeTabNow();
+        if (tab)
+          void exporters.load().then((m) =>
+            m.exportPdf(tab, h().t, {
+              pageNumbers: h().pdfPageNumbers,
+              lightColors: h().pdfLightColors,
+              layout: h().pdfLayout,
+            }),
+          );
+      }),
+      listenToThisWindow("menu-export-html", () => {
+        const tab = activeTabNow();
+        if (tab) void exporters.load().then((m) => m.exportHtml(tab, h().t));
+      }),
+      // Payload is the format's key, `<plugin id>#<format id>`.
+      listenToThisWindow<string>("menu-export-plugin", (event) => {
+        const tab = activeTabNow();
+        if (tab)
+          void pluginExport
+            .load()
+            .then((m) => m.exportViaPlugin(tab, event.payload, h().t));
+      }),
+      // Payload is the pandoc writer name (docx, epub, ...) from the menu id.
+      listenToThisWindow<string>("menu-export-pandoc", (event) => {
+        const tab = activeTabNow();
+        if (tab)
+          void exporters
+            .load()
+            .then((m) =>
+              m.exportViaPandoc(
+                tab,
+                event.payload,
+                h().t,
+                h().diagramEngine,
+                h().pandocSettings,
+              ),
+            );
+      }),
+      ...FORMAT_BAR_PICKS.map((side) =>
+        listenToThisWindow(`menu-format-bar-${side ?? "hidden"}`, () =>
+          h().onFormatBar(side),
+        ),
+      ),
+      listenToThisWindow("menu-track-changes", () =>
+        sendAppEvent(TRACK_CHANGES_EVENT, "toggle"),
+      ),
+      listenToThisWindow(OPEN_AGENT_PANEL_EVENT, () => h().onOpenAgentPanel()),
+      listenToThisWindow("menu-toggle-read-only", () => h().onToggleReadOnly()),
+      listenToThisWindow("menu-view-mode-default", () =>
+        h().onViewModeDefault(),
+      ),
+      listenToThisWindow("menu-split-down", () => splitHere("column")),
+      listenToThisWindow("menu-close-split", () => closeSplit()),
+      // Edit > Copy and Paste as Plain Text run in the editor on screen.
+      listenToThisWindow("menu-select-all", () => editInFocus("select-all")),
+      listenToThisWindow("menu-undo", () => editInFocus("undo")),
+      listenToThisWindow("menu-redo", () => editInFocus("redo")),
+      listenToThisWindow("menu-copy-as-plain-text", () =>
+        sendAppEvent(EDIT_ACTION_EVENT, "copy-as-plain-text"),
+      ),
+      listenToThisWindow("menu-paste-as-plain-text", () =>
+        sendAppEvent(EDIT_ACTION_EVENT, "paste-as-plain-text"),
+      ),
+      listenToThisWindow("menu-replace", () =>
+        sendAppEvent(SHOW_REPLACE_EVENT),
+      ),
+      listenToThisWindow("menu-find-next", () => sendAppEvent(FIND_NEXT_EVENT)),
+      listenToThisWindow("menu-insert-link", () =>
+        sendAppEvent(INSERT_LINK_EVENT),
+      ),
+      listenToThisWindow("menu-close-tab", () =>
+        h().requestCloseTab(h().activeTabId),
+      ),
+      listenToThisWindow("menu-reopen-closed-tab", () => h().reopenClosedTab()),
+      // Payload is the block kind (h1..h6, bullet-list, ...) from the menu id.
+      listenToThisWindow<string>("menu-insert-block", (event) => {
+        // A Mac's menu takes ⌘1–⌘6 before the page: with the islands'
+        // numbers up, the heading it sends is that island's key.
+        const island = islandKeyOf(event.payload, h().shortcuts);
+        if (island && pickIsland(island)) return;
+        afterComposition(() => sendAppEvent(INSERT_BLOCK_EVENT, event.payload));
+      }),
+      listenToThisWindow<string>("menu-toggle-mark", (event) => {
+        sendAppEvent(TOGGLE_MARK_EVENT, event.payload);
+      }),
+      listenToThisWindow("menu-help-community", () => h().openCommunity()),
+      listenToThisWindow("menu-help-tutorials", () => h().openTutorials()),
+      listenToThisWindow("menu-help-sponsor", () => h().openSponsor()),
+      listenToThisWindow<string>("menu-open-help", (event) => {
+        if (event.payload === "welcome") h().startWelcomeTutorial();
+        else if (
+          event.payload === "markdown" ||
+          event.payload === "agent" ||
+          event.payload === "licenses"
+        )
+          h().openHelpTab(event.payload);
+      }),
+    );
+  }, []);
+
+  // A plugin's layout.showSidebarTab.
+  useEffect(() => {
+    const show = (e: Event) => {
+      const id = (e as CustomEvent<unknown>).detail;
+      if (typeof id === "string") latest.current.showSidebarTab(id);
+    };
+    window.addEventListener(SHOW_SIDEBAR_TAB_EVENT, show);
+    return () => window.removeEventListener(SHOW_SIDEBAR_TAB_EVENT, show);
+  }, []);
+
+  // The native macOS menu bar is built in English; it takes the UI's
+  // language from these labels.
+  const { t } = handlers;
+  useEffect(() => {
+    if (hasNativeMenuBar) void menuIpc.setMenuLabels(nativeMenuLabels(t));
+  }, [t]);
+
+  // A menu item chosen with no window open (by id): Rust opened this window
+  // to carry it out. Taken once, so no later window repeats it.
+  useEffect(() => {
+    windowIpc
+      .takePendingMenuEvent()
+      .then((id) => {
+        const h = latest.current;
+        const run: Record<string, () => void> = {
+          settings: () => h.onOpenSettings(),
+          "manage-plugins": () => h.onOpenPluginSettings(),
+          "open-file": () => void h.openFileDialog(),
+          "open-folder": () => void h.openFolderDialog(),
+          "check-updates": () => h.onCheckUpdates(),
+        };
+        if (id) run[id]?.();
+      })
+      .catch(() => {});
+  }, []);
+}
+
+/** Sends the macOS menu bar's accelerators from Settings › Shortcuts. */
+export function useNativeMenuAccelerators(shortcuts: Shortcuts) {
+  const key = JSON.stringify(nativeMenuAccelerators(shortcuts));
+  useEffect(() => {
+    if (!hasNativeMenuBar) return;
+    void menuIpc
+      .setMenuAccelerators(JSON.parse(key) as Record<string, string>)
+      .catch(() => {});
+  }, [key]);
+}
+
+/** The macOS menu bar's check marks, sent while this window has focus: the
+ *  bar is app-wide, so it shows the front window. */
+export function useNativeMenuChecks(checks: MenuChecks) {
+  // Edit › Track My Changes: the document on screen's, not the window's.
+  const trackChanges = useSyncExternalStore(subscribeTracking, trackingShown);
+  const key = JSON.stringify(nativeMenuChecks({ ...checks, trackChanges }));
+  useEffect(() => {
+    if (!hasNativeMenuBar) return;
+    const send = () =>
+      void menuIpc
+        .setMenuChecks(JSON.parse(key) as Record<string, boolean>)
+        .catch(() => {});
+    if (document.hasFocus()) send();
+    window.addEventListener("focus", send);
+    return () => window.removeEventListener("focus", send);
+  }, [key]);
+}

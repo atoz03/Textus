@@ -1,0 +1,165 @@
+import { useCatalogWork } from "../pages/useCatalogWork";
+import { compareVersions } from "../../plugins/store/versions";
+import { isError } from "../../utils/error-text";
+import { Byline, CatalogRow } from "../pages/CatalogRow";
+import { explainError } from "../../utils/error-explain";
+import { fill } from "../../i18n/fill";
+import { useEffect, useState } from "react";
+import { MODES } from "../../ai/modes";
+import type { Strings } from "../../i18n/strings";
+import { ai, plugins as pluginsIpc } from "../../platform/ipc";
+import type { CatalogState, SkillEntry } from "../../plugins/store/catalog";
+import { useSettings } from "../../prefs/SettingsContext";
+import { AvailableSection } from "../pages/AvailableSection";
+import { catalogMessage, catalogStatus } from "../pages/CatalogStatus";
+import { installsText } from "../pages/installs-text";
+import { announceChange, onSkillsChanged } from "./skills";
+
+/** The catalog's skills whose name, description, author or names in any
+ *  language hold every word of `query`. */
+function searchSkills(list: SkillEntry[], query: string): SkillEntry[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return list;
+  return list.filter((s) => {
+    const names = Object.values(s.labels ?? {}).flatMap((l) => [
+      l.label,
+      l.hint,
+    ]);
+    const text = [s.name, s.description, s.author, ...names]
+      .join("\n")
+      .toLowerCase();
+    return words.every((w) => text.includes(w));
+  });
+}
+
+/** Under the user's skills: the catalog's skills not installed yet, or
+ *  installed at an older version (then updated), each a click into the
+ *  global skills folder. */
+export function AvailableSkills({
+  t,
+  catalog,
+  query,
+}: {
+  t: Strings;
+  catalog: CatalogState;
+  query: string;
+}) {
+  // The user's skills by name: their version when it came from the catalog.
+  const [have, setHave] = useState<Map<string, string | null> | null>(null);
+  const { busy, error, run } = useCatalogWork();
+  const { settings } = useSettings();
+  useEffect(() => {
+    let live = true;
+    const load = () =>
+      void ai
+        .listSkills(null, null)
+        .then((list) => {
+          if (live && Array.isArray(list))
+            setHave(
+              new Map(
+                list.map((s) => [s.name.toLowerCase(), s.version ?? null]),
+              ),
+            );
+        })
+        .catch(() => live && setHave(new Map()));
+    load();
+    const stop = onSkillsChanged(load);
+    return () => {
+      live = false;
+      stop();
+    };
+  }, []);
+  const ready = catalog.status === "ready" && have !== null;
+  /** An older version of it installed: what the button updates. */
+  const older = (skill: SkillEntry) => {
+    const installed = have?.get(skill.name.toLowerCase());
+    return !!installed && compareVersions(skill.version, installed) > 0;
+  };
+  const shown = ready
+    ? searchSkills(catalog.skills, query).filter(
+        (s) => !have.has(s.name.toLowerCase()) || older(s),
+      )
+    : [];
+  const install = async (skill: SkillEntry) => {
+    await run(
+      skill.name,
+      async () => {
+        await pluginsIpc.installSkillFromCatalog(skill.name);
+      },
+      (err) =>
+        isError(err, "skillExists")
+          ? explainError(err, t)
+          : `${t.marketSkillFailed} ${explainError(err, t)}`,
+    );
+    announceChange();
+  };
+  const message = catalogMessage({
+    t,
+    // Its list is ready once the user's skills are read too.
+    status:
+      catalog.status === "ready" && !ready ? "loading" : catalogStatus(catalog),
+    error: catalog.status === "failed" ? catalog.error : undefined,
+    none: ready && !catalog.skills.length ? t.marketSkillsNone : undefined,
+    query,
+    shown: shown.length,
+  });
+  return (
+    <AvailableSection
+      t={t}
+      kind="skills"
+      searching={!!query.trim()}
+      message={message}
+      note={
+        error && (
+          <div className="settings-error" role="alert">
+            {error}
+          </div>
+        )
+      }
+      rows={shown.map((skill) => {
+        const words =
+          skill.labels?.[settings.language] ?? skill.labels?.en ?? null;
+        return (
+          <CatalogRow
+            key={skill.name}
+            data-skill={skill.name}
+            name={words?.label ?? `/${skill.name}`}
+            description={
+              words ? `/${skill.name} · ${words.hint}` : skill.description
+            }
+            byline={
+              <Byline
+                t={t}
+                lead={
+                  <span className="market-skill-modes">
+                    {(skill.modes ?? ["write"])
+                      .map((m) => t[MODES[m].label])
+                      .join(" · ")}
+                  </span>
+                }
+                official={skill.official}
+                author={skill.author}
+                installs={installsText(skill, t)}
+              />
+            }
+            actionClass="plugin-action"
+            action={
+              <button
+                type="button"
+                className="tx-button text-button plugin-action-main"
+                disabled={busy === skill.name}
+                onClick={() => void install(skill)}
+              >
+                {busy === skill.name
+                  ? t.pluginInstalling
+                  : older(skill)
+                    ? fill(t.pluginUpdate, { version: skill.version })
+                    : t.pluginInstall}
+              </button>
+            }
+          />
+        );
+      })}
+    />
+  );
+}

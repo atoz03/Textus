@@ -1,0 +1,282 @@
+import { tabPinned } from "../document/pinned";
+import { fill } from "../i18n/fill";
+import { useCallback, useEffect } from "react";
+import { thisWindow } from "../platform/this-window";
+import { canUseWindows } from "../platform/capabilities";
+import { unlistenAll } from "../platform/events";
+import {
+  makeStartTab,
+  showsStartPage,
+  tabIsDirty,
+  type DocTab,
+} from "../document/doc-tabs";
+import { drafts, session } from "../platform/ipc";
+import { forgetTabZoom } from "../engine/zoom/tab-zoom";
+import { forgetLeft } from "../editor/tab-left";
+import { forgetTracked } from "../document/tracked-file";
+import { forgetReveals } from "../ai/revision/kept-reveals";
+import { forgetTabWebviewState } from "../plugins/views/webviews";
+import { paneOf, shownIsland, windowLayout } from "../engine/layout/store";
+import { flushPendingWrites } from "../storage/pending-writes";
+import { useModalDialog } from "../engine/controls/useModalDialog";
+import { useLatest } from "../utils/hooks/useLatest";
+import type { TabState } from "./tabs/useTabState";
+import { forgetUndecided, undecidedIn } from "../document/undecided";
+import { showNotice } from "../engine/controls/notices";
+import { basename } from "../utils/path";
+import type { Strings } from "../i18n/strings";
+
+/** Closed with changes still to decide: they are kept, and come back. */
+function tellKept(path: string, t: Strings) {
+  const n = undecidedIn(path);
+  if (n > 0)
+    showNotice(
+      fill(t.closedWithUndecided, { name: basename(path), n: String(n) }),
+    );
+  forgetUndecided(path);
+}
+
+// What the save/discard/cancel prompt is guarding: a tab or the whole window.
+export type PendingClose = { kind: "tab"; tabId: string } | { kind: "window" };
+
+/** The documents closed in this window, the latest last. */
+const closedPaths: string[] = [];
+
+/** Tabs closed lately: one closed before it reached the window's tabs is
+ *  not still on its way (useFileOpening). */
+const closedIds: string[] = [];
+export const wasClosed = (id: string) => closedIds.includes(id);
+
+/** File > Reopen Closed Tab's document: the latest closed that isn't open
+ *  again already. */
+export function takeClosedPath(isOpen: (path: string) => boolean) {
+  while (closedPaths.length) {
+    const path = closedPaths.pop()!;
+    if (!isOpen(path)) return path;
+  }
+  return null;
+}
+
+/** Removes tabs outright, or behind the prompt when autosave couldn't
+ *  write their changes. */
+export function useTabRemoval(opts: {
+  tabState: TabState;
+  cancelDraftFlushes: () => void;
+  flushAutosave: (ids?: string[]) => Promise<void>;
+  setPendingClose: (close: PendingClose) => void;
+  /** Closing the last document shows the start page, not closing the window. */
+  closeLastToStartPage: boolean;
+  t: Strings;
+}) {
+  const { tabState, cancelDraftFlushes, flushAutosave, setPendingClose, t } =
+    opts;
+  const toStartPage = useLatest(opts.closeLastToStartPage);
+  const { tabsRef, setTabs, setActiveTabId, liveTabs } = tabState;
+
+  // No prompt here. Closing the last tab closes the window, or shows the
+  // start page (closing that closes the window); the active tab's island
+  // goes back to the tab in use before it (the window model).
+  const removeTab = useCallback(
+    (id: string) => {
+      const closedIndex = tabsRef.current.findIndex((tb) => tb.id === id);
+      const closing = tabsRef.current.find((tb) => tb.id === id);
+      const start =
+        canUseWindows &&
+        toStartPage.current &&
+        tabsRef.current.length === 1 &&
+        closing &&
+        !showsStartPage(closing)
+          ? makeStartTab()
+          : null;
+      const last = tabsRef.current.every((tb) => tb.id === id);
+      // The last one closes the window - none on iOS, where it simply stays
+      // - decided here, as the window's own state says, not in an updater.
+      if (last && !start) {
+        if (!canUseWindows) return;
+        // Destroying the window skips the draft cleanup effect, so clear
+        // the snapshot here or a discarded tab returns as a draft.
+        cancelDraftFlushes();
+        void Promise.allSettled([
+          drafts.clearDraftSnapshot(id),
+          flushPendingWrites(),
+        ]).then(() => void thisWindow().destroy());
+        return;
+      }
+      closedIds.push(id);
+      if (closedIds.length > 32) closedIds.shift();
+      forgetTabZoom(id);
+      forgetLeft(id);
+      if (closing?.path) {
+        forgetTracked(closing.path);
+        forgetReveals(closing.path);
+      }
+      forgetTabWebviewState(id);
+      setTabs((prev) => {
+        const next = prev.filter((tb) => tb.id !== id);
+        return next.length === 0 && start ? [start] : next;
+      });
+      setActiveTabId((prevActive) => {
+        if (prevActive !== id) return prevActive;
+        const remaining = tabsRef.current.filter((tb) => tb.id !== id);
+        if (remaining.length === 0) return start?.id ?? prevActive;
+        // Split: a neighbor in the same island while it has one.
+        const island = shownIsland(paneOf(windowLayout(), id))?.tabs ?? [];
+        const at = island.indexOf(id);
+        const near = island.filter((tabId) => tabId !== id);
+        if (at >= 0 && near.length > 0)
+          return near[Math.min(at, near.length - 1)];
+        return remaining[Math.min(closedIndex, remaining.length - 1)].id;
+      });
+    },
+    [cancelDraftFlushes, tabsRef, setTabs, setActiveTabId, toStartPage],
+  );
+
+  const requestCloseTab = useCallback(
+    async (id: string) => {
+      const tab = liveTabs().find((tb) => tb.id === id);
+      // A pinned tab stays, however it is asked to close: unpinned first,
+      // as its row shows no ×.
+      if (tabPinned(tab)) return;
+      await flushAutosave([id]);
+      if (tab?.path) closedPaths.push(tab.path);
+      if (!tab || !tabIsDirty(tab)) {
+        removeTab(id);
+        if (tab?.path) tellKept(tab.path, t);
+        return;
+      }
+      setPendingClose({ kind: "tab", tabId: id });
+    },
+    [flushAutosave, removeTab, liveTabs, setPendingClose, t],
+  );
+
+  return { removeTab, requestCloseTab };
+}
+
+/**
+ * Every window close lands here: unsaved tabs get the prompt, or with
+ * `keepUnsaved` are kept as drafts. Tauri destroys the window once this
+ * resolves, so pending storage writes are flushed first.
+ */
+export function useWindowCloseGuard(
+  liveTabs: () => DocTab[],
+  flushAutosave: () => Promise<void>,
+  setPendingClose: (close: PendingClose) => void,
+  keepUnsaved: boolean,
+): void {
+  const keep = useLatest(keepUnsaved);
+  useEffect(() => {
+    const unlisten = thisWindow().onCloseRequested(async (event) => {
+      await flushAutosave();
+      const dirty = liveTabs().filter(tabIsDirty);
+      if (dirty.length > 0 && keep.current) {
+        // A draft that can't be kept (a full disk): asked about instead,
+        // never a window that can no longer close.
+        const kept = await Promise.allSettled(
+          dirty.map((tab) =>
+            drafts.saveDraftSnapshot(
+              tab.id,
+              tab.path,
+              tab.content,
+              tab.diskMtime,
+            ),
+          ),
+        );
+        if (kept.some((result) => result.status === "rejected")) {
+          event.preventDefault();
+          setPendingClose({ kind: "window" });
+          return;
+        }
+      } else if (dirty.length > 0) {
+        event.preventDefault();
+        setPendingClose({ kind: "window" });
+        return;
+      }
+      await flushPendingWrites().catch(() => undefined);
+    });
+    return unlistenAll(unlisten);
+  }, [liveTabs, flushAutosave, setPendingClose, keep]);
+}
+
+/** The prompt's three answers - Save, Don't Save, Cancel - carried out for
+ *  whichever close is pending, and the modal wiring of its dialog. */
+export function useClosePrompt(opts: {
+  pendingClose: PendingClose | null;
+  setPendingClose: (close: PendingClose | null) => void;
+  tabState: TabState;
+  cancelDraftFlushes: () => void;
+  saveTab: (tabId: string) => Promise<boolean>;
+  removeTab: (tabId: string) => void;
+}) {
+  const {
+    pendingClose,
+    setPendingClose,
+    tabState,
+    cancelDraftFlushes,
+    saveTab,
+    removeTab,
+  } = opts;
+  const { tabsRef, liveTabs } = tabState;
+
+  /** Deletes this window's draft snapshots before destroy(), which skips the
+   *  usual cleanup effect. Per tab: other windows share the draft store. */
+  const clearWindowDrafts = useCallback(async () => {
+    // A debounce firing before destroy() would re-save a cleared snapshot.
+    cancelDraftFlushes();
+    await Promise.all(
+      tabsRef.current.map((tab) => drafts.clearDraftSnapshot(tab.id)),
+    );
+  }, [cancelDraftFlushes, tabsRef]);
+
+  const closeSaving = useCallback(async () => {
+    const action = pendingClose;
+    setPendingClose(null);
+    if (!action) return;
+    if (action.kind === "window") {
+      // A cancelled Save As leaves the window open.
+      for (const tab of liveTabs()) {
+        if (!tabIsDirty(tab)) continue;
+        const ok = await saveTab(tab.id);
+        if (!ok) {
+          await session.cancelQuit();
+          return;
+        }
+      }
+      await clearWindowDrafts();
+      await flushPendingWrites();
+      await thisWindow().destroy();
+    } else {
+      if (!(await saveTab(action.tabId))) return;
+      removeTab(action.tabId);
+    }
+  }, [
+    pendingClose,
+    setPendingClose,
+    saveTab,
+    removeTab,
+    clearWindowDrafts,
+    liveTabs,
+  ]);
+
+  const closeDiscarding = useCallback(async () => {
+    const action = pendingClose;
+    setPendingClose(null);
+    if (!action) return;
+    if (action.kind === "window") {
+      await clearWindowDrafts();
+      await flushPendingWrites();
+      await thisWindow().destroy();
+    } else removeTab(action.tabId);
+  }, [pendingClose, setPendingClose, removeTab, clearWindowDrafts]);
+
+  const cancelClose = () => {
+    setPendingClose(null);
+    void session.cancelQuit();
+  };
+  const closePrompt = useModalDialog(
+    cancelClose,
+    pendingClose !== null,
+    ".close-prompt-primary",
+  );
+
+  return { closeSaving, closeDiscarding, cancelClose, closePrompt };
+}

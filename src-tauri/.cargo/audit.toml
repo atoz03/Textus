@@ -1,0 +1,7 @@
+# cargo audit settings (run weekly by .github/workflows/audit.yml).
+#
+# Each ignored advisory says why it doesn't reach Textus and when to look
+# again. Remove an entry as soon as the dependency that pulls it in moves on.
+
+[advisories]
+ignore = []

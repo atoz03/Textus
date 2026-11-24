@@ -1,0 +1,173 @@
+import { useCallback, useEffect, useState } from "react";
+import { nativeFiles } from "../platform/native-files";
+import { forgetIOSDocument } from "../document/ios-recents";
+import { makeBlankTab, statMtime, tabIsDirty } from "../document/doc-tabs";
+import type { TabState } from "./tabs/useTabState";
+import { isInside } from "../utils/path";
+import { notePathMoved, setPathMoveHooks } from "../plugins/app-bridge";
+import { useWindowEvent } from "../utils/hooks/useWindowEvent";
+import { ENTRY_TRASHED_EVENT } from "../utils/events";
+
+/**
+ * What happens to open tabs when the app itself renames, moves or deletes
+ * their files, and the iPhone document list's open state.
+ */
+export function useDocumentActions(opts: {
+  tabState: TabState;
+  openFile: (path: string) => Promise<void>;
+  removeTab: (tabId: string) => void;
+  saveTab: (tabId: string) => Promise<boolean>;
+}) {
+  const { tabState, openFile, removeTab, saveTab } = opts;
+  const { tabsRef, setTabs, setActiveTabId, liveTabs } = tabState;
+
+  const iphone = useIPhoneDocuments(tabState, openFile, saveTab);
+  // A file or folder moved, here or in another window: every open tab in
+  // it follows.
+  const followMove = useCallback(
+    (from: string, to: string) => {
+      const moved = (path: string | null) =>
+        path === from
+          ? to
+          : path && isInside(path, from)
+            ? to + path.slice(from.length)
+            : null;
+      setTabs((prev) =>
+        prev.map((tab) => {
+          const next = moved(tab.path);
+          return next ? { ...tab, path: next } : tab;
+        }),
+      );
+      // Read again where it is now (a move to another disk is a copy, with
+      // a new time), so its next save isn't taken for a change made behind
+      // its back.
+      for (const tab of tabsRef.current) {
+        const at = moved(tab.path);
+        if (!at) continue;
+        void statMtime(at).then(
+          (diskMtime) =>
+            setTabs((prev) =>
+              prev.map((t) => (t.path === at ? { ...t, diskMtime } : t)),
+            ),
+          () => undefined,
+        );
+      }
+    },
+    [setTabs, tabsRef],
+  );
+  // Moved here: its conversations and what is kept for it follow too (the
+  // backend, for every document under a moved folder), once.
+  const entryMoved = useCallback(
+    (from: string, to: string) => {
+      void notePathMoved(from, to);
+      followMove(from, to);
+    },
+    [followMove],
+  );
+  // A renamed document stays open under its new name, like any move; a
+  // deleted one keeps its text in the tab, unsaved.
+  const documentRenamed = entryMoved;
+  // A plugin moving a page (the page tree making it a folder for its
+  // sub-pages): its tab saved first, then following it.
+  useEffect(() => {
+    setPathMoveHooks({
+      async before(from) {
+        // Read through the editors: the last words typed may not have
+        // reached the tab yet.
+        for (const tab of liveTabs())
+          if (
+            tab.path &&
+            (tab.path === from || isInside(tab.path, from)) &&
+            tabIsDirty(tab)
+          )
+            await saveTab(tab.id);
+      },
+      after: entryMoved,
+    });
+    return () => setPathMoveHooks(null);
+  }, [liveTabs, saveTab, entryMoved]);
+  const documentDeleted = useCallback(
+    (path: string) => {
+      setTabs((prev) =>
+        prev.map((tab) =>
+          tab.path === path
+            ? { ...tab, path: null, savedContent: "", diskMtime: null }
+            : tab,
+        ),
+      );
+    },
+    [setTabs],
+  );
+  // A reset skill's file was deleted, so a tab showing it must not write it
+  // back: an unedited one closes, an edited one becomes an unsaved draft.
+  const skillFilesDeleted = useCallback(
+    (paths: string[]) => {
+      // Live: typing the editor hasn't reported yet counts as an edit.
+      for (const tab of liveTabs()) {
+        if (!tab.path || !paths.includes(tab.path)) continue;
+        if (tabIsDirty(tab)) {
+          documentDeleted(tab.path);
+        } else if (tabsRef.current.length > 1) {
+          removeTab(tab.id);
+        } else {
+          const blank = makeBlankTab();
+          setTabs([blank]);
+          setActiveTabId(blank.id);
+        }
+      }
+    },
+    [documentDeleted, removeTab, liveTabs, tabsRef, setTabs, setActiveTabId],
+  );
+
+  // A file or folder trashed in the sidebar: its tabs go as a reset
+  // skill's do, never writing it back.
+  useWindowEvent(ENTRY_TRASHED_EVENT, (e) => {
+    const gone = (e as CustomEvent<string>).detail;
+    skillFilesDeleted(
+      tabsRef.current
+        .map((tab) => tab.path)
+        .filter(
+          (path): path is string =>
+            !!path && (path === gone || isInside(path, gone)),
+        ),
+    );
+  });
+
+  return {
+    ...iphone,
+    documentRenamed,
+    entryMoved,
+    followMove,
+    documentDeleted,
+    skillFilesDeleted,
+  };
+}
+
+/** The iPhone's document list, open or not, and Share for the tab in front. */
+function useIPhoneDocuments(
+  tabState: TabState,
+  openFile: (path: string) => Promise<void>,
+  saveTab: (tabId: string) => Promise<boolean>,
+) {
+  const { tabsRef, activeTabId, liveTabs } = tabState;
+  // An entry that no longer exists is dropped from the list.
+  const [documentsOpen, setDocumentsOpen] = useState(false);
+  const openFromDocuments = useCallback(
+    (path: string) => {
+      setDocumentsOpen(false);
+      void openFile(path).catch(() => forgetIOSDocument(path));
+    },
+    [openFile],
+  );
+  // Share needs a file, so an unsaved document is saved first.
+  const shareActiveTab = useCallback(async () => {
+    const tab = liveTabs().find((tb) => tb.id === activeTabId);
+    if (!tab) return;
+    if ((!tab.path || tabIsDirty(tab)) && !(await saveTab(tab.id))) return;
+    // A first save lands in `tabs` on the next render.
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const path = tabsRef.current.find((tb) => tb.id === tab.id)?.path;
+    if (path) await nativeFiles.share(path).catch(() => {});
+  }, [activeTabId, liveTabs, saveTab, tabsRef]);
+  return { documentsOpen, setDocumentsOpen, openFromDocuments, shareActiveTab };
+}

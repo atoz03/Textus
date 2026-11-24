@@ -1,0 +1,148 @@
+/* PDF export on Windows/Linux prints this live window: hide app chrome, flow
+   the content and keep the theme's colours. */
+@media print {
+  /* Otherwise the print engine drops every background colour. */
+  :root {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* A real margin on every page; padding alone insets only the first and
+     last. Chromium still paints the root background into it. */
+  @page {
+    margin: 20mm 0;
+  }
+
+  .sidebar,
+  .tab-bar,
+  .window-bar,
+  .tx-backdrop,
+  .corner-stacks,
+  .pdf-export-overlay {
+    display: none !important;
+  }
+
+  /* The room the rail and the sidebar had on screen. */
+  .app-shell > .main-pane {
+    grid-column: 1 / -1 !important;
+  }
+
+  /* Editing affordances, not content. Keep in step with
+     EDITOR_CHROME_SELECTOR. */
+  .heading-marker,
+  .enclosure-delimiter,
+  .code-block-header,
+  .block-toolbar,
+  .table-grip,
+  .mermaid-zoom,
+  .code-line-gutter,
+  .color-swatch,
+  .color-swatch-text::before,
+  .table-add-row-btn,
+  .table-add-col-btn,
+  .ghost-text,
+  .quick-ask-anchor,
+  .pending-insert,
+  .image-resize-handle,
+  .block-fold,
+  .block-folded-line,
+  .frontmatter-block,
+  .missing-image-card,
+  .md-emoji-source,
+  [data-editor-chrome] {
+    display: none !important;
+  }
+
+  /* Wide content wraps or fits: a page can't scroll, and a resized table's
+     pixel widths were sized for the screen. */
+  .milkdown table {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .table-scroll {
+    overflow: visible;
+  }
+
+  /* Only the screen-sized pixel columns: the exports' rescaled clone
+     carries percentages, which already fit. */
+  .milkdown col[style*="px"] {
+    width: auto !important;
+  }
+
+  .math-block-rendered,
+  .katex-display {
+    overflow: visible !important;
+  }
+
+  .katex-display > .katex {
+    white-space: normal;
+  }
+
+  .milkdown a,
+  .milkdown p,
+  .milkdown li,
+  .milkdown td,
+  .milkdown th {
+    overflow-wrap: anywhere;
+  }
+
+  html,
+  body,
+  .app-shell,
+  .main-pane,
+  .editor-scroll {
+    height: auto;
+    overflow: visible;
+    background: var(--doc-bg, var(--ui-bg)) !important;
+  }
+
+  /* Inset the text (page margins are zero for full-bleed). */
+  .editor-content,
+  .editor-content.typewriter-active {
+    max-width: none;
+    padding: 0 14mm;
+  }
+
+  /* Keep indivisible blocks off page seams. */
+  pre,
+  blockquote,
+  table,
+  img,
+  .math-block-wrapper,
+  .mermaid-preview,
+  .md-alert {
+    break-inside: avoid;
+  }
+}
+
+/* "Preparing PDF…" overlay while the offscreen render runs. */
+.pdf-export-overlay {
+  z-index: var(--z-modal);
+}
+
+.pdf-export-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.75rem 2.25rem;
+  border-radius: var(--shape-l);
+  background: var(--ui-bg);
+  color: var(--doc-text);
+  border: 1px solid var(--ui-border);
+  box-shadow: var(--shadow-dialog);
+  text-align: center;
+}
+
+.pdf-export-spinner {
+  --progress-ring-size: 28px;
+  --progress-ring-line: 3px;
+  --progress-fill: var(--doc-accent);
+  --progress-track: var(--doc-border);
+}
+
+.pdf-export-text {
+  font-size: var(--text-body-large);
+  font-weight: 600;
+}

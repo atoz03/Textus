@@ -1,0 +1,175 @@
+/* The card under a grammar underline: kind, wrong → fix, the checker's
+   note, the fix as the button. */
+.grammar-popover {
+  position: fixed;
+  z-index: var(--z-popover);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 264px;
+  max-width: 374px;
+  padding: 8px 12px;
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  transform-origin: var(--transform-origin, top left);
+  animation: motion-pop-in var(--dur-base) var(--ease-out);
+}
+
+.grammar-popover[data-state="closing"] {
+  animation: motion-pop-out var(--dur-fast) var(--ease-in) forwards;
+}
+
+.grammar-popover-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.grammar-kind {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--ui-danger) 12%, transparent);
+  color: var(--ui-danger);
+}
+
+.grammar-kind-punctuation,
+.grammar-kind-rules,
+.grammar-kind-plugin {
+  background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+  color: var(--ui-accent-text);
+}
+
+.grammar-popover-fix {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-control);
+}
+
+.grammar-popover-fix s {
+  color: var(--ui-muted);
+  text-decoration-color: var(--diff-delete-line);
+}
+
+.grammar-popover-fix b {
+  color: var(--ui-success);
+  font-weight: 600;
+}
+
+.grammar-popover-nav {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--text-caption);
+  color: var(--ui-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.grammar-popover-nav .tx-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  corner-shape: round;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+@media (any-hover: hover) {
+  .grammar-popover-nav .tx-icon-button:hover {
+    background: var(--ui-hover);
+    color: var(--ui-text);
+  }
+}
+
+.grammar-popover-issue {
+  color: var(--ui-muted);
+  overflow-wrap: anywhere;
+}
+
+.grammar-popover-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.grammar-popover-apply {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 12px;
+  border: none;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.grammar-popover-apply kbd {
+  padding: 1px 4px;
+  border-radius: var(--shape-xs);
+  background: color-mix(in srgb, var(--ui-surface) 20%, transparent);
+  font: 500 calc(10.5px * var(--ui-text-scale, 1)) var(--font-mono);
+}
+
+.grammar-popover-apply:hover {
+  opacity: 0.9;
+}
+
+.grammar-popover-error {
+  font-size: var(--text-footnote);
+  color: var(--ui-danger);
+}
+
+.grammar-popover-ignore {
+  padding: 4px 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  background: none;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: var(--text-secondary);
+  cursor: pointer;
+}
+
+@media (any-hover: hover) {
+  .grammar-popover-ignore:hover {
+    border-color: var(--ui-muted);
+  }
+}
+
+/* The phone's card (BottomCard): the fix large, the note under it. */
+.grammar-card-fix {
+  margin: 8px 0 4px;
+  font-size: 1.3em;
+}
+
+.grammar-card-fix s {
+  color: var(--ui-muted);
+  text-decoration-color: var(--diff-delete-line);
+}
+
+.grammar-card-fix b {
+  color: var(--ui-success);
+}
+
+.grammar-card-issue {
+  font-size: var(--text-secondary);
+  color: var(--ui-muted);
+}

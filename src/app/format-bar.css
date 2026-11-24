@@ -1,0 +1,216 @@
+/* The format bar (design-language.md 5.7): the top of the sheet of the
+   document in use, on the page's own surface, riding with its view as the
+   islands move; the page and its scrollbar start below it. */
+:root {
+  /* A little room over its buttons, clear of the island's top edge. */
+  --format-bar-bleed: var(--space-1);
+  --format-bar-height: calc(
+    36px * var(--chrome-scale) + var(--format-bar-bleed)
+  );
+}
+/* What the bar takes off the page's top: none when it is hidden or on a
+   side. */
+.split-pane {
+  --format-bar-top: 0px;
+}
+.split-pane:has(> .format-bar) {
+  --format-bar-top: var(--format-bar-height);
+  box-sizing: border-box;
+  padding-top: var(--format-bar-top);
+}
+
+.format-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--format-bar-height);
+  padding: var(--format-bar-bleed) var(--space-3) 0;
+  border-bottom: 1px solid var(--ui-border);
+  /* The sheet's paper, inside its rounded top. */
+  border-radius: var(--island-radius) var(--island-radius) 0 0;
+  background: var(--doc-bg, var(--ui-bg));
+}
+
+/* Its buttons; what doesn't fit folds into "⋯" (FormatBar). */
+.format-bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.format-bar-group {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+/* A hairline between the text styles and the blocks. */
+.format-bar-group + .format-bar-group {
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--ui-frame-edge);
+}
+
+/* A button's place in its group; it folds away with the row's steps. */
+.format-bar-item {
+  display: contents;
+}
+
+/* What the row has no room for, behind "⋯" at its end (useFitItems); a
+   group folded whole takes its hairline with it. */
+.format-bar-more {
+  flex: none;
+}
+.format-bar-group:not(:has(> :not([data-fit-hidden]))) {
+  display: none;
+}
+
+.format-bar .tx-icon-button[aria-pressed="true"] {
+  background: var(--ui-hover);
+  color: var(--ui-text);
+}
+
+/* With no row of tabs the sheet reaches up under the window bar: the bar
+   sits below it. */
+.app-shell:not([data-tabs="bar"]) .split-pane > .format-bar {
+  top: var(--window-bar-height);
+  border-radius: 0;
+}
+.app-shell:not([data-tabs="bar"]) .split-pane:has(> .format-bar) {
+  --format-bar-top: calc(var(--window-bar-height) + var(--format-bar-height));
+}
+
+/* Below the bar the page needn't clear the window bar a second time. */
+.main-pane
+  .split-pane:has(> .format-bar)
+  .editor-content:not(.typewriter-active) {
+  padding-top: 1.5rem;
+}
+
+/* On a side (View › Format Bar › Left or Right): a column down the
+   sheet's edge, the page beside it. */
+.split-pane:has(> .format-bar[data-side="left"]) {
+  --format-bar-top: 0px;
+  padding-left: var(--format-bar-height);
+}
+.split-pane:has(> .format-bar[data-side="right"]) {
+  --format-bar-top: 0px;
+  padding-right: var(--format-bar-height);
+}
+
+.format-bar[data-side] {
+  bottom: 0;
+  flex-direction: column;
+  width: var(--format-bar-height);
+  height: auto;
+  padding: var(--space-2) 0;
+  border-bottom: none;
+}
+.format-bar[data-side="left"] {
+  right: auto;
+  border-right: 1px solid var(--ui-border);
+  border-radius: var(--island-radius) 0 0 var(--island-radius);
+}
+.format-bar[data-side="right"] {
+  left: auto;
+  border-left: 1px solid var(--ui-border);
+  border-radius: 0 var(--island-radius) var(--island-radius) 0;
+}
+.app-shell:not([data-tabs="bar"]) .split-pane > .format-bar[data-side="left"] {
+  border-radius: 0 0 0 var(--island-radius);
+}
+.app-shell:not([data-tabs="bar"]) .split-pane > .format-bar[data-side="right"] {
+  border-radius: 0 0 var(--island-radius) 0;
+}
+
+/* The page's readouts (DocumentCorner) keep clear of a bar on the right. */
+.app-shell[data-format-bar="right"] .document-corner {
+  padding-right: calc(var(--format-bar-height) + var(--space-3));
+}
+
+.format-bar[data-side] :is(.format-bar-row, .format-bar-group) {
+  flex-direction: column;
+}
+.format-bar[data-side] .format-bar-row {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+.format-bar[data-side] .format-bar-group + .format-bar-group {
+  padding: var(--space-2) 0 0;
+  border-top: 1px solid var(--ui-frame-edge);
+  border-left: none;
+}
+
+/* A phone's strip is the sheet's foot (design: phone): a finger's reach,
+   and with the keyboard up the page ends at it, so the strip rides on it. */
+:root[data-window-chrome="mobile"] .split-pane > .format-bar {
+  top: auto;
+  bottom: 0;
+  height: 48px;
+  padding: 0 var(--space-2);
+  border-top: 1px solid var(--ui-border);
+  border-bottom: none;
+  border-radius: 0 0 var(--island-radius) var(--island-radius);
+}
+
+:root[data-window-chrome="mobile"] .split-pane:has(> .format-bar) {
+  --format-bar-top: 0px;
+}
+
+/* Only while typing: at rest the page is the sheet alone. */
+:root[data-window-chrome="mobile"]:not(.keyboard-up) .split-pane > .format-bar {
+  display: none;
+}
+
+/* It scrolls when a table's buttons outrun the phone, rather than folding
+   them away; its edges fade, so a button cut off there reads as more to
+   scroll to, not as a stray mark. */
+:root[data-window-chrome="mobile"] .format-bar-row {
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 12px,
+    #000 calc(100% - 12px),
+    transparent
+  );
+}
+
+:root[data-window-chrome="mobile"] .format-bar .tx-icon-button {
+  min-width: 44px;
+  height: 44px;
+}
+
+:root[data-window-chrome="mobile"]
+  .main-pane
+  .split-pane:has(> .format-bar)
+  .editor-content:not(.typewriter-active) {
+  padding-top: 1.5rem;
+  padding-bottom: calc(1.5rem + 48px);
+}
+
+:root[data-window-chrome="mobile"] .format-bar-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* A phone turned sideways with its keyboard up leaves a strip of a page:
+   the text takes it, the bar comes back as the keyboard goes. */
+@media (max-height: 320px) {
+  :root.keyboard-up .split-pane {
+    --format-bar-height: 0px;
+  }
+  :root.keyboard-up .format-bar {
+    display: none;
+  }
+}

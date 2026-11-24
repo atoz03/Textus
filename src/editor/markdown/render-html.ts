@@ -1,0 +1,335 @@
+import { splitFrontmatter } from "../../utils/frontmatter";
+import {
+  Marked,
+  Renderer,
+  type MarkedExtension,
+  type TokenizerAndRendererExtension,
+} from "marked";
+import markedCjkFriendly from "marked-cjk-friendly";
+import createDOMPurify from "dompurify";
+import { escapeHtml } from "../../utils/html";
+import { loadSettings } from "../../prefs/settings-store";
+import { WIKILINK_SOURCE } from "../../utils/note-link";
+import {
+  displayMathApart,
+  normalizeMathDelimiters,
+} from "../../utils/markdown-math";
+import { sanitizeNodes } from "../html/html-policy";
+import { readImagePresentation } from "../images/image-html";
+import { katexNow, mathSourceHtml } from "../math/katex-loader";
+import { renderFormula } from "../math/matrix-rows";
+import { BACKTICK_MATH, DOLLAR_MATH } from "../math/inline-math-rule";
+
+const BACKTICK_AT_START = new RegExp(`^${BACKTICK_MATH}`);
+const DOLLAR_AT_START = new RegExp(`^${DOLLAR_MATH}`);
+
+function renderMath(source: string, displayMode: boolean): string {
+  const katex = katexNow();
+  // Before KaTeX has loaded, the source; callers redraw once it is here.
+  if (!katex) return mathSourceHtml(source.trim());
+  return renderFormula(katex, source.trim(), {
+    displayMode,
+    // A half-typed formula renders as its source in red rather than throwing
+    // away the whole reply.
+    throwOnError: false,
+    output: "htmlAndMathml",
+  });
+}
+
+/** One formula as HTML: a display block in its own container, or inline. */
+function mathHtml(source: string, display: boolean, block: boolean): string {
+  const html = renderMath(source, display);
+  return block ? `<div class="agent-math">${html}</div>` : html;
+}
+
+// `$$...$$` on its own lines and `$...$` inside text, as the editor's math
+// schema reads them. Inline `$` needs a non-space just inside each delimiter
+// and no digit after the closing one, so "$5 and $10" stays text. GitHub's
+// $`...`$ holds anything but a backtick; any other "$`" is a dollar before
+// code.
+function mathExtensions(
+  render: (source: string, display: boolean, block: boolean) => string,
+): TokenizerAndRendererExtension[] {
+  const mathBlock: TokenizerAndRendererExtension = {
+    name: "mathBlock",
+    level: "block",
+    start: (src) => src.indexOf("$$"),
+    tokenizer(src) {
+      const match = /^\$\$([\s\S]+?)\$\$[^\S\n]*(?:\n+|$)/.exec(src);
+      if (match) return { type: "mathBlock", raw: match[0], text: match[1] };
+      return undefined;
+    },
+    renderer: (token) => render(token.text, true, true),
+  };
+
+  const mathInline: TokenizerAndRendererExtension = {
+    name: "mathInline",
+    level: "inline",
+    start: (src) => src.indexOf("$"),
+    tokenizer(src) {
+      const display = /^\$\$([^$]+?)\$\$/.exec(src);
+      if (display)
+        return {
+          type: "mathInline",
+          raw: display[0],
+          text: display[1],
+          display: true,
+        };
+      const match = BACKTICK_AT_START.exec(src) ?? DOLLAR_AT_START.exec(src);
+      if (match)
+        return {
+          type: "mathInline",
+          raw: match[0],
+          text: match[1],
+          display: false,
+        };
+      return undefined;
+    },
+    renderer: (token) => render(token.text, Boolean(token.display), false),
+  };
+  return [mathBlock, mathInline];
+}
+
+const WIKILINK_AT_START = new RegExp(`^${WIKILINK_SOURCE}`);
+
+// An Obsidian wikilink, drawn as the editor draws it, in the link colour.
+const wikilink: TokenizerAndRendererExtension = {
+  name: "wikilink",
+  level: "inline",
+  start: (src) => src.indexOf("[["),
+  tokenizer(src) {
+    const match = WIKILINK_AT_START.exec(src);
+    if (match) return { type: "wikilink", raw: match[0] };
+    return undefined;
+  },
+  renderer: (token) => `<span class="wikilink">${escapeHtml(token.raw)}</span>`,
+};
+
+// "**" next to CJK punctuation is emphasis, as in the editor; CommonMark's
+// flanking rules would leave the stars showing.
+const cjkFriendly = markedCjkFriendly();
+
+// `~text~` as the editor reads it (editor-core-syntax): with one tilde not
+// a strikethrough, a subscript after a letter or digit in subscript mode and
+// otherwise the tildes as written; `~~text~~` always strikes out.
+const singleTilde: MarkedExtension = {
+  extensions: [
+    {
+      name: "singleTilde",
+      level: "inline",
+      start: (src) => {
+        const at = src.indexOf("~");
+        return at < 0 ? undefined : at;
+      },
+      // Ahead of marked's own: one tilde never reaches its strikethrough.
+      tokenizer(src, tokens) {
+        const mode = loadSettings().singleTilde;
+        if (mode === "strikethrough" || !/^~(?!~)/.test(src)) return undefined;
+        const match = /^~([A-Za-z0-9+-]+)~(?!~)/.exec(src);
+        const before = tokens.at(-1)?.raw.slice(-1) ?? "";
+        if (mode === "subscript" && match && /^[\p{L}\p{N}]$/u.test(before))
+          return { type: "singleTilde", raw: match[0], text: match[1] };
+        return { type: "text", raw: "~", text: "~" };
+      },
+      renderer: (token) => `<sub>${escapeHtml(String(token.text))}</sub>`,
+    },
+  ],
+};
+
+// Its own instance, not the global `marked`: for chat replies, where a bare
+// newline breaks the line.
+const chatMarked = new Marked(cjkFriendly, singleTilde, {
+  gfm: true,
+  breaks: true,
+  extensions: [...mathExtensions(mathHtml), wikilink],
+});
+
+/**
+ * The cleaner for what Textus AI and plugins write (chat replies, hover
+ * cards): no styles or forms, and nothing that loads from the web as it
+ * shows - a remote picture is a link to it, a style naming a URL goes - so
+ * text an injected prompt puts in an address never leaves on its own.
+ */
+let made: ReturnType<typeof createDOMPurify> | null = null;
+function purify() {
+  if (made) return made;
+  made = createDOMPurify(window);
+  made.addHook("afterSanitizeAttributes", (node) => {
+    if (/url\(/i.test(node.getAttribute("style") ?? ""))
+      node.removeAttribute("style");
+    // A task list's checkbox stays; `<input type=image>` loads its src.
+    if (node.tagName === "INPUT") node.removeAttribute("src");
+    if (node.tagName !== "IMG") return;
+    const src = node.getAttribute("src") ?? "";
+    if (!/^https?:/i.test(src)) return;
+    const link = node.ownerDocument.createElement("a");
+    link.href = src;
+    link.textContent = node.getAttribute("alt") || src;
+    node.replaceWith(link);
+  });
+  return made;
+}
+const AUTHORED = {
+  FORBID_TAGS: [
+    "style",
+    "form",
+    "button",
+    "textarea",
+    "select",
+    // Each loads from an address as it shows.
+    "picture",
+    "source",
+    "video",
+    "audio",
+    "track",
+  ],
+  FORBID_ATTR: ["srcset", "poster", "background"],
+};
+
+/** A reply's top-level blocks (a paragraph, a list, a fence), their
+ *  sources in order: a streaming reply redraws only its last. */
+export function markdownBlocks(markdown: string): string[] {
+  return chatMarked
+    .lexer(displayMathApart(normalizeMathDelimiters(markdown)))
+    .map((token) => token.raw);
+}
+
+/** Markdown source -> sanitized, block-aware HTML, for the chat reply. */
+export function renderMarkdownHtml(markdown: string): string {
+  // `\(`/`\[` are folded to `$`/`$$` first, so markdown's backslash escaping
+  // can't mangle them.
+  const parsed = chatMarked.parse(
+    displayMathApart(normalizeMathDelimiters(markdown)),
+    {
+      async: false,
+    },
+  );
+  return purify().sanitize(parsed, AUTHORED);
+}
+
+// Footnotes, which marked has no syntax for: a reference `[^2]` as its
+// raised label, and a definition `[^2]: …` as a paragraph opening with it.
+const footnotes: TokenizerAndRendererExtension[] = [
+  {
+    name: "footnoteDefinition",
+    level: "block",
+    start: (src) => src.match(/^\[\^[^\]\s]+\]:/m)?.index,
+    tokenizer(src) {
+      const match =
+        /^\[\^([^\]\s]+)\]:[ \t]*([^\n]*(?:\n(?: {2,}|\t)[^\n]*)*)(?:\n+|$)/.exec(
+          src,
+        );
+      if (!match) return undefined;
+      const token = {
+        type: "footnoteDefinition",
+        raw: match[0],
+        label: match[1],
+        text: match[2].replace(/\n(?: {2,}|\t)/g, " "),
+        tokens: [],
+      };
+      this.lexer.inline(token.text, token.tokens);
+      return token;
+    },
+    renderer(token) {
+      const label = escapeHtml(String(token.label));
+      return `<p><sup>${label}</sup> ${this.parser.parseInline(token.tokens ?? [])}</p>\n`;
+    },
+  },
+  {
+    name: "footnoteReference",
+    level: "inline",
+    start: (src) => src.indexOf("[^"),
+    tokenizer(src) {
+      const match = /^\[\^([^\]\s]+)\](?!:)/.exec(src);
+      if (!match) return undefined;
+      return { type: "footnoteReference", raw: match[0], label: match[1] };
+    },
+    renderer: (token) => `<sup>${escapeHtml(String(token.label))}</sup>`,
+  },
+];
+
+// The inline flavour: the chat's, plus footnote references raised.
+const inlineMarked = new Marked(cjkFriendly, singleTilde, {
+  gfm: true,
+  breaks: true,
+  extensions: [
+    ...mathExtensions(mathHtml),
+    ...footnotes.filter((f) => f.name === "footnoteReference"),
+  ],
+});
+
+// The document's formulas, in order: a placeholder element stands for each,
+// so the HTML policy (which would strip KaTeX's classes) never sees them.
+let mathSlots: string[] = [];
+const MATH_SLOT_TAG = "textus-math";
+
+// The document flavour, for the split view: a single newline is not a line
+// break.
+const documentMarked = new Marked(cjkFriendly, singleTilde, {
+  gfm: true,
+  breaks: false,
+  extensions: [
+    ...mathExtensions((source, display, block) => {
+      mathSlots.push(purify().sanitize(mathHtml(source, display, block)));
+      return `<${MATH_SLOT_TAG} data-slot="${mathSlots.length - 1}"></${MATH_SLOT_TAG}>`;
+    }),
+    ...footnotes,
+  ],
+  renderer: {
+    // A width an older Textus kept in the title sizes the picture, as in the
+    // editor.
+    image(token) {
+      const { title, widthPercent } = readImagePresentation(token.title);
+      if (widthPercent === null) return false;
+      const html = Renderer.prototype.image.call(this, {
+        ...token,
+        title: title || null,
+      });
+      return html.replace(/^<img /, `<img width="${widthPercent}%" `);
+    },
+  },
+  // `[](https://...)` shows its URL, as in the editor, instead of nothing.
+  walkTokens: (token) => {
+    if (token.type === "link" && token.tokens?.length === 0)
+      token.tokens = [
+        { type: "text", raw: token.href, text: token.href, escaped: false },
+      ];
+  },
+});
+
+/** A whole document -> sanitized HTML, for the split view's preview. Front
+ *  matter is dropped; raw HTML follows the editor's policy. */
+export function renderDocumentHtml(markdown: string): string {
+  const { body } = splitFrontmatter(markdown);
+  mathSlots = [];
+  const parsed = documentMarked.parse(normalizeMathDelimiters(body), {
+    async: false,
+  });
+  const slots = mathSlots;
+  mathSlots = [];
+  const doc = new DOMParser().parseFromString(parsed, "text/html");
+  const out = doc.createElement("div");
+  sanitizeNodes(Array.from(doc.body.childNodes), out, {
+    // KaTeX's output, already through DOMPurify. A placeholder typed by hand can
+    // only repeat one of the document's own formulas.
+    replace: (el) => {
+      if (el.localName !== MATH_SLOT_TAG) return undefined;
+      const html = slots[Number(el.getAttribute("data-slot"))];
+      const template = doc.createElement("template");
+      template.innerHTML = html ?? "";
+      return template.content;
+    },
+  });
+  return out.innerHTML;
+}
+
+/**
+ * Markdown source -> sanitized inline-only HTML, for an inline decoration
+ * widget where a block element would be invalid inside the paragraph.
+ */
+export function renderMarkdownInlineHtml(markdown: string): string {
+  const parsed = inlineMarked.parseInline(normalizeMathDelimiters(markdown), {
+    async: false,
+  });
+  return purify().sanitize(parsed, AUTHORED);
+}

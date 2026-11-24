@@ -1,0 +1,633 @@
+name: CI
+
+# Three layers (docs/dev/testing.md has the table):
+#
+#   pull request   check (types, lint, format, repo checks and build beside
+#                  the unit tests in 2 shards), the whole e2e suite in
+#                  Chromium (2 shards) and in WebKit (3 shards; its width
+#                  sweep and a11y scan in the full suite only),
+#                  plus the Rust checks on Linux when src-tauri/ changed
+#                  (scripts/ci-changes.mjs), with a check of the Android
+#                  target. A change to GitHub's settings
+#                  or root Markdown alone checks only their format;
+#                  documentation alone checks format, links and the tests
+#                  that read the docs, without builds or e2e. Required:
+#                  check, e2e, native, ci-config. A contributor runs
+#                  `npm run check` locally.
+#   push to main   check, and the Rust checks and Linux app build
+#                  (scripts/ci-changes.mjs takes every push as native):
+#                  the merged tree's build. The e2e suite ran on the pull
+#                  request; here only the browsers' cache is refreshed.
+#   before release the full suite on every platform: native on Linux, macOS
+#                  and Windows, e2e, the iOS simulator. It runs on the pull
+#                  request that bumps the version, and release.yml calls it
+#                  on the tagged commit.
+#
+# `check`'s save round trip (src/document-view/save-roundtrip*.test.ts)
+# runs only when the change can reach saving: the editor, src/document*/,
+# the Markdown helpers, the npm dependencies or CI. Markdown under src/,
+# e2e/ or src-tauri/ (help guides, the AI skills) is code, not
+# documentation.
+#
+# Caches: Rust builds and the Playwright browsers are saved from main only
+# (the browsers by `browser-cache`).
+# Pull requests restore main's and write none, so they don't evict main's
+# from the repository's 10 GB.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # From the release workflow before it builds a tag: the full suite,
+  # whatever changed.
+  workflow_call:
+    inputs:
+      full:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# A pull request's newer push replaces its older run. A push to main never
+# does: each commit there gets its own run, grouped by commit.
+concurrency:
+  group: ci-${{ inputs.full && 'full-' || '' }}${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Whether the change is light, reaches the Rust build (`native`) or
+  # saving (`roundtrip`): scripts/ci-changes.mjs.
+  changes:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      light: ${{ steps.diff.outputs.light }}
+      docs: ${{ steps.diff.outputs.docs }}
+      native: ${{ steps.diff.outputs.native }}
+      roundtrip: ${{ steps.diff.outputs.roundtrip }}
+      # The full suite: before a tag (the release workflow calls this one)
+      # and on the pull request that bumps the version. Otherwise the quick
+      # one: check, and Rust on Linux where Rust changed.
+      full: ${{ steps.diff.outputs.full }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - id: diff
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+          FULL: ${{ inputs.full }}
+        run: |
+          if [ "$FULL" = true ]; then
+            printf 'light=false\ndocs=false\nnative=true\nroundtrip=true\nfull=true\n' >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            node scripts/ci-changes.mjs --base "$PR_BASE" >> "$GITHUB_OUTPUT"
+          else
+            node scripts/ci-changes.mjs --base "$PUSH_BASE" --push >> "$GITHUB_OUTPUT"
+          fi
+
+  # A fork's pull request that changes CI or the test configuration fails
+  # here, for a maintainer to read that part first: the base's copy of
+  # scripts/guard-ci-config.mjs, run against the pull request's head, so
+  # the guard itself can't be changed to pass. A required check - taken out
+  # of the workflow, it never reports and the pull request can't merge.
+  # Skipped (and so passed) for branches of this repository.
+  ci-config:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --no-tags origin "pull/$NUMBER/head:refs/remotes/pr/head"
+          node scripts/guard-ci-config.mjs --base "$BASE" --head refs/remotes/pr/head
+
+  # Everything but the unit tests, which run beside it in `unit`.
+  check-static:
+    needs: changes
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # GitHub's settings, the license, root Markdown or docs/images alone: their format
+      # and the READMEs' structure, nothing that builds or tests.
+      - if: needs.changes.outputs.light == 'true'
+        run: npm run format:check && node scripts/check-readmes.mjs
+      # Documentation alone: its format, its links, and the unit tests that
+      # read docs/ (the plugin reference, the permissions, release notes).
+      - if: needs.changes.outputs.docs == 'true'
+        run: |
+          npm run format:check
+          node scripts/check-readmes.mjs
+          node scripts/check-links.mjs
+          npx vitest run $(git grep -l 'docs/' -- '*.test.ts' '*.test.tsx' '*.test.mjs')
+      - if: needs.changes.outputs.light != 'true' && needs.changes.outputs.docs != 'true'
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run format:check
+          npm run check:repo
+      # The minifier only warns on a broken selector list - and a warning
+      # dropped a whole design-system rule once, unnoticed for three releases.
+      # Both builds are `vite build` without the `tsc` that `npm run build`
+      # puts in front of it: the step above has just type-checked the same
+      # project. `set -o pipefail` because the step's shell otherwise takes
+      # the exit status of `tee`: a build that failed - over the startup
+      # budget, say (vite.startup-budget.ts) - passed here.
+      - name: Build, failing on CSS syntax warnings
+        if: needs.changes.outputs.light != 'true' && needs.changes.outputs.docs != 'true'
+        run: |
+          set -o pipefail
+          npx vite build 2>&1 | tee build.log
+          ! grep -q 'css-syntax-error' build.log
+      # The browser playground (src/playground/) shares the editor: a change
+      # that breaks its build shows up here, before it is deployed.
+      - name: Build the playground
+        if: needs.changes.outputs.light != 'true' && needs.changes.outputs.docs != 'true'
+        run: |
+          set -o pipefail
+          npx vite build --config vite.playground.config.ts 2>&1 | tee build-playground.log
+          ! grep -q 'css-syntax-error' build-playground.log
+
+  # The unit tests in two shards. The save round trip only where the
+  # change can reach saving.
+  unit:
+    needs: changes
+    if: needs.changes.outputs.light != 'true' && needs.changes.outputs.docs != 'true'
+    name: unit (${{ matrix.shard }}/2)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run --shard=${{ matrix.shard }}/2
+        env:
+          TEXTUS_SKIP_ROUNDTRIP: ${{ needs.changes.outputs.roundtrip != 'true' && '1' || '' }}
+
+  # The required check: the static half and every unit shard passed (the
+  # shards skipped together for a light or documentation change).
+  check:
+    needs: [changes, check-static, unit]
+    if: always()
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Require both halves
+        env:
+          STATIC: ${{ needs.check-static.result }}
+          UNIT: ${{ needs.unit.result }}
+        run: |
+          test "$STATIC" = success
+          test "$UNIT" = success || test "$UNIT" = skipped
+
+  # The flows split by test across two machines, each running two workers
+  # (playwright.config.ts): a few minutes each.
+  e2e-shard:
+    needs: changes
+    if: needs.changes.outputs.light != 'true' && needs.changes.outputs.docs != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || inputs.full)
+    name: e2e (${{ matrix.shard }}/2)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # The official plugins, which no longer ship with the app: the dev
+      # server serves them from this checkout (vite.dev-plugins.ts), and
+      # the plugin flows install them from it.
+      # Pinned: a plugin release moving to a new API broke the flows once.
+      # Bump it on purpose, with the app change that needs it.
+      - uses: actions/checkout@v7
+        with:
+          repository: CatVinci-Studio/textus-plugins
+          ref: 6b4a7cf6bede6a37ef02317741a6b458d3f78a02
+          path: textus-plugins
+      - run: npm ci --prefix textus-plugins
+      # Chromium comes from the cache when this Playwright version's is there;
+      # its system libraries are installed either way.
+      - id: playwright
+        run: echo "version=$(node -p 'require("./package-lock.json").packages["node_modules/@playwright/test"].version')" >> "$GITHUB_OUTPUT"
+      - id: browser
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - if: steps.browser.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - if: steps.browser.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/2
+      # Every failed attempt's error context (the page as it was) and
+      # trace, a test that passed on its retry included.
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-test-results-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # The browsers' cache, written from main only (pull requests read it):
+  # each engine fetched once per Playwright version, when it is missing.
+  browser-cache:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    name: browser cache (${{ matrix.engine }})
+    strategy:
+      matrix:
+        include:
+          - engine: chromium
+            key: playwright
+          - engine: webkit
+            key: playwright-webkit
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - id: playwright
+        run: echo "version=$(node -p 'require("./package-lock.json").packages["node_modules/@playwright/test"].version')" >> "$GITHUB_OUTPUT"
+      - id: browser
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ matrix.key }}-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+          lookup-only: true
+      - if: steps.browser.outputs.cache-hit != 'true'
+        run: npm ci && npx playwright install ${{ matrix.engine }}
+      - if: steps.browser.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browser.outputs.cache-primary-key }}
+
+  # One required check for the shards and WebKit, like `native` below:
+  # passes only when all of them passed (or were skipped together, for a
+  # light or documentation change).
+  e2e:
+    needs: [changes, e2e-shard, e2e-webkit]
+    if: always()
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every shard
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RESULT: ${{ needs.e2e-shard.result }}
+          WEBKIT: ${{ needs.e2e-webkit.result }}
+        run: |
+          test "$CHANGES" = success
+          test "$RESULT" = success || test "$RESULT" = skipped
+          test "$WEBKIT" = success || test "$WEBKIT" = skipped
+
+  # The whole suite again in WebKit, the engine macOS, iOS and Linux users
+  # meet, on every pull request, in three shards: a failure here fails
+  # `e2e`. The width sweep and the accessibility scan, which Chromium runs
+  # on every pull request, run here only in the full suite.
+  e2e-webkit:
+    needs: changes
+    if: needs.changes.outputs.light != 'true' && needs.changes.outputs.docs != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || inputs.full)
+    name: e2e webkit (${{ matrix.shard }}/3)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: actions/checkout@v7
+        with:
+          repository: CatVinci-Studio/textus-plugins
+          ref: 6b4a7cf6bede6a37ef02317741a6b458d3f78a02
+          path: textus-plugins
+      - run: npm ci --prefix textus-plugins
+      # As in e2e-shard: the browser from main's cache, its libraries
+      # installed either way.
+      - id: playwright
+        run: echo "version=$(node -p 'require("./package-lock.json").packages["node_modules/@playwright/test"].version')" >> "$GITHUB_OUTPUT"
+      - id: browser
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-webkit-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - if: steps.browser.outputs.cache-hit == 'true'
+        run: npx playwright install-deps webkit
+      - if: steps.browser.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps webkit
+      - run: npx playwright test --project=webkit --ignore-snapshots --shard=${{ matrix.shard }}/3
+        env:
+          E2E_WEBKIT: "1"
+          E2E_FULL: ${{ needs.changes.outputs.full == 'true' && '1' || '' }}
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-webkit-test-results-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Linux alone in the quick suite, where the change reaches Rust; macOS
+  # and Windows (with their unit tests: path and line-ending code) in the
+  # full one, which the release waits for on the tagged commit.
+  native-platform:
+    needs: changes
+    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.full == 'true'
+    name: native (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The Rust checks on each platform, and the unit tests on each one
+        # too: path handling, line endings and the like differ between them.
+        # Not again on Linux, where `check` runs them on the same image. On
+        # Windows, the slowest machine for both, in a job of their own beside
+        # the Rust one. macOS keeps them in one job: its runners are the
+        # scarce ones, and the ios job already takes a second.
+        #
+        # macos-26: what macos-latest points at today, pinned (as in the
+        # release workflows) so an image switch is a deliberate change.
+        #
+        # Linux alone, or all of them in the full suite (see above).
+        include: ${{ fromJSON(needs.changes.outputs.full == 'true' && '[{"name":"ubuntu-22.04","os":"ubuntu-22.04","rust":true},{"name":"macos-26","os":"macos-26","rust":true,"unit":true},{"name":"windows-2025","os":"windows-2025","rust":true},{"name":"windows-2025, unit tests","os":"windows-2025","unit":true}]' || '[{"name":"ubuntu-22.04","os":"ubuntu-22.04","rust":true}]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      # Debug info is most of what the dev and test profiles write and link
+      # (on Windows a .pdb per binary), and CI never opens a debugger; a
+      # failing test still names its file and line.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+        if: matrix.unit || needs.changes.outputs.native == 'true'
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux' && needs.changes.outputs.native == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - uses: actions/setup-node@v7
+        if: matrix.unit || needs.changes.outputs.native == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+        if: matrix.unit || needs.changes.outputs.native == 'true'
+      # The rest of `check` doesn't differ between platforms, nor does the
+      # save round trip, which `check` runs once.
+      - if: matrix.unit
+        run: npm test
+        env:
+          TEXTUS_SKIP_ROUNDTRIP: "1"
+      # Installs the toolchain src-tauri/rust-toolchain.toml names.
+      - if: matrix.rust && needs.changes.outputs.native == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - if: matrix.rust && needs.changes.outputs.native == 'true'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - if: matrix.rust && needs.changes.outputs.native == 'true'
+        run: npm run check:native
+      # The Android target, checked (not built) wherever the change reaches
+      # Rust: a dependency or module given to the desktop alone fails here,
+      # not in the full suite's mobile jobs, which don't block. iOS-only code
+      # (target_os = "ios") still waits for the ios job. A few crates build
+      # C, so the runner image's default NDK supplies the compiler (any
+      # recent one does for a check). Clippy rather than check: its
+      # -D warnings reaches only our crates, where RUSTFLAGS would build
+      # every dependency again; a warning here is desktop-only code the
+      # phone compiles too, to gate #[cfg(desktop)].
+      - name: Check the Android target
+        if: runner.os == 'Linux' && needs.changes.outputs.native == 'true'
+        working-directory: src-tauri
+        run: |
+          bin="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          if [ ! -x "$bin/aarch64-linux-android24-clang" ]; then
+            echo "::error::no Android NDK on this runner image (ANDROID_NDK_HOME)"
+            exit 1
+          fi
+          rustup target add aarch64-linux-android
+          export CC_aarch64_linux_android="$bin/aarch64-linux-android24-clang"
+          export AR_aarch64_linux_android="$bin/llvm-ar"
+          cargo clippy --target aarch64-linux-android --lib -- -D warnings
+
+  # One required check for the three platforms: passes only when all of
+  # them passed (or were skipped together, when the change can't reach the
+  # Rust build).
+  native:
+    needs: [changes, native-platform]
+    if: always()
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every platform
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RESULT: ${{ needs.native-platform.result }}
+        run: |
+          test "$CHANGES" = success
+          test "$RESULT" = success || test "$RESULT" = skipped
+
+  # The built app on Linux, driven like a user (scripts/drive-linux.mjs):
+  # it starts on a document, takes typing and saves it. Not required yet.
+  linux-app:
+    needs: changes
+    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.full == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo install tauri-driver --locked
+      - name: Build the app
+        run: npm run tauri build -- --debug --no-bundle
+      - name: Drive it
+        run: |
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/config" XDG_DATA_HOME="$RUNNER_TEMP/data" XDG_CACHE_HOME="$RUNNER_TEMP/cache"
+          mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
+          xvfb-run -a bash -c 'tauri-driver & sleep 3; node scripts/drive-linux.mjs src-tauri/target/debug/textus'
+
+  # iOS: proves the shared code and the #[cfg(desktop)] gating compile for
+  # the iOS simulator (docs/dev/ios-code-map.md). No secrets and no signing: the
+  # Xcode project is generated fresh (gen/apple is not committed) and the
+  # simulator build is unsigned (--no-sign). Not a required check while the
+  # iOS port is young.
+  ios:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    # Not required: its failure shows here without failing the run (or
+    # the release that calls it).
+    continue-on-error: true
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      # As in native-platform: no debug info for a build nothing debugs.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      # The same Xcode the TestFlight upload uses (ios-release.yml has why
+      # it is picked this way).
+      - name: Select Xcode
+        run: |
+          xcode=$(find /Applications -maxdepth 1 -type d -name 'Xcode_27*.app' \
+            | grep -E '/Xcode_[0-9.]+\.app$' | sort -V | tail -n1)
+          if [ -z "$xcode" ]; then
+            echo "::error::no released Xcode 27 on this runner image"
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim
+          # Xcode 27's SwiftPM hides the Swift plugins' @_cdecl exports;
+          # swift-rs makes them global again with rustup's llvm-objcopy.
+          components: llvm-tools
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: ios
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install XcodeGen (used by tauri ios init)
+        run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+      - run: npm ci
+      - run: npm run build
+      - name: Generate the Xcode project (src-tauri/gen/apple)
+        run: npx tauri ios init --ci && sh scripts/ios-prepare.sh
+      - name: Build for the iOS simulator, unsigned
+        run: npx tauri ios build --ci --debug --target aarch64-sim --no-sign
+      # Built is not started: a command whose state only the desktop
+      # manages aborts the app once its page calls it.
+      - name: Start it in the simulator
+        run: scripts/smoke-ios-sim.sh src-tauri/gen/apple/build/arm64-sim/Textus.app --screenshot ios-sim.png
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-sim
+          path: |
+            ios-sim.png
+            ~/Library/Logs/DiagnosticReports/Textus*.ips
+          if-no-files-found: ignore
+
+  # Android: the same proof for the APK (scripts/android-prepare.sh): the
+  # project is generated fresh (gen/android is not committed) and built for
+  # arm64, debug and unsigned by our key. Not a required check while the
+  # Android port is young.
+  android:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: android
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: npm ci
+      # Gradle's downloads: Maven Central has refused a cold run (429).
+      # android-cache.yml saves them on main under the same key.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'package-lock.json', 'scripts/android-prepare.sh') }}
+          restore-keys: gradle-${{ runner.os }}-
+      # Retries that wait seconds and grow, not 125 ms, when Central says 429.
+      - name: Gradle retries downloads with a back-off
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties <<'PROPS'
+          systemProp.org.gradle.internal.repository.max.retries=6
+          systemProp.org.gradle.internal.repository.initial.backoff=2000
+          PROPS
+      # The runner image's SDK and newest NDK.
+      - name: Generate the Android project (src-tauri/gen/android)
+        run: |
+          echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+          NDK_HOME=$ANDROID_NDK_LATEST_HOME npx tauri android init --ci
+          sh scripts/android-prepare.sh
+      - name: Build the APK for arm64, debug
+        run: npx tauri android build --ci --debug --target aarch64 --apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: textus-android-debug
+          path: src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk
+          if-no-files-found: error

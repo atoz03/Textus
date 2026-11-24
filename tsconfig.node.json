@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": [
+    "vite.config.ts",
+    "vite.playground.config.ts",
+    "vite.katex-fonts.ts",
+    "vite.katex-fonts.test.ts",
+    "vite.color-mix-fallback.ts",
+    "vite.color-mix-fallback.test.ts",
+    "vite.chrome-scale.ts",
+    "vite.chrome-scale.test.ts",
+    "vite.dev-plugins.ts",
+    "vite.startup-budget.ts",
+    "vite.csp.ts",
+    "vite.third-party-notices.ts",
+    "vite.third-party-notices.test.ts",
+    "playwright.webview.config.ts",
+    "playwright.config.ts",
+    "e2e",
+    "playwright.shots.config.ts",
+    "playwright.perf.config.ts",
+    "playwright.bench.config.ts"
+  ]
+}

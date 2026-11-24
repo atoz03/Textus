@@ -1,0 +1,8 @@
+.unsaved-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--ui-accent);
+  flex-shrink: 0;
+}

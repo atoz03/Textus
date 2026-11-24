@@ -1,0 +1,70 @@
+/// <reference types="vitest/config" />
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { katexWoff2Only } from "./vite.katex-fonts";
+import { colorMixFallback } from "./vite.color-mix-fallback";
+import { chromeScale } from "./vite.chrome-scale";
+import { devPlugins } from "./vite.dev-plugins";
+import { startupBudget } from "./vite.startup-budget";
+import { devServerCsp } from "./vite.csp";
+import { thirdPartyNotices } from "./vite.third-party-notices";
+
+const host = process.env.TAURI_DEV_HOST;
+
+export default defineConfig(async () => ({
+  plugins: [
+    react(),
+    katexWoff2Only(),
+    devPlugins(),
+    startupBudget(),
+    thirdPartyNotices(),
+  ],
+  css: { postcss: { plugins: [chromeScale(), colorMixFallback()] } },
+  // The oldest engines Textus runs in. Newer syntax is lowered; APIs and
+  // CSS aren't.
+  build: { target: ["chrome105", "safari16"] },
+  // Mermaid's own KaTeX copy would add 260 KB; it uses only renderToString,
+  // which ours has unchanged.
+  resolve: { dedupe: ["katex"] },
+
+  // Unit tests only; vitest must not run the Playwright files in e2e/.
+  test: {
+    setupFiles: ["src/test-setup.ts"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "e2e/**",
+      "src-tauri/**",
+      ".claude/**",
+      ".cache/**",
+      "textus-plugins/**",
+    ],
+  },
+
+  // Keep Vite from obscuring Rust errors.
+  clearScreen: false,
+  // Scanned from the app's own pages only. A plugin checkout inside the
+  // project (CI's textus-plugins/) has pages that import textus-resource:
+  // URLs; scanning them failed and pre-bundling was skipped, so the first
+  // flow of a run met a mid-test reload.
+  optimizeDeps: {
+    entries: ["index.html", "playground.html"],
+  },
+  // Tauri expects a fixed port; fail if it is taken.
+  server: {
+    port: 1420,
+    strictPort: true,
+    host: host || false,
+    headers: { "Content-Security-Policy": devServerCsp() },
+    hmr: host
+      ? {
+          protocol: "ws",
+          host,
+          port: 1421,
+        }
+      : undefined,
+    watch: {
+      ignored: ["**/src-tauri/**"],
+    },
+  },
+}));

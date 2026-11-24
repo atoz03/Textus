@@ -1,0 +1,44 @@
+import { useEffect, useState } from "react";
+import { ai } from "../../platform/ipc";
+import { useSettings } from "../../prefs/SettingsContext";
+import { getUiState, setUiState } from "../../storage/ui-state";
+import { chosenModel } from "../chosen-model";
+
+/**
+ * Deep thinking stays on once pressed, across messages, conversations and the
+ * detached window, until pressed again. The composer's button is its only
+ * control.
+ */
+export function deepThinkingOn(): boolean {
+  return getUiState("deepThinking") === true;
+}
+
+/** Not kept when storage refuses it: the next composer starts with it off. */
+export function rememberDeepThinking(on: boolean): void {
+  setUiState("deepThinking", on);
+}
+
+/**
+ * Whether Deep thinking would change anything for the provider and model in
+ * use. False until it answers, so the button appears rather than disappears.
+ */
+export function useCanThinkDeeper(enabled: boolean): boolean {
+  const { settings } = useSettings();
+  const provider = settings.aiProvider;
+  const model = chosenModel(settings);
+  const key = `${provider}\n${model ?? ""}`;
+  const [answer, setAnswer] = useState<{ key: string; can: boolean } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    ai.canThinkDeeper(provider, model)
+      .then((can) => !cancelled && setAnswer({ key, can: can === true }))
+      .catch(() => !cancelled && setAnswer({ key, can: false }));
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, provider, model, key]);
+  return enabled && answer?.key === key && answer.can;
+}

@@ -1,0 +1,18 @@
+/* The main window's stylesheet. Order is cascade order: print rules come
+   after what they hide, and the zen and typewriter modes come last. */
+@import "../engine/tokens/base.css";
+@import "../theme/frame-themes.css";
+@import "../engine/controls/pane.css";
+@import "./frame/app-shell.css";
+@import "./frame/sidebar-frame.css";
+@import "./frame/activity-rail.css";
+@import "./frame/window-bar.css";
+@import "../engine/controls/tabs/TabBar.css";
+@import "../engine/tokens/layout-tokens.css";
+@import "../engine/layout/layout.css";
+@import "./islands/agent-tabs.css";
+@import "./editor-column.css";
+@import "./notices.css";
+@import "../engine/controls/app-dialog.css";
+@import "../export/print.css";
+@import "./modes.css";

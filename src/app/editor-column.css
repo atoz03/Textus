@@ -1,0 +1,106 @@
+/* An outline jump lands the heading clear of the window bar. */
+.editor-content .ProseMirror > :is(h1, h2, h3, h4, h5, h6) {
+  scroll-margin-top: 44px;
+}
+
+/* --content-zoom scales only the document text: the column's max-width
+   grows by the factor, so it scales like page zoom. CSS `zoom`, not
+   transform, so the text truly reflows. */
+/* The column's unzoomed width. "auto" keeps a 680px floor (room for the
+   margin views) and takes 62% of a wide pane, up to 960px; "Standard" is
+   760px. An imported theme that sizes #write itself takes over "auto". */
+:root {
+  --content-width: var(--theme-content-width, max(680px, min(960px, 62%)));
+}
+
+:root[data-content-width="standard"] {
+  --content-width: 760px;
+}
+
+:root[data-content-width="full"] {
+  --content-width: 100%;
+}
+
+/* A width the reader chose wins over a theme's. */
+:root[data-content-width] {
+  --theme-text-width: initial !important;
+}
+
+:root {
+  /* The margin left of the text: a drawn block's fold caret sits in it, so
+     it grows with the document's zoom (block-fold.css). */
+  --doc-gutter: 1.75rem;
+}
+
+.editor-content {
+  --gutter: max(1.5rem, calc(var(--doc-gutter) * var(--content-zoom, 1)));
+  /* The column times the zoom; a theme's #write width (palette.ts) is the
+     text's, as in Typora, so the margins go round it - with no theme width
+     the two terms cancel to the column. */
+  max-width: calc(
+    var(
+        --theme-text-width,
+        calc(var(--content-width) - 2 * var(--gutter) / var(--content-zoom, 1))
+      ) *
+      var(--content-zoom, 1) + 2 * var(--gutter)
+  );
+  margin: 0 auto;
+  /* The text size follows this column's width (milkdown-theme.css). */
+  container-type: inline-size;
+  /* Clears the floating window bar with air to spare. */
+  padding: 3rem var(--gutter) 6rem;
+}
+
+/* An engine whose containers trap position: fixed gets no container here,
+   or menus are placed against the column. */
+:root[data-early-containers] .editor-content {
+  container-type: normal;
+}
+
+:root[data-content-width="full"] .editor-content {
+  padding-inline: max(var(--gutter), 4%);
+}
+
+.editor-content .milkdown {
+  zoom: var(--content-zoom, 1);
+}
+
+.editor-content.typewriter-active {
+  padding-top: 42vh;
+  padding-bottom: 42vh;
+}
+
+/* The source editor: as wide as the pane, as the rendered one's scroller
+   is, so its scrollbar is at the pane's edge; CodeMirror's scroller pads
+   the text into the column (editor/modes/source-editor.css). */
+.source-view {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: var(--doc-bg);
+  color: var(--doc-text);
+  font-family: var(--font-mono);
+  /* As in code (content-base.css): no fi drawn as one glyph. */
+  font-variant-ligatures: no-common-ligatures;
+  /* The rich editor's size at the standard column, times the document's
+     zoom: the text grows, the pane and its scrollbar don't. rem, so an
+     imported theme's `html { font-size }` reaches it. */
+  font-size: calc(1.03125rem * var(--content-zoom, 1));
+  line-height: 1.7;
+}
+
+/* No focus ring: the pane is the field, and on WebKitGTK the ring made the
+   text go soft. */
+.source-view:focus-visible {
+  outline: none;
+}
+
+/* First-line indent (Appearance › Text): the document's own paragraphs, two
+   characters in; not those in a list, a quote or a table, nor a picture
+   standing alone, centred. The reader's, so over a theme's own indent. */
+:root[data-first-line-indent]
+  :is(.editor-content, .split-preview)
+  .ProseMirror
+  > p:not(.image-paragraph) {
+  text-indent: 2em !important;
+}

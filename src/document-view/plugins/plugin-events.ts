@@ -1,0 +1,53 @@
+import type { Ctx } from "@milkdown/kit/ctx";
+import { editorViewCtx } from "@milkdown/kit/core";
+import {
+  emitPluginEvent,
+  getActiveDocument,
+  pluginsListen,
+} from "../../plugins/app-bridge";
+import { selectionText } from "../../plugins/contributions/editor-text";
+import { takeChangeSource } from "../../editor/change-source";
+import { cachedDocument } from "../../editor/markdown/doc-markdown";
+
+/**
+ * What the document in front tells plugins as the user works: only for the
+ * active tab, only when a plugin listens, and the selection once it settles.
+ */
+
+/** The editor's (already debounced) report of an edit. The source is taken
+ *  either way, so a background tab's edits aren't told when it comes front. */
+export function documentChangedForPlugins(
+  active: boolean,
+  path: string | null,
+  ctx: Ctx,
+): void {
+  const source = takeChangeSource(ctx.get(editorViewCtx).state);
+  if (active && pluginsListen("documentChange"))
+    emitPluginEvent("documentChange", { path, source });
+  if (active && source === "user" && pluginsListen("activity"))
+    emitPluginEvent("activity", { kind: "typing" });
+}
+
+let selectionTimer: ReturnType<typeof setTimeout> | null = null;
+/** How long a selection must stay before plugins hear of it. */
+const SELECTION_SETTLE_MS = 150;
+
+export function selectionChangedForPlugins(active: boolean, ctx: Ctx): void {
+  if (!active || !pluginsListen("selection")) return;
+  if (selectionTimer) clearTimeout(selectionTimer);
+  selectionTimer = setTimeout(() => {
+    selectionTimer = null;
+    try {
+      const state = ctx.get(editorViewCtx).state;
+      const index = state.selection.$head.index(0);
+      emitPluginEvent("selection", {
+        text: selectionText(state),
+        empty: state.selection.empty,
+        block: cachedDocument(ctx, state.doc).blocks[index]?.id ?? null,
+        ...(getActiveDocument()?.cursor() ?? {}),
+      });
+    } catch {
+      /* the editor went away */
+    }
+  }, SELECTION_SETTLE_MS);
+}

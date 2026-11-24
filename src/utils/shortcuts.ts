@@ -1,0 +1,177 @@
+/// Key-combo helpers. Combos are normalized strings like "mod+shift+g", where
+/// "mod" is Cmd on Apple platforms and Ctrl elsewhere.
+import { modIsMeta } from "../platform/os";
+import { isImeKeydown } from "./ime";
+import { isMacSystemCombo } from "./system-keys";
+const MODIFIER_KEYS = new Set(["control", "meta", "alt", "shift", "altgraph"]);
+
+/// Builds a normalized combo string from a KeyboardEvent. Returns null while
+/// only modifier keys are held (not a complete, bindable combo yet).
+export function comboFromEvent(e: KeyboardEvent): string | null {
+  if (isImeKeydown(e) || e.getModifierState("AltGraph")) return null;
+  const key = e.key.toLowerCase();
+  if (MODIFIER_KEYS.has(key)) return null;
+
+  const parts: string[] = [];
+  const mac = modIsMeta();
+  if (mac ? e.metaKey : e.ctrlKey) parts.push("mod");
+  if (mac && e.ctrlKey) parts.push("ctrl");
+  if (!mac && e.metaKey) parts.push("meta");
+  if (e.altKey) parts.push("alt");
+  if (e.shiftKey) parts.push("shift");
+  parts.push(key === " " ? "space" : key);
+  return parts.join("+");
+}
+
+/// Whether a captured combo is safe to bind: it needs a modifier so it can't
+/// shadow typing. Function keys type nothing, so they bind on their own.
+export function isBindableCombo(combo: string): boolean {
+  return (
+    /^(?:mod|ctrl|meta|alt)\+/.test(combo) ||
+    /(?:^|\+)f(?:[1-9]|1[0-2])$/.test(combo)
+  );
+}
+
+const KEY_LABELS: Record<string, string> = {
+  space: "Space",
+  arrowup: "↑",
+  arrowdown: "↓",
+  arrowleft: "←",
+  arrowright: "→",
+  escape: "Esc",
+  enter: "Enter",
+  tab: "Tab",
+};
+
+/// Renders a stored combo string for display, e.g. "mod+shift+g" -> "⌘⇧G" on
+/// macOS or "Ctrl+Shift+G" elsewhere.
+export function formatCombo(combo: string): string {
+  const mac = modIsMeta();
+  return combo
+    .split("+")
+    .map((part) => {
+      if (part === "mod") return mac ? "⌘" : "Ctrl";
+      if (part === "ctrl") return mac ? "⌃" : "Ctrl";
+      if (part === "meta") return mac ? "⌘" : "Win";
+      if (part === "alt") return mac ? "⌥" : "Alt";
+      if (part === "shift") return mac ? "⇧" : "Shift";
+      return KEY_LABELS[part] ?? part.toUpperCase();
+    })
+    .join(mac ? "" : "+");
+}
+
+// These combinations are owned by the app/native menu, before user bindings.
+/** The editor's own block keys (Milkdown's keymaps): reserved here, and
+ *  listed in Settings by fixed-shortcuts.ts. */
+export const EDITOR_BLOCK_COMBOS = {
+  paragraph: "mod+alt+0",
+  h1: "mod+alt+1",
+  h2: "mod+alt+2",
+  h3: "mod+alt+3",
+  h4: "mod+alt+4",
+  h5: "mod+alt+5",
+  h6: "mod+alt+6",
+  orderedList: "mod+alt+7",
+  bulletList: "mod+alt+8",
+  codeBlock: "mod+alt+c",
+  blockquote: "mod+shift+b",
+  indent: "mod+]",
+  outdent: "mod+[",
+} as const;
+
+/** A heading's section folded and opened from the keyboard
+ *  (heading-fold.ts), matched by physical key: Cmd+Option on a Mac,
+ *  Ctrl+Shift elsewhere, where Ctrl+Alt is AltGr and types "[" and "]" on
+ *  Spanish and Italian keyboards. */
+export function foldCombos(mac = modIsMeta()) {
+  return mac
+    ? { fold: "mod+alt+[", unfold: "mod+alt+]" }
+    : { fold: "mod+shift+[", unfold: "mod+shift+]" };
+}
+
+const RESERVED_COMBOS = new Set([
+  "mod+p",
+  "mod+=",
+  "mod+-",
+  "mod+0",
+  "mod+s",
+  "mod+shift+s",
+  "mod+n",
+  "mod+shift+n",
+  "mod+t",
+  "mod+k",
+  "mod+g",
+  "mod+alt+f",
+  // Inline code and strikethrough, by the shifted key a combo records too.
+  "ctrl+`",
+  "ctrl+shift+`",
+  "ctrl+shift+~",
+  "mod+`",
+  "mod+shift+~",
+  "mod+shift+t",
+  "mod+o",
+  "mod+w",
+  "mod+shift+w",
+  "mod+q",
+  "mod+,",
+  "mod+z",
+  "mod+shift+z",
+  "mod+y",
+  "mod+a",
+  "mod+c",
+  "mod+x",
+  "mod+v",
+  "mod+shift+v",
+  "mod+b",
+  "mod+i",
+  "mod+shift+h",
+  "mod+arrowleft",
+  "mod+arrowright",
+  "mod+arrowup",
+  "mod+arrowdown",
+  "mod+shift+arrowleft",
+  "mod+shift+arrowright",
+  "mod+shift+arrowup",
+  "mod+shift+arrowdown",
+  // Move a paragraph or list item.
+  "alt+arrowup",
+  "alt+arrowdown",
+  // Back and Forward.
+  "alt+arrowleft",
+  "alt+arrowright",
+  "ctrl+-",
+  "ctrl+shift+-",
+  // Fixed AI keys: accept a pending edit, apply a grammar fix, cycle
+  // completion candidates.
+  "mod+enter",
+  // Reject a pending edit, or keep the original of the sentence pointed at.
+  "mod+backspace",
+  "alt+enter",
+  "alt+[",
+  "alt+]",
+  ...Object.values(EDITOR_BLOCK_COMBOS),
+  // Fullscreen by convention (and the app's own handler on Windows).
+  "f11",
+  // Round the window's regions, and through Textus AI's changes.
+  "f6",
+  "shift+f6",
+  "f7",
+  "shift+f7",
+]);
+// macOS's fixed Next/Previous Tab, Cmd+Shift+] and [, as a US keyboard
+// records them with Shift held, and as written.
+const MAC_RESERVED_COMBOS = new Set([
+  "mod+shift+]",
+  "mod+shift+[",
+  "mod+shift+}",
+  "mod+shift+{",
+]);
+export function isReservedCombo(combo: string): boolean {
+  return (
+    RESERVED_COMBOS.has(combo) ||
+    Object.values(foldCombos()).includes(combo) ||
+    (modIsMeta()
+      ? MAC_RESERVED_COMBOS.has(combo) || isMacSystemCombo(combo)
+      : combo === "alt+f4")
+  );
+}

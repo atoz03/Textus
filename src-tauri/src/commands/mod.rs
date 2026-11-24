@@ -1,0 +1,52 @@
+//! Commands invoked by the frontend. Shared by desktop and iOS unless gated:
+//! `#[cfg(desktop)]` modules are about OS windows or the desktop shell;
+//! `documents` is `#[cfg(mobile)]`.
+
+pub mod attachment;
+#[cfg(desktop)]
+pub mod chat_window;
+#[cfg(desktop)]
+pub mod cli;
+#[cfg(desktop)]
+pub mod clipboard;
+#[cfg(desktop)]
+pub mod default_editor;
+pub mod doc_data;
+#[cfg(mobile)]
+pub mod documents;
+pub mod drafts;
+pub mod export;
+#[cfg(desktop)]
+pub mod floating_window;
+pub mod folder;
+pub mod fonts;
+pub mod fs;
+pub mod image_host;
+pub mod input_source;
+pub mod link_root;
+#[cfg(desktop)]
+pub mod linked_file;
+pub mod links;
+#[cfg(desktop)]
+pub mod native_edit;
+pub mod own_notes;
+#[cfg(any(desktop, target_os = "ios"))]
+pub mod pdf_page_numbers;
+pub mod picture_size;
+#[cfg(desktop)]
+pub mod prefs;
+pub mod recents;
+pub mod session;
+pub mod system_info;
+pub mod theme_gallery;
+pub mod themes;
+pub mod traffic_lights;
+pub mod tree_ops;
+pub mod undo_files;
+#[cfg(desktop)]
+pub mod update;
+pub mod vault;
+pub mod web_asset;
+#[cfg(desktop)]
+pub mod web_page;
+pub mod word_import;

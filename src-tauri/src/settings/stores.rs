@@ -1,0 +1,203 @@
+//! Every store the app keeps (settings, UI state, the history lists).
+
+use super::*;
+
+/// The two histories. Their caps match the frontend's and are enforced here
+/// too, as the one writer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
+#[serde(rename_all = "lowercase")]
+pub enum HistoryKind {
+    Chat,
+    Clipboard,
+}
+
+pub(crate) const MAX_CLIPBOARD_TEXT: usize = 50_000;
+
+impl HistoryKind {
+    pub(crate) fn stem(self) -> &'static str {
+        match self {
+            Self::Chat => "chat-history",
+            Self::Clipboard => "clipboard-history",
+        }
+    }
+
+    pub(crate) fn max(self) -> usize {
+        match self {
+            Self::Chat => chat_history::MAX_CONVERSATIONS,
+            Self::Clipboard => 30,
+        }
+    }
+
+    /// What makes two entries the same: a conversation's id, or a clipboard text
+    /// itself (copying again moves it to the top).
+    pub(crate) fn key_of(self, entry: &Value) -> Option<&str> {
+        let field = match self {
+            Self::Chat => "id",
+            Self::Clipboard => "text",
+        };
+        entry.get(field)?.as_str()
+    }
+
+    pub(crate) fn valid(self, entry: &Value) -> bool {
+        let Some(key) = self.key_of(entry) else {
+            return false;
+        };
+        match self {
+            // The id names the conversation's file.
+            Self::Chat => {
+                chat_history::safe_id(key)
+                    && entry.get("updatedAt").is_some_and(Value::is_number)
+                    && entry.get("turns").is_some_and(Value::is_array)
+            }
+            Self::Clipboard => {
+                key.chars().count() <= MAX_CLIPBOARD_TEXT
+                    && entry.get("at").is_some_and(Value::is_number)
+            }
+        }
+    }
+
+    /// Order and cap: conversations most recently active first (stable, so an
+    /// upserted entry leads ties); clipboard entries newest first. Returns the overflow.
+    pub(crate) fn tidy(self, list: &mut Vec<Value>) -> Vec<Value> {
+        if self == Self::Chat {
+            let updated = |e: &Value| e.get("updatedAt").and_then(Value::as_f64).unwrap_or(0.0);
+            list.sort_by(|a, b| updated(b).total_cmp(&updated(a)));
+        }
+        list.split_off(list.len().min(self.max()))
+    }
+}
+
+pub struct Stores {
+    pub settings: Arc<Store>,
+    pub ui_state: Arc<Store>,
+    pub chat: ChatHistory,
+    pub clipboard: Arc<Store>,
+}
+
+impl Stores {
+    pub fn load(config_dir: &Path, data_dir: &Path) -> Self {
+        let settings = Store::load(
+            config_dir.join(file_name("settings")),
+            "settings",
+            json!({}),
+            true,
+        );
+        let new_profile = settings.missing_at_load();
+        let stores = Self {
+            settings: Arc::new(settings),
+            ui_state: Arc::new(Store::load(
+                data_dir.join(file_name("ui-state")),
+                "state",
+                json!({}),
+                true,
+            )),
+            chat: ChatHistory::load(data_dir),
+            clipboard: Arc::new(Store::load(
+                data_dir.join(file_name(HistoryKind::Clipboard.stem())),
+                "entries",
+                json!([]),
+                false,
+            )),
+        };
+        if new_profile {
+            stores.seed_new_profile();
+        }
+        stores.carry_kept_apart(config_dir);
+        stores
+    }
+
+    /// What was kept in files of its own before (the last window's size and
+    /// place, the recent files and folders), moved into the UI state once:
+    /// the old files go only once the UI state holds them on disk.
+    fn carry_kept_apart(&self, config_dir: &Path) {
+        let (state, _) = self.ui_state.snapshot();
+        let mut patch = Map::new();
+        let mut old = Vec::new();
+        let prefs = config_dir.join(file_name("prefs"));
+        if prefs.exists() {
+            if let Some(Value::Object(kept)) = crate::json_file::read_or_set_aside::<Value>(&prefs)
+            {
+                for (from, to) in [
+                    ("editor_window_size", "editorWindowSize"),
+                    ("editor_window_position", "editorWindowPosition"),
+                ] {
+                    if let (Some(value), None) = (kept.get(from), state.get(to)) {
+                        patch.insert(to.into(), value.clone());
+                    }
+                }
+            }
+            old.push(prefs);
+        }
+        for (stem, to) in [
+            ("recent_files", "recentFiles"),
+            ("recent_folders", "recentFolders"),
+        ] {
+            let path = config_dir.join(file_name(stem));
+            if !path.exists() {
+                continue;
+            }
+            if let Some(list) = crate::json_file::read_or_set_aside::<Vec<String>>(&path) {
+                if state.get(to).is_none() {
+                    patch.insert(to.into(), json!(list));
+                }
+            }
+            old.push(path);
+        }
+        if old.is_empty() || self.ui_state.unreadable {
+            return;
+        }
+        if !patch.is_empty() {
+            self.ui_state.patch(&patch);
+            if let Err(e) = self.ui_state.flush() {
+                eprintln!("textus: cannot write {}: {e}", self.ui_state.path.display());
+                return;
+            }
+        }
+        for path in old {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    /// Marks a new profile as having no moved skills to bring over; an older
+    /// settings file lacks the mark and gets them installed. In memory until the first write.
+    fn seed_new_profile(&self) {
+        let mut inner = self.settings.inner.lock().unwrap();
+        let mut seed = Map::new();
+        seed.insert(
+            crate::plugins::moved_skills::MOVED_KEY.into(),
+            crate::plugins::moved_skills::all_seen_to(),
+        );
+        merge_top_level(&mut inner.payload, &seed);
+    }
+
+    pub fn patch_settings(&self, patch: &Map<String, Value>) -> u64 {
+        self.settings.patch(patch)
+    }
+
+    /// Adds the fields of `defaults` the settings lack, under one lock, so it never
+    /// overwrites a value. A window with an empty boot snapshot writes defaults
+    /// through this, so a later reload can't undo the user's changes.
+    pub fn fill_missing_settings(
+        &self,
+        defaults: &Map<String, Value>,
+    ) -> Option<(Map<String, Value>, u64)> {
+        self.settings.fill_missing(defaults)
+    }
+
+    pub fn flush_all(&self) {
+        for store in [&self.settings, &self.ui_state, &self.clipboard] {
+            if let Err(e) = store.flush() {
+                eprintln!("textus: cannot write {}: {e}", store.path.display());
+            }
+        }
+        self.chat.flush();
+    }
+}
+
+/// A store file read once without keeping a `Store` for it: its payload under
+/// `key`, or `None` when missing or malformed. A newer `schemaVersion` keeps unknown fields.
+pub fn read_store_file(path: &Path, key: &str, empty: &Value) -> Option<Value> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    parse(&raw, key, empty).map(|(payload, _)| payload)
+}

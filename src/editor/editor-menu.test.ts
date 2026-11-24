@@ -1,0 +1,312 @@
+import { describe, expect, it } from "vitest";
+import { Schema } from "@milkdown/kit/prose/model";
+import {
+  EditorState,
+  NodeSelection,
+  TextSelection,
+  type Transaction,
+} from "@milkdown/kit/prose/state";
+import { tableNodes } from "@milkdown/kit/prose/tables";
+import type { Ctx } from "@milkdown/kit/ctx";
+import {
+  buildContextMenuItems,
+  buildPhoneMoreItems,
+  type ContextMenuOptions,
+} from "./editor-menu";
+import {
+  rotateImage,
+  selectedImagePos,
+  setImageWidth,
+} from "./editor-menu-images";
+import { runTableAction } from "./editor-menu-tables";
+import type { EditorRunner } from "./useEditorRunner";
+import type { ContextMenuItem } from "../engine/controls/ContextMenu";
+import { resolveStrings } from "../i18n/strings";
+
+// The node names commonmark/gfm register, with just enough spec for the
+// table and image commands.
+const cells = tableNodes({
+  tableGroup: "block",
+  cellContent: "paragraph",
+  cellAttributes: {},
+});
+const schema = new Schema({
+  nodes: {
+    doc: { content: "block+" },
+    paragraph: { group: "block", content: "inline*" },
+    text: { group: "inline" },
+    image: {
+      group: "inline",
+      inline: true,
+      attrs: {
+        src: { default: "" },
+        alt: { default: "" },
+        title: {},
+        width: { default: "" },
+        html: { default: "" },
+      },
+    },
+    table: { ...cells.table, content: "table_header_row table_row+" },
+    table_header_row: { ...cells.table_row, content: "table_header*" },
+    table_row: { ...cells.table_row, content: "table_cell*" },
+    table_header: cells.table_header,
+    table_cell: cells.table_cell,
+  },
+});
+const n = schema.nodes;
+const p = (text: string) => n.paragraph.create(null, schema.text(text));
+const doc = n.doc.create(null, [
+  p("text"),
+  n.table.create(null, [
+    n.table_header_row.create(null, [n.table_header.create(null, p("A"))]),
+    n.table_row.create(null, [n.table_cell.create(null, p("1"))]),
+  ]),
+  n.paragraph.create(null, n.image.create({ src: "a.png", title: null })),
+]);
+
+/** A runner over a bare state: the menu's commands only reach for the
+ *  view's state, dispatch and focus (and nodeDOM: no picture has loaded). */
+function editorAt(position: (state: EditorState) => EditorState) {
+  const view = {
+    state: position(EditorState.create({ doc })),
+    dispatch(tr: Transaction) {
+      view.state = view.state.apply(tr);
+    },
+    focus() {},
+    nodeDOM: () => null,
+  };
+  const ctx = { get: () => view } as unknown as Ctx;
+  const run = (<T>(fn: (ctx: Ctx) => T) => fn(ctx)) as EditorRunner;
+  return { view, run };
+}
+const caretIn = (text: string) => (state: EditorState) => {
+  let at = -1;
+  state.doc.descendants((node, pos) => {
+    if (at < 0 && node.isText && node.text === text) at = pos;
+  });
+  return state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, at)),
+  );
+};
+let imagePos = -1;
+doc.descendants((node, pos) => {
+  if (node.type.name === "image") imagePos = pos;
+});
+const imageSelected = (state: EditorState) =>
+  state.apply(state.tr.setSelection(NodeSelection.create(state.doc, imagePos)));
+
+const t = resolveStrings("en");
+const options = (pos: number | null): ContextMenuOptions => ({
+  t,
+  imagePos: pos,
+  aiItems: [],
+  copyOrCut: () => {},
+  copyAsPlainText: () => {},
+  pasteAsPlainText: () => {},
+  paste: () => {},
+  selectAll: () => {},
+  openFindReplace: () => {},
+  openTableDialog: () => {},
+});
+const labels = (items: ReturnType<typeof buildContextMenuItems>): string[] =>
+  items.map((item) =>
+    item === "separator"
+      ? "-"
+      : "items" in item
+        ? `${item.label} › ${labels(item.items).join(" | ")}`
+        : item.label,
+  );
+
+describe("the editor menu", () => {
+  it("puts a table's own actions first and the rest in submenus", () => {
+    const { run } = editorAt(caretIn("1"));
+    expect(labels(buildContextMenuItems(run, options(null)))).toEqual([
+      t.insertRowBelow,
+      t.insertColumnRight,
+      `${t.tableRowGroup} › ${t.insertRowAbove} | ${t.selectRow} | - | ${t.deleteRow}`,
+      `${t.tableColumnGroup} › ${t.insertColumnLeft} | - | ${t.alignLeft} | ${t.alignCenter} | ${t.alignRight} | - | ${t.selectColumn} | - | ${t.deleteColumn}`,
+      t.copyTable,
+      t.deleteTable,
+      "-",
+      t.cut,
+      t.copy,
+      t.paste,
+      `${t.menuPlainText} › ${t.copyAsPlainText} | ${t.pasteAsPlainText}`,
+      "-",
+      `${t.menuFormat} › ${t.toolbarBold} | ${t.toolbarItalic} | ${t.menuStrikethrough} | ${t.toolbarHighlight} | ${t.menuInlineCode} | - | ${t.menuClearFormatting}`,
+    ]);
+  });
+
+  it("offers plain text only while Settings turns it on", () => {
+    const { run } = editorAt(caretIn("text"));
+    const off = {
+      ...options(null),
+      copyAsPlainText: undefined,
+      pasteAsPlainText: undefined,
+    };
+    expect(labels(buildContextMenuItems(run, off)).slice(0, 4)).toEqual([
+      t.cut,
+      t.copy,
+      t.paste,
+      "-",
+    ]);
+  });
+
+  it("keeps the text's menu short: plain text, Format and the AI in submenus", () => {
+    const { run } = editorAt(caretIn("text"));
+    const ai = ["Ask", "Continue"].map((label) => ({
+      label,
+      onSelect: () => {},
+    }));
+    expect(
+      labels(buildContextMenuItems(run, { ...options(null), aiItems: ai })),
+    ).toEqual([
+      t.cut,
+      t.copy,
+      t.paste,
+      `${t.menuPlainText} › ${t.copyAsPlainText} | ${t.pasteAsPlainText}`,
+      "-",
+      // Obsidian's three: inline styles, the block, and what goes in.
+      `${t.menuFormat} › ${t.toolbarBold} | ${t.toolbarItalic} | ${t.menuStrikethrough} | ${t.toolbarHighlight} | ${t.menuInlineCode} | - | ${t.menuClearFormatting}`,
+      `${t.menuParagraph} › ${t.blockText} | ${[1, 2, 3].map((n) => t.menuHeadingTemplate.replace("{n}", String(n))).join(" | ")} | - | ${t.menuBulletList} | ${t.menuOrderedList} | ${t.menuTaskList} | ${t.menuBlockquote} | ${t.blockCallout} | ${t.menuCodeBlock}`,
+      `${t.menuInsertGroup} › ${t.menuMathBlock} | ${t.menuTable} | ${t.menuDivider}`,
+      `${t.menuTextusAi} › Ask | Continue`,
+    ]);
+  });
+
+  it("offers Cut and Copy only with something selected", () => {
+    const disabled = (run: ReturnType<typeof editorAt>["run"]) =>
+      buildContextMenuItems(run, options(null))
+        .filter(
+          (item): item is ContextMenuItem =>
+            item !== "separator" && !("items" in item),
+        )
+        .filter((item) => item.disabled)
+        .map((item) => item.label);
+    expect(disabled(editorAt(caretIn("text")).run)).toEqual([t.cut, t.copy]);
+    expect(disabled(editorAt(imageSelected).run)).toEqual([]);
+  });
+
+  it("offers a picture's file next to its width, as far as it has one", () => {
+    const { run } = editorAt(imageSelected);
+    const menu = (imageLocation: ContextMenuOptions["imageLocation"]) =>
+      labels(
+        buildContextMenuItems(run, { ...options(imagePos), imageLocation }),
+      ).slice(0, 9);
+    const local = menu({ kind: "local", path: "/notes/a.png" });
+    expect(local).toEqual([
+      `✓ ${t.imageWidthAuto}`,
+      t.imageWidth30,
+      t.imageWidth50,
+      t.imageWidth70,
+      t.imageWidth100,
+      "-",
+      t.imageReveal,
+      t.imageCopyPath,
+      "-",
+    ]);
+    // A web image has an address to copy but no folder; a data: URI neither.
+    const remote = menu({ kind: "remote", url: "https://x/a.png", host: "x" });
+    expect(remote).toContain(t.imageCopyPath);
+    expect(remote).not.toContain(t.imageReveal);
+    expect(menu({ kind: "other" })).not.toContain(t.imageCopyPath);
+
+    // An Obsidian embed has no width items, only its file.
+    expect(
+      labels(
+        buildContextMenuItems(editorAt(caretIn("text")).run, {
+          ...options(null),
+          imageLocation: { kind: "local", path: "/vault/cat.png" },
+        }),
+      ).slice(0, 4),
+    ).toEqual([t.imageReveal, t.imageCopyPath, "-", t.cut]);
+    // On show, it is enlarged and copied as itself, with nothing selected.
+    // (No DOM where this runs: a picture in its frame is all it reads.)
+    const picture = { parentElement: {} } as HTMLImageElement;
+    const shown = buildContextMenuItems(editorAt(caretIn("text")).run, {
+      ...options(null),
+      imageLocation: { kind: "local", path: "/vault/cat.png" },
+      picture,
+    });
+    expect(labels(shown).slice(0, 7)).toEqual([
+      t.imageReveal,
+      t.imageCopyPath,
+      "-",
+      t.imageViewLarge,
+      "-",
+      t.cut,
+      t.copy,
+    ]);
+    const copy = shown.find(
+      (item): item is ContextMenuItem =>
+        item !== "separator" && "label" in item && item.label === t.copy,
+    );
+    expect(copy?.disabled).toBe(false);
+  });
+
+  it("turns a picture a quarter at a time, keeping it selected", () => {
+    const { view, run } = editorAt(imageSelected);
+    const items = labels(buildContextMenuItems(run, options(imagePos)));
+    // Not loaded yet: nothing to view large, but it can still turn.
+    expect(items).not.toContain(t.imageViewLarge);
+    expect(items).toContain(t.imageRotateLeft);
+    expect(items).toContain(t.imageRotateRight);
+
+    rotateImage(run, imagePos, 1);
+    expect(view.state.doc.nodeAt(imagePos)?.attrs.title).toBe(
+      "{textus-rotate=90}",
+    );
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    rotateImage(run, imagePos, -1);
+    expect(view.state.doc.nodeAt(imagePos)?.attrs.title).toBe("");
+  });
+
+  it("gives the phone's More only what its toolbar lacks", () => {
+    const inTable = labels(
+      buildPhoneMoreItems(editorAt(caretIn("1")).run, options(null)),
+    );
+    expect(inTable).toContain(t.alignCenter);
+    expect(inTable).not.toContain(t.insertRowBelow);
+    expect(inTable).not.toContain(t.copy);
+    // The toolbar copies; only the menu has the plain text.
+    expect(inTable).toContain(t.copyAsPlainText);
+
+    const inText = labels(
+      buildPhoneMoreItems(editorAt(caretIn("text")).run, options(null)),
+    );
+    expect(inText).toContain(t.insertTable);
+    expect(inText).not.toContain(t.menuBulletList);
+    // A tap only edits a link: its Open is here.
+    const link = { pos: 0, source: "[a](b.md)", href: "b.md", docPath: null };
+    expect(
+      labels(
+        buildPhoneMoreItems(editorAt(caretIn("text")).run, {
+          ...options(null),
+          link,
+        }),
+      ),
+    ).toContain(t.menuOpenLink);
+
+    const onImage = labels(
+      buildPhoneMoreItems(editorAt(imageSelected).run, options(imagePos)),
+    );
+    expect(onImage).not.toContain(t.imageWidth50);
+  });
+
+  it("runs table actions by name", () => {
+    const { view, run } = editorAt(caretIn("1"));
+    runTableAction(run, "row-below");
+    expect(view.state.doc.child(1).childCount).toBe(3);
+    runTableAction(run, "not-an-action");
+    expect(view.state.doc.child(1).childCount).toBe(3);
+  });
+
+  it("finds the tapped image and can keep it selected through a resize", () => {
+    expect(selectedImagePos(editorAt(caretIn("text")).run)).toBeNull();
+    const { view, run } = editorAt(imageSelected);
+    expect(selectedImagePos(run)).toBe(imagePos);
+    setImageWidth(run, imagePos, 50, true);
+    expect(view.state.doc.nodeAt(imagePos)?.attrs.width).toBe("50%");
+    expect(selectedImagePos(run)).toBe(imagePos);
+  });
+});

@@ -1,0 +1,173 @@
+/* The window's foot, after the rail (never over its buttons) and short of
+   the window's end. Its two corners share it: side by side while both
+   fit, the end's above the start's when they don't. */
+.corner-stacks {
+  --corner-from: calc(var(--safe-left, 0px) + var(--rail-width, 0px) + 18px);
+  position: fixed;
+  bottom: calc(18px + var(--safe-bottom, 0px));
+  left: var(--corner-from);
+  right: calc(18px + var(--safe-right, 0px));
+  z-index: var(--z-toast);
+  display: flex;
+  flex-wrap: wrap-reverse;
+  /* Reversed, the line's start is its foot: the stacks stand on it. */
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+
+/* A corner's toasts: stacked, newest nearest the edge. */
+.corner-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 100%;
+  align-items: flex-start;
+}
+
+.corner-stack > * {
+  pointer-events: auto;
+}
+
+.corner-stack[data-corner="end"] {
+  margin-left: auto;
+  align-items: flex-end;
+}
+
+/* A phone's rail lies under the page while it is shut. */
+:root[data-window-chrome="mobile"]
+  .app-shell:not([data-sidebar="open"])
+  .corner-stacks {
+  --corner-from: calc(var(--safe-left, 0px) + 18px);
+}
+
+/* While a touch keyboard is up they step aside: anywhere they stood they
+   would cover the line being written or the format bar. They come back
+   when it goes. */
+.keyboard-up .corner-stacks {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+/* A phone keeps them at its foot, off the page's first lines; with Quick
+   Ask's composer there, they come down under the tab row. */
+:root[data-window-chrome="mobile"].has-quick-ask-dock .corner-stacks {
+  top: calc(var(--safe-top, 0px) + var(--header-height, 44px) + 8px);
+  bottom: auto;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+:root[data-window-chrome="mobile"].has-quick-ask-dock .corner-stack {
+  flex-direction: column-reverse;
+}
+
+/* One line until opened: what it says, then its buttons and ×. */
+.corner-toast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: min(572px, calc(100vw - var(--corner-from, 18px) - 18px));
+  padding: 4px 8px 4px 12px;
+  font-size: var(--text-body);
+  user-select: none;
+}
+
+.corner-toast:has(.plugin-icon) {
+  padding-left: 4px;
+}
+
+/* A plain row, not one of the card's pill buttons. */
+.corner-toast .corner-toast-summary {
+  display: flex;
+  flex: 1 1 0;
+  /* Room for its words first: short of it, the buttons take the next line
+     (a long language's, on a phone). */
+  min-width: min(12em, 100%);
+  min-height: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--shape-s);
+  background: transparent;
+  color: inherit;
+  font-weight: inherit;
+  text-align: start;
+}
+
+.corner-toast-summary .plugin-icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+}
+/* Opened, or with nothing more to open: its words whole, wrapping. */
+.corner-toast[data-open] .corner-toast-line,
+.corner-toast:not(:has(button.corner-toast-summary)) .corner-toast-line {
+  white-space: normal;
+}
+
+/* Too many for the card's width (a phone, long words), its buttons wrap
+   inside it rather than run past its edge. */
+.corner-toast-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.corner-toast-secondary {
+  background: transparent;
+  color: var(--ui-muted, inherit);
+}
+
+/* An icon-only button is a circle (tx-icon-button), not the card's pill. */
+.corner-toast .corner-toast-close {
+  width: var(--control-height-sm);
+  min-height: 0;
+  height: var(--control-height-sm);
+  padding: 0;
+  border: 0;
+  border-radius: var(--shape-pill);
+}
+
+.corner-toast-more {
+  order: 1;
+  flex-basis: 100%;
+  /* design: allow - lines up with the text after the toast's icon. */
+  padding: 0 4px 4px 40px;
+  color: var(--ui-muted);
+  font-size: var(--text-sm);
+}
+
+/* A phone: the card spans the width with room inside; once open, the
+   buttons go under the details. */
+@media (max-width: 480px) {
+  .corner-stack .corner-toast {
+    width: calc(100vw - var(--corner-from) - 18px);
+    padding: 8px 12px 8px 8px;
+  }
+
+  .corner-toast-actions {
+    gap: 8px;
+  }
+
+  /* × stays on the first line, by the words; the buttons take the next. */
+  .corner-toast:has(> .corner-toast-close) .corner-toast-actions {
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  .corner-toast[data-open] .corner-toast-actions {
+    order: 2;
+    flex-basis: 100%;
+    justify-content: flex-end;
+    padding-bottom: 4px;
+  }
+}

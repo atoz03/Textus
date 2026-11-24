@@ -1,0 +1,128 @@
+import { chosenSource } from "./writing/inline-sources";
+import { writingProviderOf } from "../prefs/settings-types";
+import type { Editor } from "@milkdown/kit/core";
+import { createGhostTextPlugin } from "./writing/ghost-text-plugin";
+import { buildCompletionStyle } from "./writing/completion-style";
+import { createGrammarCheckPlugin } from "./writing/grammar-check-plugin";
+import { createPendingEditPlugin } from "./revision/pending-edit-plugin";
+import { type PendingPreview } from "./revision/pending-types";
+import { chatSelectionPlugin } from "./chat/quick-ask/chat-selection-plugin";
+import { blockReader } from "./revision/block-reader";
+import { createAiFileChangesPlugin } from "./revision/file-changes-plugin";
+import { streamFollowPlugin } from "./revision/stream-follow-plugin";
+import { createQuickAskWidgetPlugin } from "./chat/quick-ask/quick-ask-widget-plugin";
+import {
+  createReviewNotesPlugin,
+  type ReviewNote,
+} from "./margin/review-notes-plugin";
+import { ownRevisionPlugin } from "./margin/own-revision-plugin";
+import { paperRegionPlugin } from "./paper/paper-region-plugin";
+import { resolveStrings } from "../i18n/strings";
+import { prefersReducedMotion } from "../engine/motion/motion";
+import type { TourAi } from "../utils/events";
+import type { RevisionDisplay, Settings } from "../prefs/SettingsContext";
+import { aiFeatures } from "../prefs/ai-features";
+import { aiProject } from "../ai/workspace/ai-root";
+
+export interface PendingEditCallbacks {
+  onAccept: (callId: string) => void;
+  onReject: (callId: string) => void;
+  onPreviewsChange: (previews: PendingPreview[], applied: string[]) => void;
+  /** Live read of the Quick Ask nav bar's current pointer. */
+  getFocusedCallId: () => string | null;
+  /** A ✓ / ✕ clicked in the text. */
+  onDecide: (callId: string, index: number, take: boolean | null) => void;
+  /** The sentence the review bar points at. */
+  getFocusedSentence: () => { callId: string; index: number } | null;
+  /** How a rewrite is drawn. */
+  revisionDisplay?: () => RevisionDisplay;
+}
+
+/**
+ * The AI features that live in the text, each switched in Settings under
+ * Textus AI's own switch, as the last plugins in the chain. The callbacks are
+ * ref-indirected: the chain is built at mount, before the handlers exist.
+ */
+export function withAiPlugins(
+  editor: Editor,
+  options: {
+    settings: { readonly current: Settings };
+    docPath: { readonly current: string | null };
+    pendingEdits: PendingEditCallbacks;
+    /** Hands the Quick Ask widget's DOM container over as it mounts. */
+    quickAskWidget: {
+      onMount: (el: HTMLElement) => void;
+      onUnmount: (el: HTMLElement) => void;
+    };
+    /** The tour's AI while this is its practice tab, else null; muted, the
+     *  typing-triggered plugins go quiet. */
+    tour: { readonly current: TourAi | null };
+    reviewNotes: {
+      onChange: (notes: ReviewNote[]) => void;
+      onBadge: (id: string, el: HTMLElement) => void;
+    };
+  },
+): Editor {
+  const { settings, docPath, pendingEdits, quickAskWidget, tour, reviewNotes } =
+    options;
+  return (
+    editor
+      .use(blockReader)
+      .use(createAiFileChangesPlugin(() => docPath.current))
+      .use(
+        createGhostTextPlugin({
+          enabled: () => {
+            if (tour.current === "muted") return false;
+            const source = chosenSource(settings.current.completionSource);
+            return source === "textus"
+              ? aiFeatures(settings.current).completion
+              : settings.current.enableCompletion && source !== null;
+          },
+          source: () => chosenSource(settings.current.completionSource),
+          provider: () => writingProviderOf(settings.current),
+          model: () =>
+            settings.current.writingModels[
+              writingProviderOf(settings.current)
+            ] || null,
+          style: () => buildCompletionStyle(settings.current.completionTone),
+          uiLanguage: () => settings.current.language,
+          project: () => aiProject(docPath.current, settings.current),
+        }),
+      )
+      .use(
+        createGrammarCheckPlugin({
+          enabled: () =>
+            aiFeatures(settings.current).grammar && tour.current !== "muted",
+          provider: () => writingProviderOf(settings.current),
+          model: () =>
+            settings.current.writingModels[
+              writingProviderOf(settings.current)
+            ] || null,
+          strictness: () => settings.current.grammarStrictness,
+          uiLanguage: () => settings.current.language,
+          project: () => aiProject(docPath.current, settings.current),
+        }),
+      )
+      .use(
+        createPendingEditPlugin({
+          ...pendingEdits,
+          docPath: () => docPath.current,
+          animationEnabled: () => !prefersReducedMotion(),
+          sentenceLabels: () => {
+            const t = resolveStrings(settings.current.language);
+            return {
+              take: t.proposalTakeSentence,
+              keep: t.proposalKeepSentence,
+            };
+          },
+        }),
+      )
+      .use(streamFollowPlugin)
+      .use(chatSelectionPlugin)
+      .use(createQuickAskWidgetPlugin(quickAskWidget))
+      .use(createReviewNotesPlugin(reviewNotes))
+      .use(paperRegionPlugin)
+      // Not AI: the writer's own tracked changes, which share the margin.
+      .use(ownRevisionPlugin)
+  );
+}

@@ -1,0 +1,177 @@
+//! Downloading a picture a service left at a URL. The address comes from the
+//! service, not the user, so: HTTPS only, no credentials, no private address
+//! when connecting directly, and a size cap counted while the body arrives.
+
+use super::sniff::MAX_IMAGE_BYTES;
+use super::ImageError;
+use crate::public_address::{all_public, is_local_name, is_public};
+use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
+
+/// A test fixture serves its pictures from 127.0.0.1 over plain HTTP; no
+/// build outside the tests accepts that.
+fn loopback_fixture(url: &reqwest::Url) -> bool {
+    cfg!(test)
+        && url.scheme() == "http"
+        && matches!(url.host(), Some(url::Host::Ipv4(ip)) if ip.is_loopback())
+}
+
+/// Some services (DashScope's OSS links) still write `http://` for a host
+/// that serves HTTPS; asked for over HTTPS instead, never fetched as given.
+fn upgraded(mut url: reqwest::Url) -> reqwest::Url {
+    let oss = url.host_str().is_some_and(|h| h.ends_with(".aliyuncs.com"));
+    if url.scheme() == "http" && oss && url.port().is_none() {
+        let _ = url.set_scheme("https");
+    }
+    url
+}
+
+pub(crate) fn check_url(url: &reqwest::Url) -> Result<(), String> {
+    if loopback_fixture(url) {
+        return Ok(());
+    }
+    if url.scheme() != "https" {
+        return Err("it isn't an HTTPS address".into());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("it carries a user name or password".into());
+    }
+    match url.host() {
+        Some(url::Host::Domain(name)) if !is_local_name(name) => Ok(()),
+        Some(url::Host::Ipv4(ip)) if is_public(IpAddr::V4(ip)) => Ok(()),
+        Some(url::Host::Ipv6(ip)) if is_public(IpAddr::V6(ip)) => Ok(()),
+        _ => Err("it isn't a public address".into()),
+    }
+}
+
+/// Resolves names as usual, but refuses a name that resolves to any non-public
+/// address, so a public-looking host can't point into the user's network.
+struct PublicOnly;
+
+impl reqwest::dns::Resolve for PublicOnly {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        Box::pin(async move {
+            let host = name.as_str().to_string();
+            let found: Vec<SocketAddr> =
+                tokio::net::lookup_host((host.as_str(), 0)).await?.collect();
+            if !all_public(found.iter().map(SocketAddr::ip)) {
+                return Err(format!("{host} doesn't resolve to a public address").into());
+            }
+            Ok(Box::new(found.into_iter()) as reqwest::dns::Addrs)
+        })
+    }
+}
+
+fn client() -> reqwest::Client {
+    let redirects = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 3 {
+            attempt.error("too many redirects")
+        } else if let Err(why) = check_url(attempt.url()) {
+            attempt.error(format!("redirected to an address refused because {why}"))
+        } else {
+            attempt.follow()
+        }
+    });
+    let direct = crate::http::proxy().is_none();
+    let builder = crate::http::route(reqwest::Client::builder().redirect(redirects));
+    // Direct, the name is resolved here, to public addresses only.
+    let builder = if direct && !cfg!(test) {
+        builder.dns_resolver(Arc::new(PublicOnly))
+    } else {
+        builder
+    };
+    crate::http::with_timeouts(builder)
+        .build()
+        .unwrap_or_default()
+}
+
+/// The picture at `url`, at most [`MAX_IMAGE_BYTES`] of it.
+pub(crate) async fn download(url: &str) -> Result<Vec<u8>, ImageError> {
+    use futures_util::StreamExt;
+
+    let refused = |why: String| {
+        ImageError::Failed(format!(
+            "The service sent a picture address Textus won't open ({why})."
+        ))
+    };
+    let url = reqwest::Url::parse(url).map_err(|e| refused(e.to_string()))?;
+    let url = upgraded(url);
+    check_url(&url).map_err(refused)?;
+    let res = client()
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| ImageError::Failed(format!("Downloading the picture failed: {e}")))?;
+    if !res.status().is_success() {
+        return Err(ImageError::Failed(format!(
+            "Downloading the picture failed ({})",
+            res.status()
+        )));
+    }
+    if res
+        .content_length()
+        .is_some_and(|n| n > MAX_IMAGE_BYTES as u64)
+    {
+        return Err(too_large());
+    }
+    let mut body = Vec::new();
+    let mut stream = res.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk
+            .map_err(|e| ImageError::Failed(format!("Downloading the picture failed: {e}")))?;
+        if body.len() + chunk.len() > MAX_IMAGE_BYTES {
+            return Err(too_large());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+fn too_large() -> ImageError {
+    ImageError::Failed(format!(
+        "The picture is larger than {} MB.",
+        MAX_IMAGE_BYTES / (1024 * 1024)
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_public_https_addresses_are_downloaded() {
+        let check = |u: &str| check_url(&reqwest::Url::parse(u).unwrap());
+        assert!(check("https://cdn.example.com/a.png").is_ok());
+        assert!(check("http://cdn.example.com/a.png").is_err());
+        assert!(check("https://user:pw@cdn.example.com/a.png").is_err());
+        assert!(check("https://10.0.0.8/a.png").is_err());
+        assert!(check("https://[::1]/a.png").is_err());
+        assert!(check("https://[::ffff:192.168.0.1]/a.png").is_err());
+        assert!(check("https://169.254.169.254/latest/meta-data/").is_err());
+        assert!(check("https://localhost/a.png").is_err());
+        assert!(check("https://printer.local/a.png").is_err());
+        assert!(check("ftp://cdn.example.com/a.png").is_err());
+        assert!(check("file:///etc/passwd").is_err());
+    }
+
+    /// DNS rebinding: a name is checked by what it resolves to, and the
+    /// connection uses those same addresses.
+    #[test]
+    fn a_name_resolving_to_a_private_address_is_refused() {
+        use reqwest::dns::Resolve;
+        let name: reqwest::dns::Name = "localhost".parse().unwrap();
+        let resolved = crate::block_on(PublicOnly.resolve(name));
+        assert!(resolved.is_err());
+    }
+
+    #[test]
+    fn an_oss_link_written_as_http_is_fetched_over_https() {
+        let url = reqwest::Url::parse("http://x.oss-cn-beijing.aliyuncs.com/a.png?e=1").unwrap();
+        assert_eq!(
+            upgraded(url).as_str(),
+            "https://x.oss-cn-beijing.aliyuncs.com/a.png?e=1"
+        );
+        let other = reqwest::Url::parse("http://cdn.example.com/a.png").unwrap();
+        assert_eq!(upgraded(other).scheme(), "http");
+    }
+}

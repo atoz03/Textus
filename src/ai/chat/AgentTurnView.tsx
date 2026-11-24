@@ -1,0 +1,325 @@
+import { pictureSrc } from "../revision/generated-images";
+import { lazy, Suspense, useState, type ReactNode } from "react";
+import type { AgentTurn, ImageAttachment, WebSource } from "../types";
+import { links } from "../../platform/ipc";
+import { MarkdownText } from "../MarkdownText";
+import { parseUserMessage } from "./user-message";
+import { ReplyThemes, type ReplyThemeLabels } from "./ReplyThemes";
+import type { ReplyPluginLabels } from "./ReplyPlugins";
+import { ReplySkills } from "./ReplySkills";
+import {
+  ChevronIcon,
+  PaperclipIcon,
+  SearchIcon,
+} from "../../engine/controls/icons";
+import "./AgentTurnView.css";
+import { toolActivityText } from "./tool-activity";
+import { siteOf } from "../citations";
+import {
+  ContextMenu,
+  type ContextMenuItem,
+} from "../../engine/controls/ContextMenu";
+import { Presence } from "../../engine/motion/usePresence";
+import { INSERT_MARKDOWN_EVENT, sendAppEvent } from "../../utils/events";
+import { normalizeAiMarkdown } from "../revision/apply-edit";
+import { CommandText } from "../agents/AgentPermission";
+import { currentStrings } from "../../i18n/current";
+
+/** A tool's note longer than this is cut to two lines until opened. */
+export const LONG_ACTIVITY = 160;
+
+/** The main window, whose document a reply can go into. */
+const inEditorWindow = () =>
+  new URLSearchParams(window.location.search).get("view") !== "chat";
+
+const copyItem = (label: string, text: string): ContextMenuItem => ({
+  label,
+  onSelect: () => void navigator.clipboard.writeText(text).catch(() => {}),
+});
+
+/** A message's right-click menu: where it opened and what it offers. */
+function useMessageMenu() {
+  const [at, setAt] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItem[];
+  } | null>(null);
+  return {
+    /** `items` for the whole message; with words of it selected, Copy
+     *  (the first item's label) copies those instead. */
+    open: (e: React.MouseEvent, items: ContextMenuItem[]) => {
+      e.preventDefault();
+      const selected = getSelection()?.toString() ?? "";
+      setAt({
+        x: e.clientX,
+        y: e.clientY,
+        items: selected ? [copyItem(items[0].label, selected)] : items,
+      });
+    },
+    element: (
+      <Presence show={at !== null}>
+        {at && (
+          <ContextMenu
+            x={at.x}
+            y={at.y}
+            items={at.items}
+            onClose={() => setAt(null)}
+          />
+        )}
+      </Presence>
+    ),
+  };
+}
+
+// A reply that wrote a plugin brings in the plugin manager: loaded only then.
+const ReplyPlugins = lazy(() =>
+  import("./ReplyPlugins").then((m) => ({ default: m.ReplyPlugins })),
+);
+
+export interface AgentTurnLabels extends ReplyThemeLabels, ReplyPluginLabels {
+  /** Selection chip, for a selection of `n` characters. */
+  selectionChip: (n: number) => string;
+  /** The chip of a selection that was one picture. */
+  selectedPicture: string;
+  /** What each tool call is doing, by tool name; "{arg}" is its main
+   *  argument (query, heading, path, skill); "*" covers any other tool. */
+  toolActivity: Record<string, string>;
+  toolResult: string;
+  /** The heading of the list of web pages under a reply. */
+  sources: string;
+  /** A message's right-click menu. */
+  messageCopy: string;
+  messageCopyMarkdown: string;
+  messageInsert: string;
+}
+
+export function AgentTurnView({
+  turn,
+  labels,
+  live = false,
+}: {
+  turn: AgentTurn;
+  labels: AgentTurnLabels;
+  /** An assistant reply still streaming in. */
+  live?: boolean;
+}) {
+  const menu = useMessageMenu();
+  switch (turn.kind) {
+    case "User":
+      return (
+        <UserMessage
+          text={turn.text}
+          images={turn.images ?? []}
+          labels={labels}
+        />
+      );
+    case "Assistant":
+      return (
+        <div
+          className="agent-message agent-message-assistant"
+          onContextMenu={(e) =>
+            menu.open(e, [
+              copyItem(labels.messageCopy, e.currentTarget.innerText),
+              copyItem(labels.messageCopyMarkdown, turn.text),
+              // Into the document in front; the detached window has none.
+              ...(inEditorWindow()
+                ? [
+                    {
+                      label: labels.messageInsert,
+                      onSelect: () =>
+                        sendAppEvent(
+                          INSERT_MARKDOWN_EVENT,
+                          normalizeAiMarkdown(turn.text),
+                        ),
+                    },
+                  ]
+                : []),
+            ])
+          }
+        >
+          <MarkdownText text={turn.text} live={live} />
+          {turn.sources && turn.sources.length > 0 && (
+            <SourceList sources={turn.sources} label={labels.sources} />
+          )}
+          <ReplyThemes text={turn.text} labels={labels} />
+          {/\nname:/.test(turn.text) && <ReplySkills text={turn.text} />}
+          {turn.text.includes("textus-plugin.json") && (
+            <Suspense fallback={null}>
+              <ReplyPlugins text={turn.text} labels={labels} />
+            </Suspense>
+          )}
+          {menu.element}
+        </div>
+      );
+    case "ToolCall": {
+      const activity = toolActivityText(turn.name, turn.arguments, labels);
+      // A long one (an agent's chained shell command) shows two lines.
+      return (
+        <div className="agent-tool-line">
+          <SearchIcon className="agent-tool-icon" />
+          {activity.length > LONG_ACTIVITY ? (
+            <CommandText text={activity} lines={2} className="is-quiet" />
+          ) : (
+            activity
+          )}
+        </div>
+      );
+    }
+    case "ToolResult":
+      return <ToolOutput output={turn.output} summary={labels.toolResult} />;
+    default:
+      return null;
+  }
+}
+
+/**
+ * The user's own turn: their prose, with the selection and attachments that
+ * rode along shown as chips. The selection chip expands to be checked.
+ */
+function UserMessage({
+  text,
+  images,
+  labels,
+}: {
+  text: string;
+  images: ImageAttachment[];
+  labels: AgentTurnLabels;
+}) {
+  const { body, selection, attachments } = parseUserMessage(text);
+  const [expanded, setExpanded] = useState(false);
+  // Text attachments come from the <attached-file> blocks in the prompt;
+  // images travel as provider image parts, so they come off the turn.
+  const attachmentNames = [
+    ...attachments,
+    ...images.map((image) => image.name),
+  ];
+
+  const menu = useMessageMenu();
+  return (
+    <div
+      className="agent-message agent-message-user"
+      onContextMenu={(e) =>
+        menu.open(e, [copyItem(labels.messageCopy, body ?? "")])
+      }
+    >
+      {menu.element}
+      {(selection !== null || attachmentNames.length > 0) && (
+        <div className="agent-message-context">
+          {selection !== null && (
+            <button
+              type="button"
+              className="agent-context-chip"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((prev) => !prev)}
+            >
+              <ChevronIcon
+                className={`agent-context-chip-caret ${
+                  expanded ? "agent-context-chip-caret-open" : ""
+                }`}
+              />
+              {pictureSrc(selection) !== null
+                ? labels.selectedPicture
+                : labels.selectionChip([...selection].length)}
+            </button>
+          )}
+          {attachmentNames.map((name, i) => (
+            <span className="agent-context-chip" key={`${name}-${i}`}>
+              <PaperclipIcon />
+              {name}
+            </span>
+          ))}
+        </div>
+      )}
+      {selection !== null && expanded && (
+        <pre className="agent-message-selection">{selection}</pre>
+      )}
+      {body && <div className="agent-message-body">{body}</div>}
+    </div>
+  );
+}
+
+/**
+ * The web pages a reply cites, by the numbers its text gives them: one chip
+ * each that opens the page in the system browser.
+ */
+function SourceList({
+  sources,
+  label,
+}: {
+  sources: WebSource[];
+  label: string;
+}) {
+  return (
+    <div className="agent-sources" role="group" aria-label={label}>
+      <span className="agent-sources-label">{label}</span>
+      {sources.map((source) => {
+        const site = siteOf(source.url);
+        return (
+          <button
+            key={source.n}
+            type="button"
+            className="agent-source"
+            title={source.url}
+            onClick={() => void links.openWebLink(source.url).catch(() => {})}
+          >
+            <span className="agent-source-num">{source.n}</span>
+            <span className="tx-truncate agent-source-site">{site}</span>
+            {source.title && source.title !== site && (
+              <span className="tx-truncate agent-source-title">
+                {source.title}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A step's output drawn in full past this, only when asked. */
+const LONG_OUTPUT = 4000;
+
+/**
+ * A step's output, folded: its text is drawn only while it is open, and a
+ * long one (a command reading many files) its start until asked, so a
+ * session of them doesn't weigh on the conversation.
+ */
+export function ToolOutput({
+  output = "",
+  summary,
+  parts,
+  failed,
+}: {
+  output?: string;
+  /** The line it opens from: "Result", or the step itself. */
+  summary: ReactNode;
+  /** Rows it holds instead of text: steps folded into it. */
+  parts?: ReactNode;
+  failed?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [all, setAll] = useState(false);
+  const cut = !all && output.length > LONG_OUTPUT;
+  return (
+    <details
+      className="disclosure agent-tool-result"
+      data-failed={failed || undefined}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
+      <summary>{summary}</summary>
+      {open && parts && <div className="agent-steps-folded">{parts}</div>}
+      {open && !parts && (
+        <pre>{cut ? `${output.slice(0, LONG_OUTPUT)}…` : output}</pre>
+      )}
+      {open && cut && (
+        <button
+          type="button"
+          className="tx-button text-button agent-command-more"
+          onClick={() => setAll(true)}
+        >
+          {currentStrings().chatAgentShowAll}
+        </button>
+      )}
+    </details>
+  );
+}

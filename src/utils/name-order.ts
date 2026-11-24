@@ -1,0 +1,38 @@
+// The order file names are listed in, as a file manager sorts them in the
+// UI language: numbers by value, case and accents ignored, Chinese by the
+// language's collation (Chinese numerals included, not 1-2-3).
+
+const collators = new Map<string, Intl.Collator>();
+
+/** The collator for a BCP 47 locale ("zh-CN", "en"), made once. */
+export function nameCollator(locale: string): Intl.Collator {
+  let collator = collators.get(locale);
+  if (!collator) {
+    collator = new Intl.Collator(locale, {
+      numeric: true,
+      sensitivity: "base",
+    });
+    collators.set(locale, collator);
+  }
+  return collator;
+}
+
+/** Folders first, then by name; equal names (case only) by code point, so
+ *  the order never depends on which came first. */
+export function compareEntries(
+  collator: Intl.Collator,
+  a: { name: string; is_dir: boolean },
+  b: { name: string; is_dir: boolean },
+): number {
+  if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+  return (
+    collator.compare(a.name, b.name) ||
+    (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+  );
+}
+
+/** Names in the order a person reads them: "Week 2" before "Week 10". */
+export function compareNames(a: string, b: string): number {
+  const locale = globalThis.document?.documentElement.lang || "en";
+  return nameCollator(locale).compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
+}

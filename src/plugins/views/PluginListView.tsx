@@ -1,0 +1,400 @@
+import { SearchField } from "../../engine/controls/SearchField";
+import { PluginProblem } from "./PluginProblem";
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type TouchEvent as ReactTouchEvent,
+  type KeyboardEvent,
+  type CSSProperties,
+} from "react";
+import { ContextMenu } from "../../engine/controls/ContextMenu";
+import { runCommand } from "../../registry/commands";
+import { ChevronIcon } from "../../engine/controls/icons";
+import { ListRowIcon } from "./list-row-icon";
+import { getWindowAccess } from "../app-bridge";
+import { mayOpen } from "../may-open";
+import { askPlugin } from "../manager";
+import { pluginRecord } from "../store/plugin-records";
+import { pluginName, windowInfo } from "../store/plugin-records";
+import { localize } from "../store/manifest";
+import "./PluginListView.css";
+import { isImeKeydown } from "../../utils/ime";
+import { trackDrag } from "../../engine/drag/pointer-drag";
+import { listMove } from "../../engine/controls/list-keys";
+import { keyOf, usePluginListItems } from "./usePluginListItems";
+import { liftedCopy } from "../../engine/drag/ghost";
+import { useLongPress } from "../../utils/hooks/useLongPress";
+
+/** A list item as a plugin gives it. */
+export interface PluginListItem {
+  id?: string;
+  label: string;
+  description?: string;
+  detail?: string;
+  group?: string;
+  icon?: string;
+  checkbox?: boolean;
+  badge?: { text: string; tone?: "accent" | "warning" | "danger" | "muted" };
+  location?: {
+    path: string;
+    line?: number;
+    heading?: string;
+    block?: string;
+    text?: string;
+    page?: number;
+  };
+  command?: { id: string; args?: unknown[] };
+  children?: boolean;
+  actions?: { label: string; command: string; args?: unknown[] }[];
+  data?: unknown;
+}
+
+/** Whether every word typed is in the item's words. */
+export function listItemMatches(item: PluginListItem, query: string): boolean {
+  const haystack =
+    `${item.label} ${item.description ?? ""} ${item.detail ?? ""}`.toLowerCase();
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => haystack.includes(word));
+}
+
+/** What a click on an item does when the plugin doesn't take it: its
+ *  place opens - one the plugin may open - or its command runs. */
+function defaultSelect(plugin: string, item: PluginListItem) {
+  if (item.location) {
+    const { path, ...place } = item.location;
+    const access = getWindowAccess();
+    const granted = pluginRecord(plugin)?.granted ?? [];
+    if (access && mayOpen(plugin, granted, access.rootPath(), path))
+      access.openFile(path, { place, preview: true });
+  } else if (item.command) runCommand(item.command.id, item.command.args ?? []);
+}
+
+/**
+ * A plugin's list, drawn by Textus in a sidebar tab or a tab of its own: the
+ * plugin gives the items, Textus the look, keys, filter and folding.
+ */
+export const PluginListPane = memo(function PluginListPane({
+  plugin,
+  view,
+  className,
+}: {
+  plugin: string;
+  view: string;
+  className?: string;
+}) {
+  const { info, items, swapItem, children, open, toggleOpen, error, fail } =
+    usePluginListItems(plugin, view);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    item: PluginListItem;
+  } | null>(null);
+  const t = windowInfo().strings();
+  // A finger held on a row opens the menu a right-click does.
+  const pressed = useRef<PluginListItem | null>(null);
+  const press = useLongPress(({ x, y }) => {
+    if (pressed.current) setMenu({ x, y, item: pressed.current });
+  });
+
+  const select = (item: PluginListItem) => {
+    if (info?.select)
+      void askPlugin(plugin, "$listSelect", { view, item }).catch(fail);
+    else defaultSelect(plugin, item);
+  };
+
+  const check = (item: PluginListItem) => {
+    // Ticked at once; the plugin's refresh has the last word.
+    const ticked = { ...item, checkbox: !item.checkbox };
+    swapItem(item, ticked);
+    void askPlugin(plugin, "$listCheck", {
+      view,
+      item,
+      checked: !item.checkbox,
+    }).catch((err: unknown) => {
+      // Not ticked after all.
+      swapItem(ticked, item);
+      fail(err);
+    });
+  };
+
+  // A row dragged onto another: the plugin moves it there (onMove).
+  const dragHandlers = (item: PluginListItem, key: string) => ({
+    "data-list-key": key,
+    onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => {
+      const row = e.currentTarget;
+      const list = row.closest<HTMLElement>(".plugin-list-rows");
+      if (!list || e.pointerType === "touch") return;
+      let over: HTMLElement | null = null;
+      const hover = (next: HTMLElement | null) => {
+        over?.classList.remove("tx-drop-into");
+        over = next && next !== row ? next : null;
+        over?.classList.add("tx-drop-into");
+      };
+      // A lifted copy follows the pointer; the row's place stays, outlined.
+      const { clientX, clientY } = e;
+      let copy: ReturnType<typeof liftedCopy> | null = null;
+      trackDrag(e, {
+        start: () => {
+          copy = liftedCopy(row, { keep: true });
+          row.classList.add("tx-drag-source");
+        },
+        move: (x, y) => {
+          copy?.moveBy(x - clientX, y - clientY);
+          hover(
+            document
+              .elementFromPoint(x, y)
+              ?.closest<HTMLElement>("[data-list-key]") ?? null,
+          );
+        },
+        end: (_x, _y, dropped) => {
+          const target = rows.find((r) => r.key === over?.dataset.listKey);
+          row.classList.remove("tx-drag-source");
+          copy?.land(row.getBoundingClientRect());
+          hover(null);
+          if (!dropped || !target || !list.contains(row)) return;
+          void askPlugin(plugin, "$listMove", {
+            view,
+            item,
+            target: target.item,
+          }).catch(fail);
+        },
+      });
+    },
+  });
+
+  // The rows as shown: filtered, open items' children under them.
+  const rows = useMemo(() => {
+    const out: { item: PluginListItem; key: string; depth: number }[] = [];
+    const walk = (list: PluginListItem[], depth: number, prefix: string) =>
+      list.forEach((item, i) => {
+        const key = `${prefix}${keyOf(item, i)}`;
+        if (!query || listItemMatches(item, query))
+          out.push({ item, key, depth });
+        if (item.children && open.has(key))
+          walk(children.get(key) ?? [], depth + 1, `${key}/`);
+      });
+    walk(items ?? [], 0, "");
+    return out;
+  }, [items, children, open, query]);
+  const paged = usePagedRows(rows.length, active);
+
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (isImeKeydown(e) || !rows.length) return;
+    const row = rows[Math.min(active, rows.length - 1)];
+    const moved = listMove(e.key, active, rows.length, false);
+    if (moved !== null) {
+      e.preventDefault();
+      setActive(moved);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      select(row.item);
+    } else if (e.key === " " && row.item.checkbox !== undefined) {
+      e.preventDefault();
+      check(row.item);
+    } else if (
+      (e.key === "ArrowRight" && !open.has(row.key)) ||
+      (e.key === "ArrowLeft" && open.has(row.key))
+    ) {
+      if (!row.item.children) return;
+      e.preventDefault();
+      toggleOpen(row.item, row.key);
+    }
+  };
+
+  const record = pluginRecord(plugin);
+  const name = record ? pluginName(record) : plugin;
+  // A `%key%` the plugin gave is in the window's language now.
+  const said = (value: string) =>
+    record?.manifest
+      ? localize(record.manifest, value, windowInfo().language())
+      : value;
+  let lastGroup: string | undefined;
+  return (
+    <div className={`plugin-list ${className ?? ""}`}>
+      {info?.filterPlaceholder !== undefined && (
+        // The sidebar's second row, as every panel's search is.
+        <div className="tx-pane-row">
+          <SearchField
+            placeholder={said(info.filterPlaceholder)}
+            aria-label={said(info.filterPlaceholder)}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActive(0);
+            }}
+            onKeyDown={onKey}
+          />
+        </div>
+      )}
+      {info?.message && (
+        <div className="plugin-list-message">{said(info.message)}</div>
+      )}
+      {error && <PluginProblem error={error} />}
+      <div
+        className="plugin-list-rows"
+        role="tree"
+        aria-label={name}
+        tabIndex={0}
+        onKeyDown={onKey}
+      >
+        {/* A message the plugin set, or its error, stands in for the
+            empty text. */}
+        {!error && items && rows.length === 0 && (query || !info?.message) && (
+          <div className="tx-list-note">
+            {query ? t.pluginQuickPickEmpty : said(info?.emptyText ?? "")}
+          </div>
+        )}
+        {rows.slice(0, paged.limit).map(({ item, key, depth }, index) => {
+          const heading =
+            depth === 0 && item.group && item.group !== lastGroup
+              ? item.group
+              : null;
+          if (depth === 0) lastGroup = item.group;
+          return (
+            // The row's place too: two items a plugin gave one id still draw.
+            <div key={`${key}@${index}`} className="plugin-list-entry">
+              {heading && <div className="tx-list-heading">{heading}</div>}
+              <div
+                role="treeitem"
+                aria-level={depth + 1}
+                aria-expanded={item.children ? open.has(key) : undefined}
+                aria-selected={index === active}
+                className={`plugin-list-row${index === active ? " is-active" : ""}${
+                  item.checkbox ? " is-done" : ""
+                }${item.detail ? " has-detail" : ""}`}
+                style={{ "--depth": depth } as CSSProperties}
+                onMouseEnter={() => setActive(index)}
+                onClick={() => {
+                  // Only a row with a hold of its own swallows its click.
+                  if (!(item.actions?.length && press.consumeClick()))
+                    select(item);
+                }}
+                {...(info?.move ? dragHandlers(item, key) : {})}
+                {...(item.actions?.length
+                  ? {
+                      ...press.handlers,
+                      onTouchStart: (e: ReactTouchEvent) => {
+                        pressed.current = item;
+                        press.handlers.onTouchStart(e);
+                      },
+                    }
+                  : {})}
+                onContextMenu={(e) => {
+                  if (!item.actions?.length) return;
+                  e.preventDefault();
+                  setMenu({ x: e.clientX, y: e.clientY, item });
+                }}
+              >
+                {item.children ? (
+                  <button
+                    type="button"
+                    className="plugin-list-twisty"
+                    aria-label={item.label}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleOpen(item, key);
+                    }}
+                  >
+                    <ChevronIcon
+                      className={open.has(key) ? "is-open" : undefined}
+                    />
+                  </button>
+                ) : (
+                  <span className="plugin-list-twisty" aria-hidden="true" />
+                )}
+                {item.checkbox !== undefined && (
+                  <input
+                    type="checkbox"
+                    className="ui-check plugin-list-check"
+                    checked={item.checkbox}
+                    aria-label={item.label}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => check(item)}
+                  />
+                )}
+                <ListRowIcon icon={item.icon} />
+                <span className="plugin-list-text">
+                  <span className="plugin-list-label">{item.label}</span>
+                  {item.badge && (
+                    <span
+                      className="tx-badge"
+                      data-tone={item.badge.tone ?? "muted"}
+                    >
+                      {item.badge.text}
+                    </span>
+                  )}
+                  {item.description && (
+                    <span className="tx-truncate plugin-list-description">
+                      {item.description}
+                    </span>
+                  )}
+                  {item.detail && (
+                    <span className="plugin-list-detail">{item.detail}</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+        {paged.limit < rows.length && (
+          <div ref={paged.end} className="plugin-list-more" aria-hidden />
+        )}
+      </div>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          title={menu.item.label}
+          onClose={() => setMenu(null)}
+          items={(menu.item.actions ?? []).map((action) => ({
+            label: action.label,
+            onSelect: () => {
+              setMenu(null);
+              runCommand(action.command, [
+                ...(action.args ?? []),
+                menu.item.data ?? null,
+              ]);
+            },
+          }))}
+        />
+      )}
+    </div>
+  );
+});
+
+/** A long list draws a page of rows, and the next as its end scrolls into
+ *  view or the keys reach it: ten thousand tasks cost a page, not ten
+ *  thousand rows, each time the list is drawn. */
+const PAGE = 200;
+
+function usePagedRows(count: number, active: number) {
+  const [shown, setShown] = useState(PAGE);
+  const end = useRef<HTMLDivElement>(null);
+  const limit = Math.max(shown, active + 1 + PAGE / 4);
+  useEffect(() => {
+    const el = end.current;
+    if (!el || limit >= count || typeof IntersectionObserver === "undefined")
+      return;
+    // A screen ahead, so scrolling never meets the end of what is drawn.
+    const seen = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting))
+          setShown((n) => Math.max(n, limit) + PAGE);
+      },
+      // The rows scroll in their own box: seen there, not in the window.
+      { root: el.parentElement, rootMargin: "400px" },
+    );
+    seen.observe(el);
+    return () => seen.disconnect();
+  }, [limit, count]);
+  return { limit, end };
+}

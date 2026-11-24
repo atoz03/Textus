@@ -1,0 +1,424 @@
+import { DIAGRAM_LANGUAGES } from "../../editor/diagram-languages";
+import type {
+  CompletionContribution,
+  Contributes,
+  EmbedKind,
+  HoverContribution,
+  FloatingPlace,
+  MenuId,
+  SuggestKind,
+  ViewType,
+} from "./manifest-types";
+import { ManifestError, list, object, text } from "./manifest-json";
+import {
+  parseCodeLanguages,
+  parseDocumentTypes,
+  parseFolderDocuments,
+} from "./manifest-documents";
+import { parseFileIconThemes } from "./manifest-icon-themes";
+import { parseSnippets, parseWalkthroughs } from "./manifest-guides";
+import { number, parseSetting } from "./manifest-settings";
+
+/** Where a plugin's menu items may go. */
+export const MENU_IDS: readonly MenuId[] = [
+  "editor/context",
+  "editor/slash",
+  "file/context",
+  "tab/context",
+  "view/title",
+  "floating/context",
+  "app/plugins",
+  "app/tray",
+];
+
+/**
+ * Reading a manifest's parts, each checked and named in the error when it is
+ * wrong, for the plugin's author.
+ */
+
+/** A contributed id: the plugin's own namespace, then a name. */
+const LOCAL_ID = /^[a-z0-9][a-z0-9.-]*$/i;
+
+/** A contributed id must start with the plugin's id, so two plugins can't
+ *  take each other's commands or views. */
+function ownId(value: unknown, pluginId: string, what: string): string {
+  const id = text(value, what);
+  if (!id.startsWith(`${pluginId}.`) || !LOCAL_ID.test(id))
+    throw new ManifestError(`${what} "${id}" must start with "${pluginId}.".`);
+  return id;
+}
+
+function viewType(value: unknown, what: string): ViewType {
+  if (value === undefined || value === "webview") return "webview";
+  if (value === "list") return "list";
+  throw new ManifestError(`${what} must be "list" or "webview".`);
+}
+
+/** A floating view's side: 160 points unless given, never under 64 or over
+ *  480 - it floats over other things, so it stays small. */
+function floatingSide(value: unknown, what: string): number {
+  const side = number(value, what) ?? 160;
+  if (side < 64 || side > 480)
+    throw new ManifestError(`${what} must be from 64 to 480.`);
+  return Math.round(side);
+}
+
+function floatingPlace(value: unknown, what: string): FloatingPlace {
+  if (value === undefined) return "either";
+  if (value === "desktop" || value === "window" || value === "either")
+    return value;
+  throw new ManifestError(`${what} must be "desktop", "window" or "either".`);
+}
+
+/** Code block languages Textus draws itself: a plugin can't take them. */
+export const SUGGEST_KINDS: readonly SuggestKind[] = ["wikilinks"];
+const EMBED_KINDS: readonly EmbedKind[] = ["note", "heading", "block"];
+const HOVER_KINDS: readonly HoverContribution[] = [
+  "document",
+  "link",
+  "citation",
+];
+
+/** The entries of `values` among `known`: a later Textus's are left out. */
+const known = <T extends string>(values: string[], kinds: readonly T[]) =>
+  values.filter((v): v is T => (kinds as readonly string[]).includes(v));
+
+const BUILT_IN_BLOCKS = [...DIAGRAM_LANGUAGES, "math", "latex", "katex", "tex"];
+
+/** `main`: one file, or several run in order; the host takes no imports. */
+export function parseMain(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  const files = typeof value === "string" ? [value] : list(value, "main");
+  return files.map((f, i) => text(f, `main[${i}]`));
+}
+
+/** A command's `runs`: one of Textus's own commands ("textus.…") and
+ *  its arguments. */
+function textusRun(
+  raw: unknown,
+  at: string,
+): { command: string; args: unknown[] } {
+  const o = object(raw, at);
+  const command = text(o.command, `${at}.command`);
+  if (!command.startsWith("textus."))
+    throw new Error(`${at}.command must be one of Textus's ("textus.…").`);
+  return {
+    command,
+    args: o.args === undefined ? [] : list(o.args, `${at}.args`),
+  };
+}
+
+export function parseContributes(raw: unknown, id: string): Contributes {
+  const c = raw === undefined ? {} : object(raw, "contributes");
+  const commands = list(c.commands, "contributes.commands").map((x, i) => {
+    const o = object(x, `contributes.commands[${i}]`);
+    const at = `contributes.commands[${i}]`;
+    return {
+      command: ownId(o.command, id, `${at}.command`),
+      title: text(o.title, `${at}.title`),
+      ...(o.runs === undefined
+        ? {}
+        : { runs: textusRun(o.runs, `${at}.runs`) }),
+    };
+  });
+  const declared = new Set(commands.map((x) => x.command));
+  const declaredCommand = (value: unknown, what: string) => {
+    const command = text(value, what);
+    if (!declared.has(command))
+      throw new ManifestError(
+        `${what} "${command}" is not in contributes.commands.`,
+      );
+    return command;
+  };
+  const keybindings = list(c.keybindings, "contributes.keybindings").map(
+    (x, i) => {
+      const o = object(x, `contributes.keybindings[${i}]`);
+      return {
+        command: declaredCommand(
+          o.command,
+          `contributes.keybindings[${i}].command`,
+        ),
+        key: text(o.key, `contributes.keybindings[${i}].key`).toLowerCase(),
+      };
+    },
+  );
+  const menus: Contributes["menus"] = {};
+  const rawMenus =
+    c.menus === undefined ? {} : object(c.menus, "contributes.menus");
+  for (const [where, items] of Object.entries(rawMenus)) {
+    if (!(MENU_IDS as readonly string[]).includes(where))
+      throw new ManifestError(`contributes.menus: no menu "${where}".`);
+    menus[where as MenuId] = list(items, `contributes.menus.${where}`).map(
+      (x, i) => {
+        const o = object(x, `contributes.menus.${where}[${i}]`);
+        return {
+          command: declaredCommand(
+            o.command,
+            `contributes.menus.${where}[${i}].command`,
+          ),
+          when:
+            text(o.when, `contributes.menus.${where}[${i}].when`, true) ||
+            undefined,
+          icon:
+            text(o.icon, `contributes.menus.${where}[${i}].icon`, true) ||
+            undefined,
+        };
+      },
+    );
+  }
+  const sidebarTabs = list(c.sidebarTabs, "contributes.sidebarTabs").map(
+    (x, i) => {
+      const o = object(x, `contributes.sidebarTabs[${i}]`);
+      return {
+        id: ownId(o.id, id, `contributes.sidebarTabs[${i}].id`),
+        title: text(o.title, `contributes.sidebarTabs[${i}].title`),
+        type: viewType(o.type, `contributes.sidebarTabs[${i}].type`),
+        icon:
+          text(o.icon, `contributes.sidebarTabs[${i}].icon`, true) || undefined,
+      };
+    },
+  );
+  const views = list(c.views, "contributes.views").map((x, i) => {
+    const o = object(x, `contributes.views[${i}]`);
+    return {
+      id: ownId(o.id, id, `contributes.views[${i}].id`),
+      title: text(o.title, `contributes.views[${i}].title`),
+      type: viewType(o.type, `contributes.views[${i}].type`),
+    };
+  });
+  const customEditors = list(c.customEditors, "contributes.customEditors").map(
+    (x, i) => {
+      const at = `contributes.customEditors[${i}]`;
+      const o = object(x, at);
+      const patterns =
+        o.filenamePatterns === undefined && o.frontMatter !== undefined
+          ? []
+          : list(o.filenamePatterns, `${at}.filenamePatterns`).map((p, j) =>
+              text(p, `${at}.filenamePatterns[${j}]`).toLowerCase(),
+            );
+      const frontMatter =
+        o.frontMatter === undefined
+          ? []
+          : list(o.frontMatter, `${at}.frontMatter`).map((k, j) =>
+              text(k, `${at}.frontMatter[${j}]`),
+            );
+      if (!patterns.length && !frontMatter.length)
+        throw new ManifestError(`${at}.filenamePatterns is empty.`);
+      return {
+        viewType: ownId(o.viewType, id, `${at}.viewType`),
+        displayName: text(o.displayName, `${at}.displayName`),
+        filenamePatterns: patterns,
+        frontMatter,
+        priority:
+          o.priority === "option" ? ("option" as const) : ("default" as const),
+      };
+    },
+  );
+  const settings = list(c.settings, "contributes.settings").map((x, i) =>
+    parseSetting(x, `contributes.settings[${i}]`),
+  );
+  const keys = new Set(settings.map((s) => s.key));
+  settings.forEach((s, i) => {
+    const on = s.when && /[\w.-]+/.exec(s.when)?.[0];
+    if (on && !keys.has(on))
+      throw new ManifestError(
+        `contributes.settings[${i}].when names "${on}", which is no setting.`,
+      );
+  });
+  const page =
+    c.settingsPage === undefined
+      ? null
+      : object(c.settingsPage, "contributes.settingsPage");
+  const aiTools = list(c.aiTools, "contributes.aiTools").map((x, i) => {
+    const o = object(x, `contributes.aiTools[${i}]`);
+    const name = text(o.name, `contributes.aiTools[${i}].name`);
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(name))
+      throw new ManifestError(
+        `contributes.aiTools[${i}].name "${name}" must be letters, digits, _ or -.`,
+      );
+    return {
+      name,
+      description: text(o.description, `contributes.aiTools[${i}].description`),
+      parameters:
+        o.parameters === undefined
+          ? { type: "object", properties: {} }
+          : object(o.parameters, `contributes.aiTools[${i}].parameters`),
+    };
+  });
+  const completions = list(c.completions, "contributes.completions").map(
+    (x, i) => {
+      const at = `contributes.completions[${i}]`;
+      const o = object(x, at);
+      const where =
+        o.where === undefined ? "any" : text(o.where, `${at}.where`);
+      if (where !== "math" && where !== "text" && where !== "any")
+        throw new ManifestError(`${at}.where must be "math", "text" or "any".`);
+      const pattern = text(o.pattern, `${at}.pattern`);
+      // As it is compiled: unicode, at the caret's end.
+      try {
+        new RegExp(`(?:${pattern})$`, "u");
+      } catch {
+        throw new ManifestError(`${at}.pattern is not a regular expression.`);
+      }
+      return {
+        id: ownId(o.id, id, `${at}.id`),
+        where: where as CompletionContribution["where"],
+        pattern,
+        ...(o.title === undefined
+          ? {}
+          : { title: text(o.title, `${at}.title`) }),
+      };
+    },
+  );
+  const links = list(c.links, "contributes.links").map((x, i) => {
+    const at = `contributes.links[${i}]`;
+    const o = object(x, at);
+    const pattern = text(o.pattern, `${at}.pattern`);
+    // As it is compiled, unicode.
+    try {
+      new RegExp(pattern, "u");
+    } catch {
+      throw new ManifestError(`${at}.pattern is not a regular expression.`);
+    }
+    return { pattern, command: declaredCommand(o.command, `${at}.command`) };
+  });
+  const statusItems = list(c.statusItems, "contributes.statusItems").map(
+    (x, i) => {
+      const at = `contributes.statusItems[${i}]`;
+      const o = object(x, at);
+      const tooltip = text(o.tooltip, `${at}.tooltip`, true);
+      return {
+        id: text(o.id, `${at}.id`),
+        text: text(o.text, `${at}.text`),
+        ...(tooltip ? { tooltip } : {}),
+        ...(o.command === undefined
+          ? {}
+          : { command: declaredCommand(o.command, `${at}.command`) }),
+      };
+    },
+  );
+  const codeBlocks = list(c.codeBlocks, "contributes.codeBlocks").map(
+    (x, i) => {
+      const at = `contributes.codeBlocks[${i}]`;
+      const o = object(x, at);
+      const language = text(o.language, `${at}.language`).toLowerCase();
+      if (!/^[a-z][a-z0-9-]{0,31}$/.test(language))
+        throw new ManifestError(
+          `${at}.language "${language}" must be a lowercase word.`,
+        );
+      if (BUILT_IN_BLOCKS.includes(language))
+        throw new ManifestError(
+          `${at}.language "${language}" is drawn by Textus itself.`,
+        );
+      for (const [key, only] of [
+        ["frame", "none"],
+        ["size", "interface"],
+      ])
+        if (o[key] !== undefined && o[key] !== only)
+          throw new ManifestError(`${at}.${key} can only be "${only}".`);
+      return {
+        language,
+        title: text(o.title, `${at}.title`, true) || undefined,
+        frame: o.frame as "none" | undefined,
+        size: o.size as "interface" | undefined,
+      };
+    },
+  );
+  const floatingViews = list(c.floatingViews, "contributes.floatingViews").map(
+    (x, i) => {
+      const at = `contributes.floatingViews[${i}]`;
+      const o = object(x, at);
+      return {
+        id: ownId(o.id, id, `${at}.id`),
+        title: text(o.title, `${at}.title`),
+        width: floatingSide(o.width, `${at}.width`),
+        height: floatingSide(o.height, `${at}.height`),
+        place: floatingPlace(o.place, `${at}.place`),
+      };
+    },
+  );
+  // A kind this Textus doesn't know is a later one's: left out.
+  const suggestFor = list(c.suggestFor, "contributes.suggestFor")
+    .map((x, i) => text(x, `contributes.suggestFor[${i}]`))
+    .filter((kind): kind is SuggestKind =>
+      (SUGGEST_KINDS as readonly string[]).includes(kind),
+    );
+  const embeds = list(c.embeds, "contributes.embeds").map((x, i) => {
+    const at = `contributes.embeds[${i}]`;
+    const o = object(x, at);
+    const targets = list(o.targets, `${at}.targets`).map((t, j) =>
+      text(t, `${at}.targets[${j}]`),
+    );
+    return {
+      id: ownId(o.id, id, `${at}.id`),
+      targets: known(targets, EMBED_KINDS),
+    };
+  });
+  const agents = list(c.agents, "contributes.agents").map((x, i) => {
+    const at = `contributes.agents[${i}]`;
+    const o = object(x, at);
+    const env = o.env === undefined ? {} : object(o.env, `${at}.env`);
+    return {
+      id: ownId(o.id, id, `${at}.id`),
+      name: text(o.name, `${at}.name`),
+      command: text(o.command, `${at}.command`),
+      args: list(o.args, `${at}.args`).map((a, j) =>
+        text(a, `${at}.args[${j}]`, true),
+      ),
+      env: Object.fromEntries(
+        Object.entries(env).map(([k, v]) => [
+          k,
+          text(v, `${at}.env.${k}`, true),
+        ]),
+      ),
+      setup: text(o.setup, `${at}.setup`, true) || undefined,
+      provider: text(o.provider, `${at}.provider`, true) || undefined,
+      askMode: text(o.askMode, `${at}.askMode`, true) || undefined,
+      // "" says the agent signs in by itself: no sign-in step offered.
+      signIn:
+        o.signIn === undefined || o.signIn === ""
+          ? (o.signIn as "" | undefined)
+          : text(o.signIn, `${at}.signIn`),
+    };
+  });
+  const hovers = known(
+    list(c.hovers, "contributes.hovers").map((x, i) =>
+      text(x, `contributes.hovers[${i}]`),
+    ),
+    HOVER_KINDS,
+  );
+  if (c.blockMenu !== undefined && typeof c.blockMenu !== "boolean")
+    throw new ManifestError("contributes.blockMenu is true or false.");
+  return {
+    blockMenu: c.blockMenu === true,
+    snippets: parseSnippets(c),
+    walkthroughs: parseWalkthroughs(
+      c,
+      commands.map((x) => x.command),
+    ),
+    aiTools,
+    completions,
+    embeds,
+    hovers,
+    links,
+    statusItems,
+    codeBlocks,
+    floatingViews,
+    agents,
+    commands,
+    keybindings,
+    menus,
+    sidebarTabs,
+    views,
+    customEditors,
+    documentTypes: parseDocumentTypes(c),
+    folderDocuments: parseFolderDocuments(c),
+    codeLanguages: parseCodeLanguages(c, BUILT_IN_BLOCKS),
+    fileIconThemes: parseFileIconThemes(c),
+    settings,
+    settingsPage: page && {
+      title: text(page.title, "contributes.settingsPage.title"),
+    },
+    suggestFor,
+  };
+}

@@ -1,0 +1,176 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Textus",
+  "version": "1.4.7-rc.4",
+  "identifier": "com.catvinci.textus",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "create": false,
+        "title": "Textus",
+        "width": 800,
+        "height": 600,
+        "minWidth": 480,
+        "minHeight": 320,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": ["'self'"],
+        "script-src": [
+          "'self'",
+          "'unsafe-inline'",
+          "'wasm-unsafe-eval'",
+          "data:",
+          "blob:",
+          "textus-plugin:",
+          "http://textus-plugin.localhost"
+        ],
+        "style-src": [
+          "'self'",
+          "'unsafe-inline'",
+          "data:",
+          "textus-plugin:",
+          "http://textus-plugin.localhost"
+        ],
+        "img-src": [
+          "'self'",
+          "data:",
+          "blob:",
+          "asset:",
+          "http://asset.localhost",
+          "textus-plugin:",
+          "http://textus-plugin.localhost",
+          "https:",
+          "http:"
+        ],
+        "font-src": [
+          "'self'",
+          "data:",
+          "asset:",
+          "http://asset.localhost",
+          "textus-plugin:",
+          "http://textus-plugin.localhost"
+        ],
+        "media-src": [
+          "'self'",
+          "data:",
+          "blob:",
+          "asset:",
+          "http://asset.localhost",
+          "textus-plugin:",
+          "http://textus-plugin.localhost"
+        ],
+        "connect-src": [
+          "'self'",
+          "ipc:",
+          "http://ipc.localhost",
+          "data:",
+          "blob:",
+          "asset:",
+          "http://asset.localhost",
+          "textus-plugin:",
+          "http://textus-plugin.localhost"
+        ],
+        "worker-src": [
+          "'self'",
+          "data:",
+          "blob:",
+          "textus-plugin:",
+          "http://textus-plugin.localhost"
+        ],
+        "frame-src": ["'self'", "https:"],
+        "object-src": ["'none'"],
+        "base-uri": ["'self'"]
+      },
+      "dangerousDisableAssetCspModification": ["script-src", "style-src"],
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["**"],
+          "deny": [
+            "$APPCONFIG/*.json",
+            "$HOME/.ssh/**",
+            "$HOME/.gnupg/**",
+            "$HOME/.aws/**",
+            "$HOME/.azure/**",
+            "$HOME/.kube/**",
+            "$HOME/.docker/**",
+            "$HOME/.config/gcloud/**",
+            "$HOME/.config/gh/**",
+            "$HOME/.netrc",
+            "$HOME/.npmrc",
+            "$HOME/.git-credentials",
+            "$HOME/Library/Keychains/**"
+          ],
+          "requireLiteralLeadingDot": false
+        }
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "copyright": "© 2026 CatVinci Studio",
+    "homepage": "https://github.com/CatVinci-Studio/Textus",
+    "license": "MIT",
+    "longDescription": "An Integrated Writing Environment, designed for professional writing.",
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown",
+        "description": "Markdown document",
+        "role": "Editor",
+        "mimeType": "text/markdown"
+      },
+      {
+        "ext": ["mdx"],
+        "name": "MDX",
+        "description": "MDX document",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/mdx"
+      }
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": true,
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "files": {
+        "Resources/doc.icns": "icons/doc.icns"
+      }
+    },
+    "iOS": {
+      "minimumSystemVersion": "16.4"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZGQjI1MzU1RkRGODBDNkIKUldSckRQajlWVk95Yjc1VDNTZktOOUlSYy85aDlLLzZnNUJQdG1VamwzTDRvby81eWZKOG1GTmsK",
+      "endpoints": [
+        "https://github.com/CatVinci-Studio/Textus/releases/latest/download/textus-latest.json"
+      ]
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["textus"]
+      }
+    }
+  }
+}

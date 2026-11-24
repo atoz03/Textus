@@ -1,0 +1,62 @@
+/* A note, section or block embedded read-only: its content beside a quiet
+   rule, like a quote; folded by the margin's caret, opened from its top
+   right. */
+.milkdown .note-embed {
+  display: block;
+  margin: 0;
+  padding: 4px 0 4px 12px;
+  border-left: 2px solid var(--doc-border);
+  user-select: text;
+  cursor: text;
+}
+
+.milkdown .note-embed .note-embed {
+  margin: 4px 0;
+}
+
+/* ProseMirror ends a paragraph whose last child is a widget with a hidden
+   image and break, a line of their own after a block; its rule for them is
+   !important. */
+.milkdown .note-embed ~ img.ProseMirror-separator,
+.milkdown .note-embed ~ br.ProseMirror-trailingBreak {
+  display: none !important;
+}
+
+/* Where it comes from, opened from its top right, on hover. */
+.note-embed-open {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0 0.35em;
+  border: none;
+  border-radius: var(--shape-xs);
+  background: var(--doc-bg);
+  color: var(--doc-muted);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+@media (any-hover: hover) {
+  .note-embed-open:hover {
+    color: var(--doc-accent-text);
+  }
+}
+
+/* Folded (block-fold.css): its line alone, no rule beside it. */
+.milkdown .note-embed[data-folded] {
+  padding-left: 0;
+  border-left-color: transparent;
+}
+
+/* The editor keeps white space as typed; rendered HTML's newlines between
+   blocks are no text. */
+.note-embed-body {
+  display: block;
+  white-space: normal;
+}
+
+/* An embed drawn as its name: too deep, a loop, or not found. */
+.note-embed-chip:not(.wikilink-missing) {
+  color: var(--doc-accent-text);
+}

@@ -1,0 +1,298 @@
+import { SearchField } from "../engine/controls/SearchField";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type FocusEventHandler,
+  type ReactNode,
+  type Ref,
+} from "react";
+import type { Strings } from "../i18n/strings";
+import { announce } from "../engine/controls/announce";
+import { scrollBehavior } from "../engine/motion/motion";
+import { useLatest } from "../utils/hooks/useLatest";
+import {
+  findEntryElement,
+  harvestPage,
+  type SearchEntry,
+  type SearchMatch,
+} from "./settings-search";
+import { isImeKeydown } from "../utils/ime";
+
+// The Settings search box and the results that stand in for the page while
+// it holds a query. A combobox: ↑/↓ move, Enter goes to the row, Esc clears.
+
+/** A page the search reads, rendered out of sight while a query is typed. */
+export interface SearchablePage {
+  key: string;
+  /** "Editor & Appearance" or "General › About Textus". */
+  name: string;
+  render: () => ReactNode;
+}
+
+/** Every searchable page, mounted hidden while the search is in use and
+ *  read into entries as it renders, again when a row arrives late. Drawn
+ *  again only when the pages change, not with each letter typed. */
+export const SettingsSearchIndex = memo(
+  SearchIndex,
+  (was, now) =>
+    was.onEntries === now.onEntries &&
+    was.pages.map((p) => p.key).join("\n") ===
+      now.pages.map((p) => p.key).join("\n"),
+);
+
+function SearchIndex({
+  pages,
+  onEntries,
+}: {
+  pages: SearchablePage[];
+  onEntries: (entries: SearchEntry[]) => void;
+}) {
+  const root = useRef<HTMLDivElement>(null);
+  const latest = useLatest({ pages, onEntries });
+  const keys = pages.map((p) => p.key).join("\n");
+
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      latest.current.onEntries(
+        latest.current.pages.flatMap((page) => {
+          const pageRoot = el.querySelector(
+            `[data-search-page="${CSS.escape(page.key)}"]`,
+          );
+          return pageRoot ? harvestPage(pageRoot, page.key) : [];
+        }),
+      );
+    };
+    read();
+    const observer = new MutationObserver(() => {
+      frame ||= requestAnimationFrame(read);
+    });
+    observer.observe(el, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [keys, latest]);
+
+  return (
+    <div ref={root} hidden className="settings-search-index">
+      {pages.map((page) => (
+        <div key={page.key} data-search-page={page.key}>
+          {page.render()}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function SettingsSearchField({
+  t,
+  inputRef,
+  query,
+  listId,
+  activeId,
+  onQueryChange,
+  onMove,
+  onPick,
+  onFocus,
+  onBlur,
+}: {
+  t: Strings;
+  inputRef: Ref<HTMLInputElement>;
+  onFocus?: FocusEventHandler<HTMLInputElement>;
+  onBlur?: FocusEventHandler<HTMLInputElement>;
+  query: string;
+  listId: string;
+  /** The option ↑/↓ have reached, announced as the box's active one. */
+  activeId: string | undefined;
+  onQueryChange: (query: string) => void;
+  /** An arrow key, for the highlight to move by. */
+  onMove: (key: string) => void;
+  onPick: () => void;
+}) {
+  const searching = query.trim() !== "";
+  return (
+    <div role="search">
+      <SearchField
+        className="settings-search"
+        ref={inputRef}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={searching}
+        aria-controls={searching ? listId : undefined}
+        aria-activedescendant={searching ? activeId : undefined}
+        aria-label={t.settingsSearchPlaceholder}
+        placeholder={t.settingsSearchPlaceholder}
+        // Its width comes from the column, not from a default size that
+        // would widen the categories beside the page.
+        size={1}
+        value={query}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onChange={(e) => onQueryChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (isImeKeydown(e)) return;
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            onMove(e.key);
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            onPick();
+          } else if (e.key === "Escape" && query) {
+            // Handled: the dialog closes on the next Escape, not this one.
+            e.preventDefault();
+            onQueryChange("");
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+interface SearchResultGroup {
+  key: string;
+  name: string;
+  matches: SearchMatch[];
+}
+
+export function SettingsSearchResults({
+  t,
+  groups,
+  listId,
+  optionId,
+  active,
+  onPick,
+}: {
+  t: Strings;
+  groups: SearchResultGroup[];
+  listId: string;
+  optionId: (index: number) => string;
+  active: number;
+  onPick: (match: SearchMatch) => void;
+}) {
+  const empty = groups.length === 0;
+  useEffect(() => {
+    if (empty) announce(t.settingsSearchNoMatches);
+  }, [empty, t.settingsSearchNoMatches]);
+  let index = 0;
+  return (
+    <>
+      <h1 className="settings-category-title">{t.settingsSearchResults}</h1>
+      {empty ? (
+        <div className="tx-list-note">{t.settingsSearchNoMatches}</div>
+      ) : (
+        <div id={listId} role="listbox" aria-label={t.settingsSearchResults}>
+          {groups.map((group) => (
+            <section
+              key={group.key}
+              className="settings-group"
+              role="group"
+              aria-labelledby={`${listId}-${group.key}`}
+            >
+              <h2
+                id={`${listId}-${group.key}`}
+                className="settings-group-title"
+              >
+                {group.name}
+              </h2>
+              <div className="settings-group-body">
+                {group.matches.map((match) => {
+                  const i = index++;
+                  const { entry } = match;
+                  const context = match.byHelp ? entry.help : entry.group;
+                  return (
+                    <div
+                      key={`${entry.kind}:${entry.group}:${entry.label}`}
+                      id={optionId(i)}
+                      role="option"
+                      aria-selected={i === active}
+                      className={`settings-row settings-search-result${i === active ? " is-active" : ""}`}
+                      // Keeps the keyboard in the box, so ↑/↓ and Enter go
+                      // on working after a click.
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => onPick(match)}
+                    >
+                      <div className="settings-row-text">
+                        <div className="settings-row-label">{entry.label}</div>
+                        {context && (
+                          <div className="settings-row-hint tx-clamp settings-search-context">
+                            {context}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+const FOCUSABLE =
+  ":is(input, select, textarea, button, a[href]):not(.info-tip-button):not(:disabled)";
+
+/** Takes the user to a found row: unfolds what hides it, scrolls it to the
+ *  middle, focuses it and tints it for a moment. */
+function revealEntry(el: HTMLElement) {
+  const details = el.closest("details");
+  if (details && !details.open) details.open = true;
+  el.scrollIntoView({ block: "center", behavior: scrollBehavior() });
+  const target = el.matches(FOCUSABLE)
+    ? el
+    : el.querySelector<HTMLElement>(FOCUSABLE);
+  if (target) target.focus({ preventScroll: true });
+  else {
+    el.tabIndex = -1;
+    el.focus({ preventScroll: true });
+  }
+  el.classList.remove("settings-search-hit");
+  void el.offsetWidth;
+  el.classList.add("settings-search-hit");
+  // Its own animation's end, not one bubbling up from a control inside.
+  const done = (e: AnimationEvent) => {
+    if (e.target !== el) return;
+    el.classList.remove("settings-search-hit");
+    el.removeEventListener("animationend", done);
+  };
+  el.addEventListener("animationend", done);
+}
+
+/** Once the page is up, goes to the search result's row: one that waits on
+ *  the backend (a status, a list) can come a few frames late. */
+export function useReveal(
+  content: React.RefObject<HTMLDivElement | null>,
+  jump: SearchEntry | null,
+  /** Called once it has gone there, or given up. */
+  done?: () => void,
+) {
+  const doneRef = useLatest(done);
+  useEffect(() => {
+    if (!jump) return;
+    let frame = 0;
+    let tries = 0;
+    const go = () => {
+      const el = content.current && findEntryElement(content.current, jump);
+      if (el) revealEntry(el);
+      else if (++tries < 30) {
+        frame = requestAnimationFrame(go);
+        return;
+      }
+      doneRef.current?.();
+    };
+    go();
+    return () => cancelAnimationFrame(frame);
+  }, [jump, content, doneRef]);
+}

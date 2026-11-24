@@ -1,0 +1,289 @@
+import { splitLayout, subscribeSplit } from "../engine/layout/store";
+import type { SplitLayout } from "../engine/layout/ops";
+import type { OpenDocumentAccess } from "../registry/open-documents";
+import type { PanelsState } from "./panels-state";
+import type { AiState } from "./ai-state";
+import type { FloatingChange, FloatingTouch } from "./views/floating-views";
+import type { SentBlock } from "../editor/markdown/doc-blocks";
+import { moveDocumentData } from "./store/document-data";
+import { keptForDocuments } from "../platform/ipc-files";
+import type { EditProposal } from "../ai/types";
+import type { ChangeSource } from "../editor/change-source";
+import type { AppState } from "../platform/ipc-schedule";
+import { FILE_CREATED_EVENT } from "../utils/events";
+
+/** Where something opens: a tab of its own, beside the front tab, or in its place. */
+export type Where = "tab" | "beside" | "current";
+
+/** A place in a file: where to open it, or what a list item, task or search
+ *  hit points at. */
+export interface PluginLocation {
+  path: string;
+  line?: number;
+  heading?: string;
+  block?: string;
+  text?: string;
+  page?: number;
+  fragment?: string;
+}
+
+/** A place in the document in front: its path left out. */
+export type DocumentPlace = Omit<PluginLocation, "path">;
+
+/** A tab, as a plugin is told of it. */
+export interface PluginTabInfo {
+  id: string;
+  title: string;
+  kind: "document" | "file" | "view" | "web";
+  path: string | null;
+  plugin?: string;
+  view?: string;
+}
+
+/**
+ * What the plugin broker reaches of the window, set by the window itself,
+ * so the broker needs no React tree and the window no plugin code.
+ */
+
+/** The document in front, as its editor reads it. */
+/** A place in a document's Markdown: line and column, from 0. */
+interface TextPoint {
+  line: number;
+  ch: number;
+}
+
+export interface ActiveDocumentAccess {
+  path: string | null;
+  text(): string;
+  /** Its blocks as Textus AI is shown them: what an edit names by `block`. */
+  blocks(): SentBlock[];
+  /** The selection: its plain text, and as Markdown (null when empty). */
+  selection(): { text: string; markdown: string | null };
+  /** Where the selection starts and the caret is, in its Markdown: lines
+   *  and columns from 0. */
+  cursor(): { anchor: TextPoint; head: TextPoint } | null;
+  /** Shows an edit as a proposal the user accepts or rejects, as Textus
+   *  AI's are; false when it can't be placed. */
+  propose(callId: string, proposal: EditProposal): boolean;
+  /** Makes the edits at once, as one undo step; false when one can't be
+   *  placed (then none is made). */
+  edit(edits: EditProposal[]): boolean;
+  /** Scrolls to a place and puts the caret there; false when not found. */
+  reveal(place: DocumentPlace): boolean;
+}
+
+/** A tab a plugin's view or custom editor is shown in. */
+export interface PluginTabView {
+  plugin: string;
+  /** A view's id (contributes.views) or a custom editor's viewType. */
+  view: string;
+  /** "page": one of Textus's own (app/tabs/page-tabs.tsx), `plugin`
+   *  "textus" and `view` the page. */
+  kind: "view" | "list" | "editor" | "web" | "page";
+  /** The file a custom editor shows; a web page's address. */
+  resource?: string;
+  title?: string;
+  /** What a view was opened with, until it keeps state of its own. */
+  state?: unknown;
+  /** The place a file editor was opened at, given to it as its target. */
+  target?: PluginLocation;
+}
+
+interface WindowAccess {
+  /** The folder the sidebar shows, if any. */
+  rootPath(): string | null;
+  /** Opens a file in a tab - `where` it says - at `place` if given;
+   *  `asDocument` opens it as Markdown even where a plugin's editor takes
+   *  its type. */
+  openFile(
+    path: string,
+    options: {
+      place?: DocumentPlace;
+      asDocument?: boolean;
+      where?: Where;
+      /** A look: the preview tab, as a click in the file tree. */
+      preview?: boolean;
+    },
+  ): void;
+  openUntitled(content: string, title?: string, where?: Where): void;
+  /** A guide to read: a clean draft, closed without asking; the same guide
+   *  already open comes to the front. */
+  openGuide(content: string, title: string): void;
+  openPluginTab(view: PluginTabView, where?: Where): void;
+  /** A document open with unsaved changes, by its path: files.process edits it
+   *  in the editor so nothing typed is lost. A saved one is changed on disk. */
+  documentAt(path: string): OpenDocumentAccess | null;
+  /** Saves the tab of `path`, if one is open; whether it was saved. */
+  saveAt(path: string): Promise<boolean>;
+  /** The window's tabs, and the one in front. */
+  tabs(): PluginTabInfo[];
+  activeTab(): PluginTabInfo | null;
+}
+
+let activeDocument: ActiveDocumentAccess | null = null;
+let windowAccess: WindowAccess | null = null;
+
+/** The active tab's editor sets itself; null when it goes. Only the
+ *  current owner can clear it. */
+export function setActiveDocument(
+  access: ActiveDocumentAccess | null,
+  owner?: ActiveDocumentAccess,
+): void {
+  if (access === null && owner && activeDocument !== owner) return;
+  activeDocument = access;
+}
+
+export function getActiveDocument(): ActiveDocumentAccess | null {
+  return activeDocument;
+}
+
+export function setWindowAccess(access: WindowAccess | null): void {
+  windowAccess = access;
+}
+
+export function getWindowAccess(): WindowAccess | null {
+  return windowAccess;
+}
+
+/** What plugins can be told of: the event's name and what it carries. */
+export interface PluginEventMap {
+  /** `trigger`: File › Save (or Save As) is "manual", autosave "auto". */
+  didSave: { path: string; text: string; trigger: "manual" | "auto" };
+  activeDocument: { path: string | null };
+  /** The document in front changed, once typing paused; `source` says who
+   *  changed it (the user's wins when several did meanwhile). */
+  documentChange: { path: string | null; source: ChangeSource };
+  /** The selection settled: its text, whether it is only the caret, and
+   *  the block its moving end is in. */
+  selection: { text: string; empty: boolean; block: string | null };
+  /** The first and last block of the document in front in sight. */
+  visible: { first: string | null; last: string | null };
+  /** The user copied or cut text from a document: the Markdown that went
+   *  on the clipboard. */
+  copy: { text: string; cut: boolean };
+  activeTab: PluginTabInfo | null;
+  layout: null;
+  root: { path: string | null };
+  conventions: { root: string };
+  fileCreate: { path: string };
+  fileChange: { path: string };
+  /** The margin notes of `path` changed. */
+  comments: { path: string };
+  /** An open document's file changed outside the window, and its tab took
+   *  the new text: what it had saved, and what is on disk now. */
+  fileChangeOnDisk: { path: string; before: string; after: string };
+  fileRename: { from: string; to: string };
+  fileDelete: { path: string };
+  /** The folder's index (metadata) changed for these documents. */
+  metadata: { paths: string[] };
+  theme: "light" | "dark";
+  /** The theme, the scheme or a plugin's colours changed. */
+  appearance: { theme: string; scheme: "light" | "dark" };
+  language: string;
+  /** One of the plugin's own settings changed (told to that plugin only). */
+  settings: { key: string; value: unknown };
+  /** A key the editor handed the plugin holding the keyboard, to it only. */
+  editorKey: string;
+  /** A Textus window came to the front, went behind, or the last closed. */
+  appState: AppState;
+  /** What Textus AI is doing and with which model, never what it says. */
+  aiState: AiState;
+  /** Which of the window's panels are open. */
+  panels: PanelsState;
+  /** The user typed (once typing pauses) or saved: that it happened, with
+   *  nothing of the document. */
+  activity: { kind: "typing" | "saved" };
+  /** One of the plugin's floating views opened, closed, folded or moved
+   *  (told to that plugin only). */
+  floating: FloatingChange & { plugin: string };
+  /** The user poked, petted or carried one of the plugin's floating views
+   *  (told to that plugin only). */
+  floatingTouch: { plugin: string; view: string; kind: FloatingTouch };
+}
+
+type Listener<K extends keyof PluginEventMap> = (
+  data: PluginEventMap[K],
+) => void;
+const listeners = new Map<keyof PluginEventMap, Set<Listener<never>>>();
+
+export function emitPluginEvent<K extends keyof PluginEventMap>(
+  name: K,
+  data: PluginEventMap[K],
+): void {
+  for (const listener of listeners.get(name) ?? [])
+    (listener as Listener<K>)(data);
+}
+
+/** A document or folder was renamed or moved: plugins hear it, and what they
+ *  and the editor (its undo history) keep for its documents moves with it. */
+/** What the window does around a file a plugin moves: its open tabs
+ *  saved first (a move may rewrite their links on disk), then following it. */
+interface PathMoveHooks {
+  before(from: string): Promise<void>;
+  after(from: string, to: string): void;
+}
+let moveHooks: PathMoveHooks | null = null;
+
+export function setPathMoveHooks(hooks: PathMoveHooks | null): void {
+  moveHooks = hooks;
+}
+
+/** Before a plugin moves `from`: the open tabs in it saved. */
+export async function beforePluginMove(from: string): Promise<void> {
+  await moveHooks?.before(from);
+}
+
+/** A plugin moved `from` to `to`: the open tabs follow, as for a move in
+ *  the tree (which tells plugins and the rest itself). */
+export async function pluginMovedPath(from: string, to: string): Promise<void> {
+  if (moveHooks) moveHooks.after(from, to);
+  else await notePathMoved(from, to);
+}
+
+export async function notePathMoved(from: string, to: string): Promise<void> {
+  emitPluginEvent("fileRename", { from, to });
+  void keptForDocuments.move(from, to).catch(() => {});
+  await moveDocumentData(from, to);
+}
+
+/** Whether any plugin listens to `name`: the window skips reading what
+ *  nobody will hear (the selection's text on every move). */
+export function pluginsListen(name: keyof PluginEventMap): boolean {
+  return (listeners.get(name)?.size ?? 0) > 0;
+}
+
+/** The broker listens; the returned function stops. */
+export function onPluginEvent<K extends keyof PluginEventMap>(
+  name: K,
+  listener: Listener<K>,
+): () => void {
+  let set = listeners.get(name);
+  if (!set) listeners.set(name, (set = new Set()));
+  set.add(listener as Listener<never>);
+  return () => set.delete(listener as Listener<never>);
+}
+
+// A file the app made for the user (a picture pasted): plugins hear of it
+// as of one they made.
+globalThis.window?.addEventListener(FILE_CREATED_EVENT, (event) =>
+  emitPluginEvent("fileCreate", {
+    path: (event as CustomEvent<string>).detail,
+  }),
+);
+
+/** The islands' arrangement: which tabs where, in front and in use; not
+ *  their sizes, which change on every move of a divider. */
+export function arrangementOf(layout: SplitLayout | null): string {
+  return JSON.stringify(layout, (key, value: unknown) =>
+    key === "sizes" ? undefined : value,
+  );
+}
+
+// The islands' arrangement changed: told to plugins as `layout`.
+let lastLayout = arrangementOf(splitLayout());
+subscribeSplit(() => {
+  const now = arrangementOf(splitLayout());
+  if (now === lastLayout) return;
+  lastLayout = now;
+  emitPluginEvent("layout", null);
+});

@@ -1,0 +1,327 @@
+/* The pending edits' bar, floating over the bottom of the document. */
+.review-bar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(
+    var(--document-corner-room) + var(--space-2) + var(--status-bar-height, 0px)
+  );
+  /* Never wider than its page: short of room it drops its name and the
+     view's words, then puts its buttons on a line of their own
+     (useFitSteps). */
+  max-width: calc(100% - 2 * var(--space-4));
+  box-sizing: border-box;
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 4px 4px 12px;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  /* Ink of the page's own theme: the primary button's colours, inverted
+     with the theme (a dark or imported theme gets a light bar). */
+  background: color-mix(in srgb, var(--ui-primary) 94%, transparent);
+  color: var(--ui-on-primary);
+  font-size: var(--text-secondary);
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: var(--shadow-bar);
+  transform: translateX(-50%);
+  --enter-x: -50%;
+  --enter-y: calc(var(--motion-distance-md) * 1.5);
+  --enter-scale: var(--scale-enter);
+  --exit-x: -50%;
+  --exit-y: var(--motion-distance-md);
+  --exit-scale: var(--scale-exit);
+  animation: motion-enter var(--dur-slow) var(--ease-spring-bouncy) both;
+}
+
+.review-bar[data-state="closing"] {
+  animation: motion-exit var(--dur-fast) var(--ease-in) both;
+}
+
+.review-bar-top,
+.review-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-bar-label {
+  opacity: 0.72;
+}
+
+.review-bar:is([data-fit="compact"], [data-fit="stacked"])
+  :is(.review-bar-label:not(.review-bar-working), .review-bar-view-name) {
+  display: none;
+}
+
+.review-bar:is([data-fit="compact"], [data-fit="stacked"])
+  .review-bar-view-waiting {
+  padding: 0;
+  width: 26px;
+}
+
+.review-bar[data-fit="stacked"] {
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--shape-l);
+}
+
+.review-bar[data-fit="stacked"] .review-bar-sep {
+  display: none;
+}
+
+/* "Writing the edit" and its dots, in the bar's own type and colour. */
+.review-bar-working .agent-thinking {
+  gap: 4px;
+  font-size: inherit;
+  color: inherit;
+}
+
+.review-bar-nav .tx-step-nav-pos {
+  opacity: 0.85;
+}
+
+.review-bar button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.review-bar-nav .tx-icon-button,
+.review-bar-chat {
+  display: inline-grid;
+  place-items: center;
+  width: var(--icon-button-s);
+  height: var(--icon-button-s);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  corner-shape: round;
+  background: none;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.review-bar-nav .tx-icon-button:hover,
+.review-bar-chat:hover {
+  background: color-mix(in srgb, var(--ui-on-primary) 14%, transparent);
+  opacity: 1;
+}
+
+/* How revisions show: an eye opening a short menu above the bar. */
+.review-bar-view {
+  position: relative;
+  display: inline-flex;
+}
+
+.review-bar-view-button {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  corner-shape: round;
+  background: none;
+  color: inherit;
+  opacity: 0.85;
+}
+
+/* The chosen view waits for room: the eye names what shows meanwhile. */
+.review-bar-view-waiting {
+  display: inline-flex;
+  gap: 4px;
+  width: auto;
+  padding: 0 8px 0 4px;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+}
+
+.review-bar-view-name {
+  font-size: var(--text-footnote);
+}
+
+.review-bar-view-button:hover,
+.review-bar-view-button[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--ui-on-primary) 14%, transparent);
+  opacity: 1;
+}
+
+.review-bar-phone .review-bar-view-button {
+  width: 38px;
+  height: 38px;
+  background: color-mix(in srgb, var(--ui-text) 6%, transparent);
+}
+
+.review-bar-sep {
+  width: 1px;
+  height: 18px;
+  background: color-mix(in srgb, var(--ui-on-primary) 20%, transparent);
+}
+
+.review-bar-button {
+  padding: 4px 12px;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  border: 1px solid color-mix(in srgb, var(--ui-on-primary) 26%, transparent);
+  background: transparent;
+  color: var(--ui-on-primary);
+  font-weight: 600;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+@media (any-hover: hover) {
+  .review-bar-button:hover {
+    background: color-mix(in srgb, var(--ui-on-primary) 12%, transparent);
+  }
+}
+
+/* The bar's main button: Accept, or the notes bar's. */
+.review-bar-accept,
+.review-bar-primary {
+  border-color: var(--ui-on-primary);
+  background: var(--ui-on-primary);
+  color: var(--ui-primary);
+}
+@media (any-hover: hover) {
+  .review-bar-accept:hover,
+  .review-bar-primary:hover {
+    border-color: var(--ui-on-primary);
+    background: var(--ui-on-primary);
+    color: var(--ui-primary);
+  }
+}
+
+/* While a rewrite streams in (Accept, Reject), and with nothing to step
+   to (‹ ›): there, faint and inert. */
+.review-bar :is(.review-bar-button, .review-bar-nav .tx-icon-button):disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+.review-bar :is(.review-bar-button, .review-bar-nav .tx-icon-button) {
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    opacity var(--dur-base) var(--ease-standard);
+}
+
+.review-bar button:focus-visible {
+  outline: 2px solid var(--ui-on-primary);
+  outline-offset: 2px;
+}
+
+/* A phone: the AI sheet's collapsed form - full width at the bottom,
+   big buttons, the conversation one tap away. */
+.review-bar-phone {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-width: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px 16px calc(12px + var(--safe-bottom));
+  border-radius: var(--shape-l) var(--shape-l) 0 0;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font-size: var(--text-body);
+  box-shadow: var(--shadow-sheet);
+  transform: none;
+  animation: motion-sheet-in var(--dur-sheet, var(--dur-slow))
+    var(--ease-spring) both;
+}
+
+.review-bar-phone .review-bar-label {
+  opacity: 1;
+  font-weight: 600;
+}
+
+.review-bar-phone .review-bar-nav {
+  margin-left: auto;
+}
+
+.review-bar-phone .review-bar-nav .tx-icon-button,
+.review-bar-phone .review-bar-chat {
+  width: 38px;
+  height: 38px;
+  background: color-mix(in srgb, var(--ui-text) 6%, transparent);
+}
+
+.review-bar-phone .review-bar-chat {
+  margin-left: 4px;
+}
+
+.review-bar-phone .review-bar-nav + .review-bar-chat {
+  margin-left: 8px;
+}
+
+.review-bar-phone
+  .review-bar-top
+  > .review-bar-chat:first-of-type:not(.review-bar-nav + *) {
+  margin-left: auto;
+}
+
+.review-bar-phone .review-bar-button {
+  flex: 1;
+  padding: 12px;
+  border-radius: var(--shape-pill);
+  corner-shape: round;
+  border-color: var(--ui-border);
+  color: var(--ui-text);
+  font-size: var(--text-control);
+}
+
+.review-bar-phone .review-bar-accept {
+  border-color: var(--ui-primary);
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
+}
+
+@media print {
+  .review-bar {
+    display: none;
+  }
+}
+
+/* A suggestion learned from revision choices, in the bar's place once a
+   review is done. Its sentence may wrap, so it is a box, not a pill; short
+   of room its buttons go under the sentence, from its start. */
+.learn-bar {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  width: max-content;
+  max-width: min(682px, calc(100% - 36px));
+  padding-block: 8px;
+  border-radius: var(--shape-l);
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.learn-bar .learn-bar-text {
+  flex: 1 1 16ch;
+}
+
+.learn-bar .review-bar-actions {
+  flex: none;
+}
+
+.learn-bar-never {
+  padding: 4px 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  opacity: 0.72;
+}
+
+.learn-bar-never:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.review-bar-phone.learn-bar {
+  width: auto;
+  max-width: none;
+}

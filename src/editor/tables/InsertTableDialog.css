@@ -1,0 +1,20 @@
+/* The dialog box is the app's (.close-prompt); only its layer and size are
+   its own. */
+.insert-table-overlay {
+  z-index: var(--z-modal);
+}
+
+.insert-table-dialog {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: calc(100vw - 36px);
+}
+
+.insert-table-title {
+  margin-bottom: 16px;
+  font-weight: 600;
+}
+
+.insert-table-buttons {
+  margin-top: 20px;
+}
