@@ -26,7 +26,7 @@ var unsupportedCommands = []string{
 	"list_project_files", "pick_text_files", "read_project_file", "ensure_global_agent_md", "load_agent_workspace",
 	"open_global_agent_dir", "import_agent_skill", "customize_builtin_skill", "reset_builtin_skill",
 	"set_skill_modes", "set_skill_off", "save_written_skill", "delete_global_skill",
-	"ai_complete", "ai_grammar_check", "suggest_next_message", "suggest_doc_title",
+	"ai_complete", "ai_grammar_check",
 	"codex_login", "codex_logout", "claude_login", "claude_logout",
 	"ai_records_export", "ai_records_import",
 	// windows of other kinds, web pages
