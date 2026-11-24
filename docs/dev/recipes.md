@@ -112,7 +112,7 @@ Example: the draft commands (`src-tauri/src/commands/drafts.rs`,
    `desktopActionCommand` (rejects on iOS); one that calls an AI service
    uses `aiCommand`. Callers import the area from `platform/ipc.ts`.
 5. **The browser stand-in**: under `npm run dev` and in the e2e flows the
-   dev shim (`src/dev/tauri-shim.ts`) answers a command it doesn't know
+   dev shim (`src/dev/host-shim.ts`) answers a command it doesn't know
    with `null`. If the frontend needs a real answer there, add a case to
    the shim; a flow can also answer it with `mockInvoke`.
 6. **Tests**: Rust unit tests beside the module (inline or in `tests.rs`),

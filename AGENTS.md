@@ -10,9 +10,12 @@ this file and they ever disagree, they win - and please tell us.
 
 Textus is an Integrated Writing Environment (IWE) for Markdown on macOS,
 Windows, Linux, iPhone and iPad,
-built with Tauri 2: a React + TypeScript frontend in `src/` (the editor is
-Milkdown/ProseMirror, source mode CodeMirror 6) and a Rust backend in
-`src-tauri/`.
+built with MyGo (github.com/egoist/mygo): a React + TypeScript frontend in
+`src/` (the editor is Milkdown/ProseMirror, source mode CodeMirror 6) and a
+Go backend in `backend/` (`main.go`, `mygo.json`). The desktop app moved off
+Tauri at 1.4.7; what the Go backend doesn't do yet is listed in
+[architecture.md](docs/dev/architecture.md#the-backend), and the Rust
+sources stay in the history (`git show 8da2d2f0:src-tauri/...`).
 
 | Need                                                   | Read                                                             |
 | ------------------------------------------------------ | ---------------------------------------------------------------- |
@@ -44,13 +47,14 @@ Milkdown/ProseMirror, source mode CodeMirror 6) and a Rust backend in
 - **Reproduce a bug before fixing it**, in the engine where it was seen,
   and add a test in the lowest layer that catches it; check that it fails
   without the fix ([testing.md](docs/dev/testing.md)).
-- **Check native behaviour in the built app** (`npm run tauri build -- --debug`):
+- **Check native behaviour in the built app** (`npx mygo build -debug`):
   the window bar, title bar and traffic lights, drag regions, full screen,
   the side panels' layout and motion, `Cmd` shortcuts that have a menu
   item, file dialogs, input methods. A browser can't show these. Say in
   the pull request what you ran.
-- **Generated files are never edited by hand**: `src/platform/bindings/`
-  (`npm run bindings`), `docs/dev/plugins/reference.md`
+- **Generated files are never edited by hand**:
+  `src/platform/native/host-client.ts` (`npm run bindings`, which is
+  `mygo generate`), `docs/dev/plugins/reference.md`
   (`node scripts/plugin-reference.mjs`). The checks fail while they are
   stale.
 - **Drag with pointer events** (`src/engine/drag/pointer-drag.ts`), never HTML drag
@@ -68,7 +72,7 @@ Milkdown/ProseMirror, source mode CodeMirror 6) and a Rust backend in
   much, and why it can't wait.
 - **Every user-visible string goes into all ten locale files** in
   `src/i18n/locales/` ([recipes.md](docs/dev/recipes.md#add-a-ui-string)).
-- **Shapes shared by Rust and TypeScript** carry a comment on both sides
+- **Shapes shared by Go and TypeScript** carry a comment on both sides
   naming the other; change both.
 - **Interface work** follows [design-language.md](docs/design/design-language.md):
   tokens only (no raw colour, radius or font size in a component), and its
@@ -90,7 +94,7 @@ Milkdown/ProseMirror, source mode CodeMirror 6) and a Rust backend in
   `AuthKey_*.p8`, signing keys.
 - Never run an installed Textus (`/usr/bin/textus`, `/Applications/Textus.app`)
   for testing, and never point a test build at a real user's data. Run
-  `npm run tauri dev` with throwaway data folders (on Linux set
+  `npx mygo dev` with throwaway data folders (on Linux set
   `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME` and `XDG_STATE_HOME`
   to a temporary directory; [storage.md](docs/dev/storage.md) lists the
   folders on each platform).

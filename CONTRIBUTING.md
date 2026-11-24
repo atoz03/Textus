@@ -23,17 +23,18 @@ Small fixes (a typo, a broken link) need no issue and no claim.
 
 ## Getting set up
 
-You need [Node.js](https://nodejs.org) 26+ (`.nvmrc`), [Rust](https://rustup.rs)
-via rustup (`src-tauri/rust-toolchain.toml` picks the toolchain), and the
-platform's build tools: Xcode Command Line Tools on macOS; the "Desktop
-development with C++" workload on Windows; on Debian/Ubuntu
-`sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf`.
+You need [Node.js](https://nodejs.org) 26+ (`.nvmrc`) and
+[Go](https://go.dev/dl/) (the version in `go.mod`). The desktop app is
+built with [MyGo](https://github.com/egoist/mygo), which needs no C
+compiler; on Linux it runs on GTK 3 and WebKitGTK 4.1
+(`sudo apt install libwebkit2gtk-4.1-0` on Debian/Ubuntu), on Windows on
+WebView2.
 
 ```sh
 git clone https://github.com/CatVinci-Studio/Textus.git
 cd Textus
 npm install
-npm run tauri dev   # the full app, frontend hot-reloaded
+npx mygo dev        # the full app, frontend hot-reloaded
 npm run dev         # the frontend alone at http://localhost:1420, backend stubbed
 ```
 
@@ -52,7 +53,7 @@ npm run check
 
 It covers types, lint, unit tests, formats and the code-shape rules. CI
 runs the same on every pull request, plus the whole e2e suite in Chromium
-and WebKit, and the Rust checks on Linux when `src-tauri/` changed; run the
+and WebKit; `npm run check:native` runs gofmt, `go vet` and the Go tests. Run the
 e2e flows near what you changed before pushing (`npx playwright test
 e2e/<file>`). The native builds on all platforms run before each release.
 [docs/dev/code-style.md](docs/dev/code-style.md) has the rules and

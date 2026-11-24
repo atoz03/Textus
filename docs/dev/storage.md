@@ -4,7 +4,7 @@ Everything the app remembers between launches, so that it can be backed up
 and inspected.
 
 The settings and histories are plain JSON files owned by Rust
-(`src-tauri/src/settings.rs`), not the webview's localStorage: that store
+(`backend/settings.go`), not the webview's localStorage: that store
 belongs to the webview engine, keyed by app identifier and kept in a
 different format on every platform (SQLite under WebKitGTK and WKWebView,
 LevelDB under WebView2), and every window would write the whole settings
@@ -101,7 +101,7 @@ earlier version is rewritten that way when the history loads.
 
 ### Chat history
 
-`src-tauri/src/settings/chat_history.rs`. A folder, so a saved turn
+`backend/chathistory.go`. A folder, so a saved turn
 rewrites only its own conversation and the index:
 
 | File                            | What                                                                                                                                                                                    |
@@ -177,17 +177,17 @@ in `src/storage/local.ts`.
   Adding a field never needs it: readers fill in defaults for missing fields.
 - Before a window loads, Rust injects the current settings and UI state as
   `window.__BOOT__` and applies the theme, so the first frame is already
-  right (`src-tauri/src/boot.js`, `src/storage/boot.ts`). For an imported
+  right (`backend/boot.js`, `src/storage/boot.ts`). For an imported
   theme that includes the app's chrome colours derived from it: working
   them out takes a CSS engine (`applyThemeChrome` in
   `src/engine/tokens/palette.ts`), so the frontend remembers the result in
   `ui-state.json` (`themeChrome`, per theme and appearance) and the boot
   script applies it when it matches.
 - Until its page first paints, a window shows the platform's own
-  background, so Rust also follows a pinned Light or Dark natively
-  (`theme_changed` in `settings/app.rs`): on macOS it sets the app's appearance
-  (`apply_app_theme`), on Linux and Windows it builds windows in the page's background
-  colour and recolours open ones (`window_background`).
+  background, so the backend also follows the theme natively
+  (`themeChanged` in `backend/settings.go`): it recolours open windows in
+  the page's background colour (`windowBackground` in `backend/boot.go`),
+  and new windows are built in it.
 
 ## Project folders: `.textus/`
 

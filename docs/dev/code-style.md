@@ -3,7 +3,7 @@
 The rules the code keeps, each with what checks it. `npm run check` runs
 every script named here; a rule marked _review_ has no script, and a
 maintainer looks for it in the pull request. Formatting is Prettier,
-rustfmt and `.editorconfig`, so it is never worth discussing.
+gofmt and `.editorconfig`, so it is never worth discussing.
 
 ## Where code goes
 
@@ -33,11 +33,9 @@ menus, motion) are in
 it along its jobs, never by line count: interpreting data apart from
 drawing it, state apart from the actions on it, a toolbar apart from what
 it controls. Moving types or unrelated hooks out only to get under the
-limit doesn't count. Tests, the dev shim (`src/dev/`), `live_eval/`, the
-translation tables, the icon table and the generated bindings are exempt.
-Rust tests sit inline in `#[cfg(test)] mod tests`, or in a `tests.rs`
-beside the module once they would push it past the limit; inline tests
-count towards the module's lines. The line limit has no exceptions. The
+limit doesn't count. Tests, the dev shim (`src/dev/`), the translation
+tables, the icon table and the bindings are exempt. Go tests sit in a
+`name_test.go` beside the file they test. The line limit has no exceptions. The
 hook list holds the custom hooks that were over 8 when the check began to
 count them; it only shrinks, and nothing is added to it.
 
@@ -55,7 +53,8 @@ listeners stay at the edge, in a hook or command that calls the pure part.
 
 **Data, not ifs.** What one AI provider does differently - a parameter, a
 name, a model list, a sign-in - is written in the catalog
-(`src-tauri/src/ai/catalog.rs`), `aicompat`'s `capabilities.rs` or a table
+(`PROVIDER_CATALOG` in `src/platform/bindings/ai.ts`), the model
+capabilities (`backend/ai/aicompat/model-capabilities.json`) or a table
 beside the code that reads it. More generally, a new `if` in shared code
 to serve one caller usually means the fix is at the wrong depth: deepen
 the mechanism instead.
@@ -85,13 +84,13 @@ versions: the commit history has those. Match the density of the file
 you are editing.
 
 **Cross-language contracts point at each other.** A shape that exists in
-both Rust and TypeScript (`ChatAttachment`, `AgentTurn`, `StreamEvent`,
+both Go and TypeScript (`ChatAttachment`, `AgentTurn`, `StreamEvent`,
 `ProviderCatalogEntry`, the chat-window protocol) carries a comment on
 each side naming the other.
 
 **Names.** Files `kebab-case.ts`, React components `PascalCase.tsx`, tests
-`name.test.ts` beside the file they test, e2e specs `name.spec.ts`, Rust
-modules `snake_case.rs`, scripts `verb-noun.mjs`. A test is named as the
+`name.test.ts` beside the file they test, e2e specs `name.spec.ts`, Go
+files `snake_case.go`, scripts `verb-noun.mjs`. A test is named as the
 claim it makes (`falls back to the default model`), not the function it
 calls.
 

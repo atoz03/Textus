@@ -124,7 +124,7 @@ With **Settings › Privacy › Recover unsaved content after a crash** on
 every dirty tab is snapshotted a few seconds after typing settles, or every
 30 seconds during a long burst (`src/document/draft-autosave.ts`). Rust
 keeps one snapshot per tab in the app's `drafts/` folder
-(`src-tauri/src/commands/drafts.rs`) and deletes it once the tab is saved
+(`backend/drafts.go`) and deletes it once the tab is saved
 or closed. What is still there at the next launch is unresolved: it opens
 as recovered tabs, unless the file on disk already holds the same text.
 

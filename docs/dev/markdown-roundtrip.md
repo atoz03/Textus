@@ -77,7 +77,7 @@ written back as CRLF.
 - **Wikilinks** (`markdown/wikilink.ts`). Obsidian's `[[Note]]`,
   `[[Note|text]]` and `[[Note#Heading]]` are one node holding their
   source, written back as they were. Ctrl/Cmd+click opens the note:
-  `resolve_note_link` in `src-tauri/src/commands/vault.rs` looks in the
+  `resolve_note_link` in `backend/links.go` looks in the
   document's folder, then by name across the vault, as for image embeds.
 - **Tags.** A `#` at the start of a line is escaped only where it would
   open a heading (up to six `#` and a space), so `#tag` stays `#tag`.

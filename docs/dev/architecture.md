@@ -9,11 +9,11 @@ menu item, a command), [ai-proposals.md](../design/ai-proposals.md) (an AI
 edit from stream to document) and [plugin-api.md](plugin-api.md) (the
 registries plugins add to).
 
-Textus is a Tauri 2 app. The frontend in `src/` is React and TypeScript;
-the document is edited in Milkdown (ProseMirror), and source mode in
-CodeMirror 6 (`src/editor/modes/SourceEditor.tsx`, `DocSourceEditor.tsx`).
-The backend in `src-tauri/` is Rust; the code that talks to AI providers is
-the crate `src-tauri/crates/aicompat/`, which has no Tauri in it.
+Textus is a MyGo app (github.com/egoist/mygo). The frontend in `src/` is
+React and TypeScript; the document is edited in Milkdown (ProseMirror), and
+source mode in CodeMirror 6 (`src/editor/modes/SourceEditor.tsx`,
+`DocSourceEditor.tsx`). The backend in `backend/` is Go
+([The backend](#the-backend)).
 
 ## Layers
 
@@ -62,7 +62,7 @@ What the lint enforces:
   `help/`) may import anything except the plugin system's insides.
 - **Nothing outside `plugins/` imports `plugins/host/`**: the sandbox, the
   runtimes and the broker can change without the app noticing.
-- **Only `src/platform/` and `src/dev/` import `@tauri-apps/*`**, so the
+- **Only `src/platform/` and `src/dev/` import `mygo-runtime`**, so the
   same code runs in the browser build, where each platform module has a
   stand-in (`TEXTUS_BROWSER`, `platform/runtime.ts`).
 
@@ -132,7 +132,7 @@ that is also the visual regression target.
 | `export/`        | **File › Export**: PDF and HTML from the rendered page, everything else through pandoc.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `theme/`         | How documents look and how themes are read: the built-in themes, the document CSS (`content-base.css`), importing a Typora theme, the theme gallery, window colours from a theme (`engine/tokens/palette.ts`), putting the appearance settings on the page.                                                                                                                                                                                                                                                                                            |
 | `settings/`      | The Settings window: `pages/` (General, Editor, AI, Extensions with the plugin pages, Create), `sections/` (the rows; `controls.tsx` holds `SettingRow` and `ToggleRow`), search over the pages (`settings-search.ts`).                                                                                                                                                                                                                                                                                                                                |
-| `files/`         | The folder and its notes: the file tree, file search, the outline panel, moving files with their links, and the links between notes - one resolver for every way a link is followed (`link-resolve.ts`, its cases shared with Rust `resolve_note_link`), writing a link the way the folder does.                                                                                                                                                                                                                                                       |
+| `files/`         | The folder and its notes: the file tree, file search, the outline panel, moving files with their links, and the links between notes - one resolver for every way a link is followed (`link-resolve.ts`, its cases shared with the backend's `resolve_note_link`, `backend/links.go`), writing a link the way the folder does.                                                                                                                                                                                                                          |
 | `clipboard/`     | What a copy tells plugins (`copied.ts`, `copied-plugin.ts`) and Copy Path. The clipboard history itself is the official Clipboard History plugin.                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `mobile/`        | Phone-only screens: the document list and menu, the outline sheet, the sidebar pushed in, whether the keyboard is up; `styles/` holds the phone layout's CSS ([ios-code-map.md](ios-code-map.md)).                                                                                                                                                                                                                                                                                                                                                     |
 | `onboarding/`    | The first-run language picker and the tutorial.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -146,7 +146,7 @@ that is also the visual regression target.
 | `lazy/`          | Loading on first use: `lazyModule`, `lazyComponent`, and warming what is likely soon.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `help/`          | The bundled Markdown and AI guides, one file per language.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `playground/`    | The browser playground: the editor alone in a web page.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `dev/`           | The browser shim that stands in for Tauri under `npm run dev` and in the e2e flows (`tauri-shim.ts`, with `plugin-shim-api.ts` for the plugin commands).                                                                                                                                                                                                                                                                                                                                                                                               |
+| `dev/`           | The browser shim that stands in for the backend under `npm run dev` and in the e2e flows (`host-shim.ts`, with `plugin-shim-api.ts` for the plugin commands).                                                                                                                                                                                                                                                                                                                                                                                          |
 
 Tests sit next to the file they test (`x.ts` and `x.test.ts`). End-to-end
 flows are in `e2e/`.
@@ -182,24 +182,32 @@ says how a call is added.
 
 ## Talking to the backend
 
-The frontend reaches Rust only through `src/platform/`:
+The frontend reaches the Go backend only through `src/platform/`:
 
 - **`ipc.ts`** exports one object per area (`fs`, `drafts`, `session`,
   `ai`, `exportDoc`, …); the areas are split over `ipc-app.ts`,
   `ipc-files.ts`, `ipc-plugins.ts`, `ipc-auth.ts`, `ipc-schedule.ts` and
   `ipc-ai-types.ts`, and `ipc.ts` re-exports them.
 - **`ipc-call.ts`** is how every command is called: `command(name, …args)`
-  for a command with generated types, `call(name, args)` for one without;
+  for a command with typed bindings, `call(name, args)` for one without;
   `aiCommand` / `aiCall` refuse while Textus AI is off; `desktopQueryCommand`
   answers a fallback and `desktopActionCommand` / `desktopAction` reject on
   iOS, where desktop-only commands aren't registered.
-- **`bindings/*.ts`** are generated from the Rust commands by tauri-specta
-  (`src-tauri/src/bindings/<group>.rs` lists the commands of each file).
-  Never edit them: `npm run bindings` writes them again, and `cargo test`
-  fails while they are out of date. A command whose arguments specta can't
-  describe (struct inputs, raw bytes, iOS-only) is called with `call`.
-- **`events.ts`** listens to events Tauri sends this window or webview, and
-  sends events to other windows.
+- **`bindings/*.ts`** name every command and its types. They were generated
+  from the Rust commands up to 1.4.7 and are kept by hand since: `go test
+./backend/` and `src/platform/commands.test.ts` fail while a command the
+  frontend calls has no handler.
+- **`native/`** is the bridge to MyGo: `core.ts` runs a command through the
+  one Go service, `Host` (`Host.Invoke`, or `Host.Stream` for a command
+  given a `Channel`), and rejects with the backend's error text;
+  `event.ts` hands out the events the backend sends, all in one MyGo event
+  (`textus:event`, `{event, payload}`); `window.ts` is this window (close,
+  minimize, full screen, its close request); `host-client.ts` is written by
+  `mygo generate` (`npm run bindings`) from `backend/host.go`. Outside a
+  MyGo window, `window.__TEXTUS_HOST__` stands in for the backend: the dev
+  shim (`src/dev/host-shim.ts`), the playground's, a test's.
+- **`events.ts`** listens to events sent to this window, and sends events
+  to other windows.
 
 [recipes.md](recipes.md#add-a-backend-command) walks through a new command
 end to end.
@@ -225,38 +233,37 @@ end to end.
   `legacy-variables.ts` reads pre-1.3 variable names under today's, and
   `engine/tokens/palette.ts` reads its colours to tint the window around it.
 
-## Backend (`src-tauri/`)
+## The backend
 
-| Path                                                     | Holds                                                                                                                                                                                                                                                                                                      |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.rs`, `src/lib.rs`, `src/invoke_handler.rs`     | The entry (`main` asks the CLI first) and app setup: plugins, state, `desktop_builder` and `desktop_setup`; `invoke_handler.rs` holds the one command list (shared commands, then `#[cfg(desktop)]` ones).                                                                                                 |
-| `src/commands/`                                          | Commands the frontend calls, one file per area: files and folders (`fs`, `folder`, `tree_ops`, `documents`), drafts, undo files, session, recents, export, the chat window, attachments, themes, the theme gallery, links, update, …                                                                       |
-| `src/bindings.rs`                                        | The generated `src/platform/bindings/*.ts` files and the test that keeps them current; `src/bindings/<group>.rs` lists which commands go into each.                                                                                                                                                        |
-| `src/settings/`, `settings.rs`, `boot.js`                | The settings, UI state and history files, the chat history folder, the boot script every webview gets ([storage.md](storage.md)).                                                                                                                                                                          |
-| `src/editor_windows.rs`, `window_frame.rs`               | Editor windows: built with each platform's chrome, numbered, opened and reopened (`build_main_window`, `open_new_window`, `reopen_without_windows`), and where a window opens.                                                                                                                             |
-| `src/launch.rs`                                          | Files the app is asked to open, held until a window is ready (`PendingOpenPaths`, `queue_paths_to_open`, `paths_from_argv`).                                                                                                                                                                               |
-| `src/menu.rs`, `src/menu/`                               | The native menu bar: ids and the id → `menu-<id>` event dispatch in `menu.rs`; `build.rs` builds it, `state.rs` keeps labels, checks and accelerators between rebuilds, `recent.rs` Open Recent, `dock.rs` the Dock menu, `plugins.rs` plugins' items.                                                     |
-| `src/tab_drag.rs`                                        | Tabs dragged between windows.                                                                                                                                                                                                                                                                              |
-| `src/background/`                                        | Background mode (desktop): whether closing the last window keeps the app running, and the tray icon ([lifecycle.md](lifecycle.md)).                                                                                                                                                                        |
-| `src/plugins/`                                           | The plugins' backend: installed plugins and their state, the catalog, installing, their files, storage and secrets, the `textus-plugin:` scheme, AI tools, the metadata index, scripts. Each permission is checked again here. Its commands are registered by `with_plugin_commands!` in `plugins/mod.rs`. |
-| `src/schedule/`                                          | Plugins' scheduled jobs and notifications, and the hidden `background-host` window that runs them with no window open (desktop).                                                                                                                                                                           |
-| `src/conventions/`                                       | What a folder says about how it is written, whichever app made it: link style, picture folder, line breaks, templates, daily, weekly and monthly notes (`folder_conventions`).                                                                                                                             |
-| `src/ai/`                                                | The AI client and agent loop, tools, providers (`catalog`), memory, the paper writer (`paper/`), built-in skills, writing conventions and grammar rules (`rules/`), project files, and the live evaluation (`live_eval/`, run on demand - [ai-eval.md](../design/ai-eval.md)).                             |
-| `src/auth/`                                              | Provider sign-in and keys.                                                                                                                                                                                                                                                                                 |
-| `src/mcp/`                                               | MCP servers: programs or web services that give Textus AI more tools (desktop).                                                                                                                                                                                                                            |
-| `src/cli/`                                               | The `textus` terminal command ([cli.md](cli.md)).                                                                                                                                                                                                                                                          |
-| `src/extract/`                                           | The Markdown of PDF, Word, PowerPoint, spreadsheet, EPUB, RTF and HTML files, shared by chat attachments and the AI's project tools.                                                                                                                                                                       |
-| `src/atomic.rs`, `net.rs`, `walk.rs`                     | Atomic file writes and private temp files; HTTP timeouts and size-capped reads; the one folder walk, shared by the sidebar's search and the AI's project tools.                                                                                                                                            |
-| `src/webview_memory.rs`                                  | Windows: a minimized window's WebView2 is asked to use less memory.                                                                                                                                                                                                                                        |
-| `src/distribution.rs`, `app_identity.rs`, `ext_stats.rs` | Which channel installed this build; the identity passed to `aicompat`; extension download counts.                                                                                                                                                                                                          |
-| `plugins/textus-files/`                                  | Not the plugin system: the iOS document-access Tauri plugin (Swift), compiled only on iOS.                                                                                                                                                                                                                 |
-| `crates/aicompat/`                                       | The providers' APIs, the agent loop and its events, with no Tauri in it (a test checks), so it can run outside the app; `src/auth/` and `src/ai/` wrap it.                                                                                                                                                 |
-| `capabilities/`, `tauri*.conf.json`                      | Tauri's permissions (`default.json` shared, `desktop.json`, `ios.json`) and configuration per platform.                                                                                                                                                                                                    |
+`main.go` starts the app (`backend.Run`); `mygo.json` is MyGo's
+configuration (name, identifier, version, icons, file associations, the
+frontend's dev server and build). The backend is one Go package,
+`backend/`:
 
-A shape that exists on both sides (`AgentTurn`, `ChatAttachment`,
-`StreamEvent`, ...) carries a comment on each side naming the other; change
-both together. Desktop-only code is `#[cfg(desktop)]`;
-[ios-code-map.md](ios-code-map.md) has the rules.
+| Path                                                                                     | Holds                                                                                                                                             |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.go`, `host.go`, `errors.go`                                                         | App setup and the `Host` service: the command registry (`command(name, fn)`), streams, and errors as `"<English> [code]"` (src/i18n/errors.json). |
+| `events.go`, `windows.go`, `session.go`                                                  | Events to windows (`emitTo`), editor windows (built, numbered, reopened, closed with the page's say), and the window session.                     |
+| `boot.go`, `boot.js`, `settings.go`, `store.go`, `stores.go`                             | The boot script every window gets, the settings, UI state and other files ([storage.md](storage.md)).                                             |
+| `drafts.go`, `docdata.go`, `chathistory.go`                                              | Drafts, a document's data beside it, the chat history folder.                                                                                     |
+| `files.go`, `pictures.go`, `tree.go`, `folder.go`, `walk.go`, `atomic.go`, `hidden_*.go` | Files and folders: reading, atomic writes, pictures beside a document, the sidebar's tree and its operations, the folder walk and watching.       |
+| `conventions.go`, `jsonc.go`, `links.go`                                                 | What a folder says about how it is written (`folder_conventions`), and links between documents.                                                   |
+| `menu.go`, `menu_bar.go`, `menu_dispatch.go`, `menu_recents.go`                          | The menu table (src/registry/menu/menu.json), the macOS bar, the id → `menu-<id>` dispatch, Open Recent.                                          |
+| `dialogs.go`, `shell.go`, `system.go`, `web.go`                                          | File dialogs, opening and revealing, system facts, clipboard, the window commands, and what is fetched from the web for the page.                 |
+| `export.go`, `themes.go`, `schemes.go`                                                   | Export through pandoc, imported themes, and the `asset:` / `font:` schemes that serve files to the page.                                          |
+| `stubs.go`                                                                               | The commands of what this build doesn't do yet: those that report answer that there is nothing, the rest fail.                                    |
+
+Not in the Go backend yet (`stubs.go`; the Rust sources are at
+`git show 8da2d2f0:src-tauri/...`): Textus AI (agent, providers, sign-in,
+memory, skills, the paper writer), plugins and what they reach (files,
+git, ssh, http, storage, MCP, agents), scheduled jobs and notifications,
+floating and chat windows, web page tabs, image hosts, the theme gallery,
+Word import, PDF export, the `textus` command, the default editor, the
+updater, the tray, and the iOS and Android builds. `src/platform/capabilities.ts`
+turns the frontend's side of them off.
+
+A shape that exists on both sides carries a comment on each side naming
+the other; change both together.
 
 ## Where things meet
 
@@ -272,34 +279,32 @@ the file itself, and keep the hooks' call order.
 
 ## The window's Content Security Policy
 
-Every window's page loads under the policy in `src-tauri/tauri.conf.json`
-(`app.security.csp`). It keeps the network out of everything a stylesheet
-or a document can make the page load - an imported or gallery theme, Custom
-CSS, a document's HTML - while the app's own traffic goes through Rust:
-the AI providers, the theme gallery, the plugin catalog and the updater all
-use `reqwest`, so the page itself never needs a remote origin. A desktop
-`npm run tauri dev` loads the Vite page directly, without Tauri's header,
-so the dev server sends the same policy (`vite.csp.ts`), and the e2e flows
-run under it too. `src/plugins/host/window-csp.test.ts` checks the rules
-below.
+Every window's page loads under the policy in `src/platform/window-csp.json`.
+It keeps the network out of everything a stylesheet or a document can make
+the page load - an imported or gallery theme, Custom CSS, a document's
+HTML - while the app's own traffic goes through the backend, so the page
+itself never needs a remote origin. MyGo sends no policy of its own: the
+built pages carry it in a `<meta>` (`windowCspMeta` in `vite.csp.ts`), and
+the dev server sends it as a header, which `mygo dev` and the e2e flows
+load. `src/plugins/host/window-csp.test.ts` checks the rules below.
 
-| Directive     | Allows                                                                                              | Because                                                                                                                                              |
-| ------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `default-src` | `'self'`                                                                                            | Anything not listed: the app's own files only.                                                                                                       |
-| `script-src`  | `'self'`, `'unsafe-inline'`, `'wasm-unsafe-eval'`, `data:`, `blob:`, the plugins' files             | A plugin's page is a `srcdoc` frame, which takes the window's policy on top of its own, so the window allows what `webviewCsp` (`frames.ts`) allows. |
-| `style-src`   | `'self'`, `'unsafe-inline'`, `data:`, the plugins' files                                            | Themes and Custom CSS are `<style>` elements, and the editor sets `style=""`. No remote `@import`.                                                   |
-| `img-src`     | `'self'`, `data:`, `blob:`, the asset protocol, the plugins' files, `https:`, `http:`               | A document shows its pictures from the web as written. A stylesheet's `url()` picture is one too; CSP can't tell the two apart.                      |
-| `font-src`    | `'self'`, `data:`, the asset protocol, the plugins' files                                           | KaTeX's fonts are bundled; an imported theme's fonts are inlined as `data:` (`theme-import.ts`). No web fonts.                                       |
-| `media-src`   | `'self'`, `data:`, `blob:`, the asset protocol, the plugins' files                                  | What a plugin's page may play.                                                                                                                       |
-| `connect-src` | `'self'`, `ipc:` / `http://ipc.localhost`, `data:`, `blob:`, the asset protocol, the plugins' files | Tauri's IPC, and reading a picture's bytes back for export and copy. No `fetch` to the web.                                                          |
-| `worker-src`  | `'self'`, `data:`, `blob:`, the plugins' files                                                      | A plugin's page may start a worker from its own files.                                                                                               |
-| `frame-src`   | `'self'`, `https:`                                                                                  | The framed web page on Linux and phones, and a plugin page's frames of the hosts the user granted (`webviewCsp` narrows them per plugin).            |
-| `object-src`  | `'none'`                                                                                            | No plugins of the old kind.                                                                                                                          |
-| `base-uri`    | `'self'`                                                                                            | A `<base>` can't move where relative URLs go.                                                                                                        |
+| Directive     | Allows                                                                                  | Because                                                                                                                                              |
+| ------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default-src` | `'self'`                                                                                | Anything not listed: the app's own files only.                                                                                                       |
+| `script-src`  | `'self'`, `'unsafe-inline'`, `'wasm-unsafe-eval'`, `data:`, `blob:`, the plugins' files | A plugin's page is a `srcdoc` frame, which takes the window's policy on top of its own, so the window allows what `webviewCsp` (`frames.ts`) allows. |
+| `style-src`   | `'self'`, `'unsafe-inline'`, `data:`, the plugins' files                                | Themes and Custom CSS are `<style>` elements, and the editor sets `style=""`. No remote `@import`.                                                   |
+| `img-src`     | `'self'`, `data:`, `blob:`, the asset protocol, the plugins' files, `https:`, `http:`   | A document shows its pictures from the web as written. A stylesheet's `url()` picture is one too; CSP can't tell the two apart.                      |
+| `font-src`    | `'self'`, `data:`, the asset protocol, the plugins' files                               | KaTeX's fonts are bundled; an imported theme's fonts are inlined as `data:` (`theme-import.ts`). No web fonts.                                       |
+| `media-src`   | `'self'`, `data:`, `blob:`, the asset protocol, the plugins' files                      | What a plugin's page may play.                                                                                                                       |
+| `connect-src` | `'self'`, `data:`, `blob:`, the asset protocol, the plugins' files                      | Reading a picture's bytes back for export and copy. No `fetch` to the web (MyGo's calls go by message, not by request).                              |
+| `worker-src`  | `'self'`, `data:`, `blob:`, the plugins' files                                          | A plugin's page may start a worker from its own files.                                                                                               |
+| `frame-src`   | `'self'`, `https:`                                                                      | The framed web page on Linux and phones, and a plugin page's frames of the hosts the user granted (`webviewCsp` narrows them per plugin).            |
+| `object-src`  | `'none'`                                                                                | No plugins of the old kind.                                                                                                                          |
+| `base-uri`    | `'self'`                                                                                | A `<base>` can't move where relative URLs go.                                                                                                        |
 
-Each scheme appears twice where it is served: `asset:` and
-`textus-plugin:` on macOS, Linux and iOS, `http://asset.localhost` and
-`http://textus-plugin.localhost` on Windows. `dangerousDisableAssetCspModification`
-stops Tauri adding hashes of the pages' inline `<style>` and `<script>` to
-the policy: with a hash in a directive the browser ignores
+Each scheme appears in both of its forms: `asset:` on macOS and Linux,
+`http://asset.localhost` on Windows (WebView2), and the same for
+`textus-plugin:`, which the plugins will use (not served by the Go backend
+yet). The policy holds no
+hashes or nonces: with one in a directive the browser ignores
 `'unsafe-inline'`, and themes and plugin frames would stop working.

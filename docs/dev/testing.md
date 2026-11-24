@@ -58,7 +58,7 @@ check that it fails without the fix.
 
 `src/app/key-table.test.ts` holds one table of every shortcut, with who
 answers it on each platform: the native menu (read from
-`src-tauri/src/menu.rs` and `menu/build.rs`), the window's handler
+`backend/menu_dispatch.go` and `backend/menu_bar.go`), the window's handler
 (`useGlobalShortcuts.ts`) or the editor (asked key by key). A new shortcut
 goes into that table; the test fails if two features claim one key, or if
 a key the macOS menu takes reaches nothing.
@@ -126,7 +126,7 @@ If another copy of the suite may be running (another worktree), set
 ## Writing an e2e flow
 
 The flows run the real frontend from the Vite dev server, with the dev
-shim (`src/dev/tauri-shim.ts`) answering every backend command and event.
+shim (`src/dev/host-shim.ts`) answering every backend command and event.
 A flow imports its helpers from `e2e/helpers.ts`, never from `src/` (the
 e2e project can't import it; `blockIds` loads a module from the dev server
 instead).
@@ -172,7 +172,7 @@ bumped on purpose, with the app change that needs it.
 ### A command the shim doesn't know
 
 The shim answers a command it doesn't know with `null`. Where the
-frontend needs more, add a case to `src/dev/tauri-shim.ts` (the plugin
+frontend needs more, add a case to `src/dev/host-shim.ts` (the plugin
 file and index commands are in `src/dev/plugin-shim-api.ts`), or answer it
 in the flow with `mockInvoke`. The shim drops an event no listener has asked for
 yet, so wait for the listener before you `emit` (as `openPath` does).
@@ -451,7 +451,7 @@ starters send nothing; templates name the menu items as the menus do).
 ### 5. Visual (Playwright, `e2e/`)
 
 The real frontend in Chromium against the Vite dev server, with the dev
-Tauri shim (`dev/tauri-shim.ts`) standing in for the backend. Each test
+host shim (`dev/host-shim.ts`) standing in for the backend. Each test
 drives a flow and compares a screenshot: first run, the sidebar lesson, a
 document in light and dark (including the table-header regression, #15),
 split view, zen mode, the AI panel, an agent reply with a reasoned edit, the
