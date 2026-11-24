@@ -237,8 +237,8 @@ end to end.
 
 `main.go` starts the app (`backend.Run`); `mygo.json` is MyGo's
 configuration (name, identifier, version, icons, file associations, the
-frontend's dev server and build). The backend is one Go package,
-`backend/`:
+frontend's dev server and build). The backend is the Go package
+`backend/`, with the packages `backend/ai` and `backend/extract` beside it:
 
 | Path                                                                                     | Holds                                                                                                                                             |
 | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -251,16 +251,26 @@ frontend's dev server and build). The backend is one Go package,
 | `menu.go`, `menu_bar.go`, `menu_dispatch.go`, `menu_recents.go`                          | The menu table (src/registry/menu/menu.json), the macOS bar, the id → `menu-<id>` dispatch, Open Recent.                                          |
 | `dialogs.go`, `shell.go`, `system.go`, `web.go`                                          | File dialogs, opening and revealing, system facts, clipboard, the window commands, and what is fetched from the web for the page.                 |
 | `export.go`, `themes.go`, `schemes.go`                                                   | Export through pandoc, imported themes, and the `asset:` / `font:` schemes that serve files to the page.                                          |
+| `export_pdf.go`, `pdfread.go`, `pdffile.go`, `pdfnumbers.go`                             | PDF export: the page's document printed by the webview (MyGo's PrintToPDF), with page numbers stamped onto the file.                              |
+| `updater.go`, `net.go`                                                                   | The update check and install (`textus-latest.json`, never `latest.json`), and the proxy the app's requests go through.                            |
+| `keys.go`, `imagehost.go`                                                                | The services' keys (`provider_keys.json`, owner-only), and pasted pictures uploaded to an image host.                                             |
+| `themegallery.go`, `extstats.go`, `word.go`                                              | The theme gallery, the extensions' download counts, and Word (.docx) import.                                                                      |
+| `ai_endpoints.go`, `ai_state.go`, `ai_suggest.go`                                        | Textus AI: custom endpoints, model lists, kept proposals, revision choices, completions, titles, next messages.                                   |
+| `ai/`                                                                                    | Package `ai`: the provider catalog, how each server takes a key, routes, one request in each dialect, completions.                                |
+| `extract/`                                                                               | Package `extract`: a .docx read as Markdown, for import and for the AI.                                                                           |
 | `stubs.go`                                                                               | The commands of what this build doesn't do yet: those that report answer that there is nothing, the rest fail.                                    |
 
 Not in the Go backend yet (`stubs.go`; the Rust sources are at
-`git show 8da2d2f0:src-tauri/...`): Textus AI (agent, providers, sign-in,
-memory, skills, the paper writer), plugins and what they reach (files,
-git, ssh, http, storage, MCP, agents), scheduled jobs and notifications,
-floating and chat windows, web page tabs, image hosts, the theme gallery,
-Word import, PDF export, the `textus` command, the default editor, the
-updater, the tray, and the iOS and Android builds. `src/platform/capabilities.ts`
-turns the frontend's side of them off.
+`git show 8da2d2f0:src-tauri/...`): Textus AI's agent and what hangs off
+it (the chat turn and its tools, attachments, generated images, memory,
+skills and the agent workspace, the paper writer, file-change records),
+the grammar check and the rules engine, ChatGPT and Claude sign-in (those
+providers are reached by API key), plugins and what they reach (files,
+git, ssh, http, storage, MCP, agents) with the scheduled jobs,
+notifications and floating windows that are theirs, chat windows, web
+page tabs, the `textus` command, the default editor, the tray, and the
+iOS and Android builds. `src/platform/capabilities.ts` turns the
+frontend's side of them off.
 
 A shape that exists on both sides carries a comment on each side naming
 the other; change both together.

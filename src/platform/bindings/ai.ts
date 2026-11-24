@@ -41,10 +41,10 @@ export const TEXTUS_AI_OFF = "textus-ai-off" as const;
 /**  One search service. The ids are what Settings stores. */
 export type Backend = "deepseek" | "zhipu" | "kimi" | "bocha" | "tavily" | "brave" | "exa" | "searxng";
 
-/**  What the frontend knows about the cursor beyond the raw text around it. */
+/**  What the frontend knows about the cursor beyond the raw text around it: backend/ai/completion.go CompletionHints. */
 export type CompletionHints = CompletionHints_Serialize | CompletionHints_Deserialize;
 
-/**  What the frontend knows about the cursor beyond the raw text around it. */
+/**  What the frontend knows about the cursor beyond the raw text around it: backend/ai/completion.go CompletionHints. */
 export type CompletionHints_Deserialize = {
 	title?: string | null,
 	section?: string[],
@@ -67,7 +67,7 @@ export type CompletionHints_Deserialize = {
 	uiLanguage?: string | null,
 };
 
-/**  What the frontend knows about the cursor beyond the raw text around it. */
+/**  What the frontend knows about the cursor beyond the raw text around it: backend/ai/completion.go CompletionHints. */
 export type CompletionHints_Serialize = {
 	title: string | null,
 	section: string[],
@@ -92,13 +92,13 @@ export type CompletionHints_Serialize = {
 
 /**
  *  ai_complete's inputs, the keys of `ai.complete`'s invoke, generated into
- *  the bindings to type that call.
+ *  the bindings to type that call: backend/ai_suggest.go completionRequest.
  */
 export type CompletionRequest = CompletionRequest_Serialize | CompletionRequest_Deserialize;
 
 /**
  *  ai_complete's inputs, the keys of `ai.complete`'s invoke, generated into
- *  the bindings to type that call.
+ *  the bindings to type that call: backend/ai_suggest.go completionRequest.
  */
 export type CompletionRequest_Deserialize = {
 	provider: string,
@@ -113,7 +113,7 @@ export type CompletionRequest_Deserialize = {
 
 /**
  *  ai_complete's inputs, the keys of `ai.complete`'s invoke, generated into
- *  the bindings to type that call.
+ *  the bindings to type that call: backend/ai_suggest.go completionRequest.
  */
 export type CompletionRequest_Serialize = {
 	provider: string,
@@ -126,7 +126,7 @@ export type CompletionRequest_Serialize = {
 	workspaceRoot: string | null,
 };
 
-/**  One exchange, as the pass reads it. */
+/**  One exchange, as the pass reads it: backend/ai/suggest.go Exchange. */
 export type Exchange = {
 	/**
 	 *  The user's messages in the conversation so far, oldest first; the

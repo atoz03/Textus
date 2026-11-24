@@ -2,12 +2,25 @@ package backend
 
 import "encoding/json/jsontext"
 
-// The commands of the subsystems this build does not have yet: the AI
-// (agent, providers, sign-in, memory, skills, papers), plugins and what
-// they reach (files, git, ssh, http, stores, MCP, agents), scheduled jobs
-// and notifications, floating and chat windows, web pages, image hosts,
-// the theme gallery, Word import, the command-line tool, the default
-// editor and the updater.
+// The commands of the subsystems this build does not have yet, and why
+// each waits:
+//
+//   - Textus AI's agent and what hangs off it: the chat turn and its tools,
+//     attachments, generated images, memory, skills and the agent
+//     workspace (agent.md, the skill layers), project files, the paper
+//     writer, and the records of the files a turn changed. They come
+//     together with the agent, which they serve.
+//   - The grammar check: it runs the rules engine beside the model, as the
+//     inline completion's last pass does (ai_complete works without it).
+//   - ChatGPT and Claude sign-in: those providers are reached by API key.
+//   - Plugins and what they reach (files, git, ssh, http, stores, MCP,
+//     agents). Scheduled jobs, notifications and floating windows are
+//     plugin features: their grants are the plugins', so they come with
+//     plugins.
+//   - Chat windows, which hold the agent's conversation; web page tabs.
+//   - The command-line tool, whose install needs the CLI mode itself, and
+//     the default editor.
+//   - The iOS build's own files.
 //
 // A command whose answer only reports what is there answers that there is
 // nothing (no plugin, no key, no job), so the pages that ask as they open
@@ -16,7 +29,7 @@ import "encoding/json/jsontext"
 
 // unsupportedCommands fail with errUnsupported.
 var unsupportedCommands = []string{
-	// AI
+	// Textus AI's agent, sign-in and the grammar check
 	"ai_agent_message", "ai_steer", "pick_attachment_files", "attach_pasted",
 	"ai_generated_image", "ai_retry_generated_image", "ai_generated_image_prompt", "ai_redraw_generated_image",
 	"memory_pass", "ai_offer_skill", "library_use", "memory_undo", "memory_move", "memory_restore",
@@ -28,11 +41,11 @@ var unsupportedCommands = []string{
 	"set_skill_modes", "set_skill_off", "save_written_skill", "delete_global_skill",
 	"ai_grammar_check",
 	"codex_login", "codex_logout", "claude_login", "claude_logout",
-	// windows of other kinds, web pages
+	// chat and floating windows, web pages
 	"start_floating_tab_drag", "open_floating_window", "resize_floating_window", "floating_window_position",
 	"show_floating_owner", "detach_chat_window",
 	"web_page_show", "web_page_navigate", "web_page_reload",
-	// the command-line tool, the default editor, updates
+	// the command-line tool, the default editor
 	"install_cli_command", "set_default_editor",
 	// plugins and what they reach
 	"plugin_fs_list", "plugin_fs_documents", "plugin_fs_search", "plugin_fs_write", "plugin_fs_rename",
