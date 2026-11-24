@@ -10,8 +10,8 @@ import (
 )
 
 // The short writing requests: one call to the writing model, no tools and
-// no stream, for a title for an untitled document and the messages the
-// writer will probably send next.
+// no stream, for the inline completion at the cursor, a title for an
+// untitled document and the messages the writer will probably send next.
 
 // writingTimeout bounds one whole request, so a hung proxy or server can't
 // hold it forever.
@@ -36,7 +36,40 @@ func (a *App) complete(ctx context.Context, provider, model, instructions, text 
 	return answer, nil
 }
 
+// completionRequest is ai_complete's input (src/platform/bindings/ai.ts
+// CompletionRequest). Its docPath and workspaceRoot pick the project whose
+// style profile and library a completion follows, which this build doesn't
+// read yet.
+type completionRequest struct {
+	Provider string              `json:"provider"`
+	Before   string              `json:"before"`
+	After    string              `json:"after"`
+	Style    *string             `json:"style"`
+	Model    *string             `json:"model"`
+	Hints    *ai.CompletionHints `json:"hints"`
+}
+
 func init() {
+	// The words to insert at the cursor, cleaned and joined to what was
+	// typed; candidates come separated by ai.CandidateSeparator lines.
+	command("ai_complete", func(c *Call, a struct {
+		Request completionRequest `json:"request"`
+	}) (string, error) {
+		if err := c.app.ensureAIOn(); err != nil {
+			return "", err
+		}
+		r := a.Request
+		var hints ai.CompletionHints
+		if r.Hints != nil {
+			hints = *r.Hints
+		}
+		instructions, text := ai.CompletionPrompt(r.Before, r.After, hints, deref(r.Style))
+		raw, err := c.app.complete(c.ctx, r.Provider, deref(r.Model), instructions, text)
+		if err != nil {
+			return "", err
+		}
+		return ai.FinishSuggestion(r.Before, r.After, raw, hints), nil
+	})
 	// A short title for a document from its first few thousand characters,
 	// or null; the frontend falls back to the first line.
 	command("suggest_doc_title", func(c *Call, a struct {

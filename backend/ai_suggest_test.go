@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"textus/backend/ai"
@@ -60,5 +62,27 @@ func TestTheWritersOwnEndpointNamesTheDocument(t *testing.T) {
 	// A provider not set up says so.
 	if _, err := run(a, "suggest_doc_title", `{"provider":"anthropic","model":null,"excerpt":"text"}`); err == nil || err.Error() != ai.NotConfigured {
 		t.Error(err)
+	}
+}
+
+func TestACompletionIsJoinedToWhatWasTyped(t *testing.T) {
+	var asked map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.UnmarshalRead(r.Body, &asked)
+		w.Write([]byte(`{"choices":[{"message":{"content":"document grew longer. Then it stopped."}}]}`))
+	}))
+	defer server.Close()
+	a := &App{dirs: Dirs{Config: t.TempDir()}, defaults: map[string]bool{"textusAi": true}}
+	a.changeEndpoints(func([]ai.CustomEndpoint) []ai.CustomEndpoint {
+		return []ai.CustomEndpoint{{ID: "custom", BaseURL: server.URL + "/v1", Model: "m"}}
+	})
+	got, err := run(a, "ai_complete", `{"request":{"provider":"custom","before":"a full copy of the docu","after":"","style":null,"model":null,
+		"hints":{"block":"paragraph","length":"short","uiLanguage":"en"},"docPath":null,"workspaceRoot":null}}`)
+	if err != nil || got != `"ment grew longer."` {
+		t.Error(got, err)
+	}
+	messages, _ := asked["messages"].([]any)
+	if len(messages) != 2 || !strings.Contains(fmt.Sprint(messages[1]), "<word-at-cursor>docu</word-at-cursor>") {
+		t.Errorf("%v", asked)
 	}
 }
