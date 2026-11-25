@@ -24,18 +24,13 @@
                 "type": "string"
               }
             },
-            "required": [
-              "block",
-              "comment"
-            ],
+            "required": ["block", "comment"],
             "type": "object"
           },
           "type": "array"
         }
       },
-      "required": [
-        "comments"
-      ],
+      "required": ["comments"],
       "type": "object"
     }
   },
@@ -84,11 +79,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "path",
-        "old",
-        "new"
-      ],
+      "required": ["path", "old", "new"],
       "type": "object"
     }
   },
@@ -130,9 +121,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "text"
-      ],
+      "required": ["text"],
       "type": "object"
     }
   },
@@ -170,17 +159,13 @@
                 "type": "string"
               }
             },
-            "required": [
-              "action"
-            ],
+            "required": ["action"],
             "type": "object"
           },
           "type": "array"
         }
       },
-      "required": [
-        "edits"
-      ],
+      "required": ["edits"],
       "type": "object"
     }
   },
@@ -221,9 +206,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": ["path"],
       "type": "object"
     }
   },
@@ -244,9 +227,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": ["path"],
       "type": "object"
     }
   },
@@ -259,9 +240,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "query"
-      ],
+      "required": ["query"],
       "type": "object"
     }
   },
@@ -274,9 +253,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "query"
-      ],
+      "required": ["query"],
       "type": "object"
     }
   },
@@ -289,9 +266,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "query"
-      ],
+      "required": ["query"],
       "type": "object"
     }
   },
@@ -304,9 +279,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "query"
-      ],
+      "required": ["query"],
       "type": "object"
     }
   },
@@ -319,9 +292,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "type": "object"
     }
   },
@@ -338,10 +309,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "path",
-        "content"
-      ],
+      "required": ["path", "content"],
       "type": "object"
     }
   }
