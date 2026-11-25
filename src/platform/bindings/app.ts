@@ -686,6 +686,7 @@ export type WebAssetKind =
 /**  A picture: a data URL. */
 "image";
 
+/**  Go: windowBounds in backend/tab_drag.go. */
 export type WindowBounds = {
 	label: string,
 	x: number,

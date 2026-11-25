@@ -147,8 +147,9 @@ function useWindowDragMerge(
   }, [latest, tabsRef]);
 }
 
-/** What Rust sends while a floating tab is over this window: over its tab
- *  row (`row`), or over its documents, where it would open split. */
+/** What the backend sends while a floating tab is over this window: over
+ *  its tab row (`row`), or over its documents, where it would open split.
+ *  Go: dragHover in backend/tab_drag.go. */
 interface DragHover extends DragHoverPreview {
   y: number;
   row: boolean;
@@ -235,6 +236,7 @@ export function useTabDragMerge(opts: {
   // one let go over the documents opens split there, as a tab dragged
   // within the window does.
   useEffect(() => {
+    // Go: dropTab in backend/tab_drag.go, the tab's fields and the drop's.
     const unlisten = listenToThisWindow<
       DetachedTabDoc & { x: number; y: number; row: boolean }
     >("receive-detached-tab", (event) => {

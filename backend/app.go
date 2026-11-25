@@ -68,6 +68,8 @@ type App struct {
 	sched    scheduler
 	notes    notifications
 	appState appStateWatch
+	floats   floatingWindows
+	drags    tabDrags
 }
 
 func newApp(shared Shared, dirs Dirs) *App {

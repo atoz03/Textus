@@ -19,9 +19,7 @@ import "encoding/json/jsontext"
 
 // unsupportedCommands fail with errUnsupported.
 var unsupportedCommands = []string{
-	// floating windows, web pages
-	"start_floating_tab_drag", "open_floating_window", "resize_floating_window", "floating_window_position",
-	"show_floating_owner",
+	// web pages
 	"web_page_show", "web_page_navigate", "web_page_reload",
 	// the command-line tool, the default editor
 	"install_cli_command", "set_default_editor",
@@ -34,16 +32,12 @@ var unsupportedCommands = []string{
 // build's answer: nothing.
 var emptyAnswers = map[string]string{
 	// nothing to report
-	"floating_desktop_supported": `false`,
-	"list_window_bounds":         `[]`,
-	"start_window_drag_tracking": `false`,
-	"cli_command_status":         `"missing"`,
+	"cli_command_status": `"missing"`,
 	// told, and nothing to do with it
-	"cli_listening":         `null`,
-	"cli_respond":           `null`,
-	"close_floating_window": `null`,
-	"web_page_hide":         `null`,
-	"web_page_close":        `null`,
+	"cli_listening":  `null`,
+	"cli_respond":    `null`,
+	"web_page_hide":  `null`,
+	"web_page_close": `null`,
 }
 
 func init() {

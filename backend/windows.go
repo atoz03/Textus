@@ -300,6 +300,13 @@ func (a *App) windowGone(w *appWindow) {
 	a.mu.Unlock()
 	a.forgetWindowSession(w.label)
 	a.forgetChatWindow(w.label)
+	switch kindOf(w.label) {
+	case kindEditor:
+		// Its floating views go with it: it runs their plugins.
+		a.closeFloatingOwnedBy(w.label)
+	case kindFloating:
+		a.forgetFloatingWindow(w.label)
+	}
 	a.appStateChanged()
 	if others == 0 && a.quitting.Load() {
 		a.exit()

@@ -3,6 +3,7 @@ import {
   isDesktop,
   isIOSPlatform,
   isMacPlatform,
+  isWindowsPlatform,
 } from "./os";
 
 /**
@@ -42,9 +43,11 @@ export const hasAppMenu = isDesktopApp;
 export const hasNativeMenuBar = isDesktopApp && isMacPlatform();
 
 /** Tabs dragged out of one window into another, or into a new one, with
- *  the window following the pointer. Not yet: the backend tracks no
- *  pointer outside its windows. */
-export const canDragTabsBetweenWindows = false;
+ *  the window following the pointer: macOS and Windows give the global
+ *  cursor and window positions this needs (backend/tab_drag.go). Linux,
+ *  Wayland above all, doesn't. */
+export const canDragTabsBetweenWindows =
+  isDesktopApp && (isMacPlatform() || isWindowsPlatform());
 
 /** Web page tabs as a native webview over the tab. Not yet: every
  *  platform keeps the framed page. */

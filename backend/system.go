@@ -212,20 +212,7 @@ func init() {
 	command("move_tab_to_new_window", func(c *Call, a struct {
 		Tab jsontext.Value `json:"tab"`
 	}) (nothing, error) {
-		label := c.app.nextWindowLabel()
-		c.app.mu.Lock()
-		if c.app.detachedTabs == nil {
-			c.app.detachedTabs = map[string]jsontext.Value{}
-		}
-		c.app.detachedTabs[label] = a.Tab
-		c.app.mu.Unlock()
-		if err := c.app.buildEditorWindow(label, nil, true); err != nil {
-			c.app.mu.Lock()
-			delete(c.app.detachedTabs, label)
-			c.app.mu.Unlock()
-			return nil, err
-		}
-		return nil, nil
+		return nil, c.app.openTabWindow(a.Tab, nil)
 	})
 	command("take_detached_tab", func(c *Call, _ none) (jsontext.Value, error) {
 		c.app.mu.Lock()
