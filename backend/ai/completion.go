@@ -3,6 +3,8 @@ package ai
 import (
 	"fmt"
 	"strings"
+
+	"textus/backend/ai/rules"
 )
 
 // Inline completion: the prompt for the text around the caret. The reply
@@ -66,14 +68,14 @@ func completionLanguage(before, after string, h CompletionHints) (string, bool) 
 	if h.Prose != nil {
 		prose = *h.Prose
 	}
-	if l, ok := detect(prose); ok {
-		return englishName(l.uiCode()), true
+	if l, ok := rules.Detect(prose); ok {
+		return rules.EnglishName(l.UICode()), true
 	}
 	ui := deref(h.UILanguage)
-	if l, ok := guess(prose); ok && !(l.isChinese() && (ui == "zh" || ui == "zh-Hant")) {
-		return englishName(l.uiCode()), true
+	if l, ok := rules.Guess(prose); ok && !(l.IsChinese() && (ui == "zh" || ui == "zh-Hant")) {
+		return rules.EnglishName(l.UICode()), true
 	}
-	return englishName(ui), false
+	return rules.EnglishName(ui), false
 }
 
 // completionUserText is the request's user turn: the optional where-am-I

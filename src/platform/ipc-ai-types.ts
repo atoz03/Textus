@@ -99,7 +99,8 @@ type ConventionsLang = Lang;
 
 /**
  * The profiles each language offers, the first being Automatic's (null: no
- * national norm). A Rust test keeps this in step with the backend's list.
+ * national norm). A Go test (backend/ai/rules/profile_test.go) keeps this
+ * in step with the backend's list.
  */
 export const WRITING_CONVENTIONS: Record<
   ConventionsLang,

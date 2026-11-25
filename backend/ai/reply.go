@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"textus/backend/ai/rules"
 )
 
 // A completion reply made fit to show: wrapping and invented figures
@@ -205,10 +207,14 @@ func finishCompletion(before, after, raw string, inCode bool) string {
 			tail = part[len(body):]
 		}
 		body = cleanReply(before, after, body, inCode)
-		if strings.TrimSpace(body) == "" || !inCode && inventsFigures(before, after, body) {
+		switch {
+		case strings.TrimSpace(body) == "" || !inCode && inventsFigures(before, after, body):
 			out[i] = lead + tail
-		} else {
+		case inCode:
 			out[i] = lead + fitToCursor(before, body) + tail
+		default:
+			// The conventions the text before the cursor already follows.
+			out[i] = lead + rules.Completion(before, fitToCursor(before, body)) + tail
 		}
 	}
 	return strings.Join(out, CandidateSeparator)
