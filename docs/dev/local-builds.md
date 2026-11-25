@@ -1,61 +1,33 @@
 # Faster local builds
 
-Two things make working in many checkouts at once - git worktrees, one per
-branch or per AI agent - slower than it needs to be: every worktree builds
-the Rust crates from scratch into its own `src-tauri/target`, and
-`npm run check` runs every unit test whatever you changed. Both have an
-opt-in shortcut. Neither changes CI or the release build.
+Working in many checkouts at once - git worktrees, one per branch or per
+AI agent - costs little for the Go backend, whose build cache belongs to
+the user rather than the checkout. What remains is that `npm run check`
+runs every unit test whatever you changed, and that has an opt-in
+shortcut. Neither changes CI or the release build.
 
 Measured on Linux (16 cores, other builds running, so a quiet machine is
 faster), in a fresh copy of `main` on 2026-10-20:
 
-| Step                                           | Time    |
-| ---------------------------------------------- | ------- |
-| `npm ci` (packages already in the npm cache)   | 2 s     |
-| `npm run check`                                | 68-77 s |
-| of which `npm test`                            | 30 s    |
-| `cargo build`, first in a worktree             | 66 s    |
-| `cargo build` after touching `lib.rs`          | 3 s     |
-| `npm run check:native`, after that build       | 69 s    |
-| `npm run check:native` after touching `lib.rs` | 11 s    |
+| Step                                         | Time    |
+| -------------------------------------------- | ------- |
+| `npm ci` (packages already in the npm cache) | 2 s     |
+| `npm run check`                              | 68-77 s |
+| of which `npm test`                          | 30 s    |
 
-A worktree's `src-tauri/target` grows to 9-11 GB once `check:native` has
-run in it.
+## The Go build cache
 
-## One build directory for every worktree
+Go keeps compiled packages in one cache per user (`go env GOCACHE`:
+`~/.cache/go-build` on Linux, `~/Library/Caches/go-build` on macOS,
+`%LocalAppData%\go-build` on Windows) and the modules in another
+(`go env GOMODCACHE`), both keyed by content, so every worktree shares
+them with nothing to set: a second worktree builds only what differs.
+Measured on Linux (192 cores) on 2026-11-25: `go build` with an empty
+cache took 17 s and left 196 MB in it; after a change to one file of
+`backend/`, 3 s; with nothing changed, under half a second.
 
-Cargo's `build-dir` setting puts the intermediate files of a build - the
-compiled dependencies, which are most of the time and space - in one place,
-while the finished binaries stay in each worktree's `src-tauri/target`, where
-`npm run tauri dev` and `scripts/smoke-linux.sh` look for them. Set it once,
-in your shell's profile:
-
-```sh
-export CARGO_BUILD_BUILD_DIR="$HOME/.cache/textus-cargo"   # macOS, Linux
-```
-
-```powershell
-setx CARGO_BUILD_BUILD_DIR "$env:LOCALAPPDATA\textus-cargo"  # Windows
-```
-
-Measured as above: the first `cargo build` in a second worktree took 12 s
-instead of 52 s, and added 0.6 GB to the shared directory instead of 3.4 GB
-of its own. Each worktree still keeps about 2.4 GB of finished binaries.
-
-- Cargo locks the directory while it builds, so two worktrees building at
-  the same moment take turns; the second waits with "Blocking waiting for
-  file lock". Most builds after the first are short, so this costs less
-  than building everything twice.
-- Leave `CARGO_TARGET_DIR` alone. Sharing the whole target directory saves
-  the same build time, but every worktree then writes its binaries over the
-  others', and `tauri dev` in one worktree may run another's build.
-- Keep it in your own environment, not in a committed
-  `.cargo/config.toml`: CI and the release workflow build with Cargo's
-  defaults, and CI's Rust cache saves `src-tauri/target`.
-- `sccache` adds nothing here: it can't share the crates of this
-  repository between worktrees (their paths differ), and the shared build
-  directory already shares the dependencies.
-- To start over, delete the directory; the next build fills it again.
+- Two worktrees building at the same moment share the cache safely.
+- `go clean -cache` empties it; the next build fills it again.
 
 ## `npm run check:quick`
 
@@ -82,8 +54,16 @@ installer and updater checks.
 
 ## Installers
 
-`npm run tauri build` makes the installers for your platform (`.dmg`,
-`-setup.exe`, `.AppImage`/`.deb`/`.rpm`).
+`npx mygo build` makes the app and its packages, for Linux by default:
+`dist-app/linux-amd64/` gets the executable, a `.tar.gz` and the script
+that installs it in `~/.local`, a `.deb`, an `.rpm` and a PKGBUILD. `-platform` picks
+others: `windows/amd64` makes `Textus.exe` and
+`textus-setup-<version>-amd64.exe` (which needs NSIS on Linux and macOS;
+`-skip-installer` leaves it out), `darwin/arm64` `Textus.app` and, on a
+Mac, a `.dmg` (`-skip-dmg` leaves it out). MyGo needs no cgo, so every
+platform builds on any machine; signing and disk images need a Mac.
+`-debug` keeps the web inspector. Run what you build only with throwaway
+data folders ([AGENTS.md](../../AGENTS.md#safety)).
 
 ## The browser playground
 

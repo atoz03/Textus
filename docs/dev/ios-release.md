@@ -2,13 +2,19 @@
 
 `.github/workflows/ios-release.yml` builds and uploads the app. When you push an `ios-v*` tag, GitHub Actions builds a signed iOS app on macOS and uploads it to App Store Connect (TestFlight). You still submit for review by hand on the App Store Connect website.
 
+The iOS app is a Tauri app, and the Go backend has no iOS build yet
+([architecture.md](architecture.md#the-backend)): the steps below, and
+`ios-release.yml`, build `src-tauri/`, which `main` no longer has since
+1.4.7. Its last sources are at `8da2d2f0` (`git show 8da2d2f0:src-tauri/...`);
+until the iOS build is ported, an iOS release builds from there.
+
 ## One-time setup
 
 ### 1. Register the App ID
 
 [**Apple Developer › Identifiers**](https://developer.apple.com/account/resources/identifiers/list):
 
-- The iOS app and the macOS app use the same bundle ID, `com.catvinci.textus` (`identifier` in `tauri.conf.json`). The 1.0.0 rename to Textus changed it from Levis's `com.chengaoshen.levis`. So you must register a new App ID here and create a matching app in App Store Connect (the old Levis record is no longer used). An App ID is not tied to one platform. The macOS app is signed with Developer ID and does not go through the App Store, so the ID may not be registered here yet. If it is not, register it. Because both apps share one ID, the macOS app can later be combined with the iOS app as one product (Universal Purchase) if it ships on the Mac App Store.
+- The iOS app and the macOS app use the same bundle ID, `com.catvinci.textus` (`identifier` in `mygo.json`, and in the Tauri builds' `tauri.conf.json`). The 1.0.0 rename to Textus changed it from Levis's `com.chengaoshen.levis`. So you must register a new App ID here and create a matching app in App Store Connect (the old Levis record is no longer used). An App ID is not tied to one platform. The macOS app is signed with Developer ID and does not go through the App Store, so the ID may not be registered here yet. If it is not, register it. Because both apps share one ID, the macOS app can later be combined with the iOS app as one product (Universal Purchase) if it ships on the Mac App Store.
 - You do not need to turn on any extra capabilities. Add iCloud later if you need an iCloud container.
 
 ### 2. Create the app in App Store Connect
@@ -79,7 +85,7 @@ There is one build for every storefront. In the App Store for mainland
 China, Textus AI is left out at runtime: `Storefront.swift` (in the
 textus-files plugin) reads the App Store account's storefront, falling back
 to the device's region while it isn't known, Rust passes the answer to the
-page in the boot snapshot (`aiUnavailable`, `src-tauri/src/settings/app.rs`),
+page in the boot snapshot (`aiUnavailable`, `git show 8da2d2f0:src-tauri/src/settings/app.rs`),
 and `hasTextusAi` in `src/platform/capabilities.ts` turns the AI off
 everywhere. Nothing else differs.
 

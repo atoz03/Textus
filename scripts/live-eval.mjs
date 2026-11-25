@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Runs the live evals, `#[ignore]`d Rust tests that spend real money, with
 // cheap defaults: no judge, a $1 budget, keys from .env.local. Also
-// `compare <before> <after>` and `baseline <run-dir> <provider>`.
+// `compare <before> <after>` and `baseline <run-dir> <provider>`. The
+// suites aren't in the Go backend yet: `run` works in a checkout of the
+// last Tauri sources (8da2d2f0); the baselines are kept here.
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -14,7 +16,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const baselines = join(root, "src-tauri/src/ai/live_eval/baselines");
+const baselines = join(root, "backend/ai/live_eval/baselines");
 
 const SUITES = {
   matrix: "live_eval::live_agent_matrix",
@@ -51,6 +53,12 @@ function fail(message) {
 }
 
 function run(opts) {
+  const crate = join(root, "src-tauri");
+  if (!existsSync(crate))
+    fail(
+      "The live evals are Rust tests the Go backend doesn't have yet: run " +
+        "them in a checkout of 8da2d2f0 (docs/design/ai-eval.md).",
+    );
   const provider = opts.provider ?? "anthropic";
   if (!PROVIDERS.includes(provider))
     fail(`--provider is one of ${PROVIDERS.join(", ")}`);
@@ -92,7 +100,7 @@ function run(opts) {
   const result = spawnSync(
     "cargo",
     ["test", "--lib", SUITES[suite], "--", "--ignored", "--nocapture"],
-    { cwd: join(root, "src-tauri"), env, stdio: "inherit" },
+    { cwd: crate, env, stdio: "inherit" },
   );
   process.exit(result.status ?? 1);
 }

@@ -1,15 +1,18 @@
 # AI evaluation
 
 How the AI features are checked against real providers: what the suites
-cover, how a case is judged, and how to run them. The suites live in
-`src-tauri/src/ai/live_eval.rs` and `src-tauri/src/ai/live_eval/`. The
+cover, how a case is judged, and how to run them. The suites are Rust
+tests of the Tauri builds, `git show 8da2d2f0:src-tauri/src/ai/live_eval.rs`
+and the `live_eval/` folder beside it, and the Go backend doesn't have
+them yet: they run in a checkout of `8da2d2f0`. Their documents and the
+providers' baselines are kept in `backend/ai/live_eval/`. The
 record of earlier rounds (what each found and what changed because of it)
 is in [archive/2026-10-ai-eval-rounds.md](../archive/2026-10-ai-eval-rounds.md).
 
 Every live test is `#[ignore]`d: it needs a key and spends money, so CI
 never runs it. The checking code itself (language detection, the Markdown
 skeleton, edit composition, the writing-rules checks) is unit-tested and
-runs with the normal `cargo test`.
+runs with the normal `go test ./backend/...` in the Go backend.
 
 ## What is evaluated
 
@@ -63,14 +66,16 @@ times the requests).
 
 ## Running it
 
-The usual way in is `scripts/live-eval.mjs`. It defaults to no judge, a
+The usual way in is `scripts/live-eval.mjs`. Its `run` needs the Rust
+suites, so it runs in a checkout of `8da2d2f0` (here it says so and
+stops); `compare` and `baseline` work in either. It defaults to no judge, a
 US$1 budget and the keys from `.env.local`, and writes to
 `tmp/live-eval/<provider>-<suite>-<time>/`:
 
 ```sh
 node scripts/live-eval.mjs run --provider deepseek --suite matrix --set core
 node scripts/live-eval.mjs run --provider chatgpt --suite continuing --model gpt-6-sol
-node scripts/live-eval.mjs compare src-tauri/src/ai/live_eval/baselines/deepseek.json tmp/live-eval/deepseek-matrix-…
+node scripts/live-eval.mjs compare backend/ai/live_eval/baselines/deepseek.json tmp/live-eval/deepseek-matrix-…
 node scripts/live-eval.mjs baseline tmp/live-eval/deepseek-matrix-… deepseek
 ```
 
@@ -82,7 +87,7 @@ node scripts/live-eval.mjs baseline tmp/live-eval/deepseek-matrix-… deepseek
 - `baseline` keeps a run as the provider's baseline; update it when a
   change is meant to move the numbers.
 
-By hand, from `src-tauri/`:
+By hand, from `src-tauri/` in that checkout:
 
 ```sh
 cargo test --lib live_eval -- --ignored --nocapture --test-threads=1

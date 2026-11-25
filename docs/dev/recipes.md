@@ -26,8 +26,12 @@ Example: `autosave` (**Settings › General › Save automatically**).
    ([storage.md](storage.md#how-the-files-are-written)). Settings search
    reads the rows from the page, so the label is found without more work.
 4. **Its label** in all ten locales ([below](#add-a-ui-string)).
-5. **Rust**, only if the backend needs it: `read_setting(app, "field")` in
-   `src-tauri/src/settings/app.rs` returns the stored JSON value. Settings
+5. **The backend**, only if it needs it: `readSetting("field")` in
+   `backend/app.go` returns the stored JSON value, and `readFlag("field")`
+   a boolean, whose default the backend takes from
+   `src/prefs/backend-defaults.json` (which `DEFAULT_SETTINGS` reads too).
+   A setting the backend acts on as it changes is a case in
+   `settings_patch` (`backend/settings.go`), as `runInBackground` is. Settings
    that belong to a folder rather than the user (a plugin's values, the
    folder's conventions) go in its `.textus/settings.json` instead
    (`src/storage/project-settings.ts`).
@@ -41,20 +45,23 @@ Example: **View › Mode › Default** (`view-mode-default`). One id names an
 item everywhere; the macOS bar is native, Windows, Linux and the iPad draw
 the same menu in HTML, and the phone has its own.
 
-1. **The id and what it sends**: in `src-tauri/src/menu.rs`, a constant
-   (`const VIEW_MODE_DEFAULT_ID: &str = "view-mode-default";`) and a branch
-   in `dispatch` that emits `menu-<id>` to the focused window. The
-   app-drawn menu reaches the same `dispatch` through `trigger_menu_item`.
-2. **The native item**: build it in `src-tauri/src/menu/build.rs` with
-   `item(...)` or, for an on/off item, `check(...)`, with an English
-   label; a fixed, OS-convention key is its `.accelerator(...)`. Put it in
-   its submenu.
+1. **The item**: an entry in its submenu in `src/registry/menu/menu.json`,
+   the one table both menus are built from: the `id`, the locale key of
+   its `label` and its English text (`en`), and as needed `keys` (a fixed,
+   OS-convention key), `check` (an on/off item), `on` (only some platforms'
+   native bars) or `setting` (the Settings › Shortcuts action whose key it
+   shows). The macOS bar (`backend/menu.go`, `backend/menu_bar.go`) shows
+   the labels the window sends (`set_menu_labels`, from
+   `src/app/menu/native-menu-text.ts`), so the label is written once.
+2. **What it sends**: `dispatchMenu` in `backend/menu_dispatch.go` emits
+   `menu-<id>` to the focused editor window, or opens one for an item
+   marked `orOpen`; an id the backend runs itself (Quit, New Window, Open
+   Recent) is a case there. The app-drawn menu reaches the same
+   `dispatchMenu` through `trigger_menu_item`.
 3. **The menu model**: in `src/registry/menu/app-menu-model.ts`, add the id to
-   `NativeMenuId` and an entry `{ label: t.…, action: { native: "…" } }`
-   (with `checked` or `accel` as needed) to `buildAppMenu`, and to
-   `buildMobileMenu` if the phone has it. The macOS bar's labels are read
-   from this model (`native-menu-text.ts`), so the label is written once.
-   An on/off item's state is sent to Rust with the other checks
+   `NativeMenuId`: `buildAppMenu` draws the table's items, and
+   `buildMobileMenu` needs the item if the phone has it. An on/off item's
+   state is sent to the backend with the other checks
    (`set_menu_checks`).
 4. **What it does**: a handler in the `MenuHandlers` of
    `src/app/menu/menu-bridge.ts`, listening for `menu-<id>`, and its
@@ -79,35 +86,36 @@ the same menu in HTML, and the phone has its own.
 
 ## Add a backend command
 
-Example: the draft commands (`src-tauri/src/commands/drafts.rs`,
-`drafts` in `src/platform/ipc-files.ts`).
+Example: the draft commands (`backend/drafts.go`, `drafts` in
+`src/platform/ipc-files.ts`).
 
-1. **The Rust function**, in the `src-tauri/src/commands/` file of its area
-   (or the module that owns the state):
+1. **The Go handler**, registered in an `init()` of the `backend/` file of
+   its area (or the one that owns the state), with the command registry's
+   `command` (`backend/host.go`):
 
-   ```rust
-   #[tauri::command]
-   #[cfg_attr(test, specta::specta)]
-   pub async fn save_draft_snapshot(app: AppHandle, tab_id: String, …) -> Result<(), String>
+   ```go
+   command("save_draft_snapshot", func(c *Call, a struct {
+   	TabID string  `json:"tabId"`
+   	Path  *string `json:"path"`
+   	…
+   }) (nothing, error) {
    ```
 
-   Types it takes or returns carry `#[cfg_attr(test, derive(specta::Type))]`
-   and a comment naming their TypeScript side.
+   The arguments are a struct with the frontend's names, the answer any
+   JSON value (`nothing` for none), an error `"<English> [code]"`
+   (`backend/errors.go`). A type it takes or returns carries a comment
+   naming its TypeScript side, and that side one naming it.
 
-2. **Register it** in the `invoke_handler` list in
-   `src-tauri/src/invoke_handler.rs`: in the shared half if iOS has it, else in the
-   second half with `#[cfg(desktop)]` in front. A shared command may only
-   read state managed in the shared part of `run()`; state that only
-   `desktop_builder` manages aborts the iOS app when the page calls it
-   ([ios-code-map.md](ios-code-map.md)). Plugin commands are listed in
-   `with_plugin_commands!` (`src-tauri/src/plugins/mod.rs`) instead.
-3. **Generate its types**: add it to its group's file in
-   `src-tauri/src/bindings/` and run `npm run bindings`, which writes
-   `src/platform/bindings/<group>.ts`. `cargo test` fails while they are
-   stale.
+2. **Its types**: add it to its group's file in `src/platform/bindings/`,
+   kept by hand since the bindings were last generated from Rust.
+   `go test ./backend/` and `src/platform/commands.test.ts` fail while a
+   command named there, or called by the frontend, has no handler.
+3. **The client**: `npm run bindings` (`mygo generate`) writes
+   `src/platform/native/host-client.ts` from `backend/host.go`; a new
+   command needs it only when `Host` itself changes.
 4. **The wrapper**, in the `src/platform/ipc-*.ts` file of its area:
    `command("save_draft_snapshot", tabId, path, content)` from
-   `ipc-call.ts`, type-checked against the Rust signature. A desktop-only
+   `ipc-call.ts`, type-checked against the bindings. A desktop-only
    command uses `desktopQueryCommand` (a fallback on iOS) or
    `desktopActionCommand` (rejects on iOS); one that calls an AI service
    uses `aiCommand`. Callers import the area from `platform/ipc.ts`.
@@ -115,8 +123,9 @@ Example: the draft commands (`src-tauri/src/commands/drafts.rs`,
    dev shim (`src/dev/host-shim.ts`) answers a command it doesn't know
    with `null`. If the frontend needs a real answer there, add a case to
    the shim; a flow can also answer it with `mockInvoke`.
-6. **Tests**: Rust unit tests beside the module (inline or in `tests.rs`),
-   and the frontend's in the layer that catches its mistake.
+6. **Tests**: Go tests beside the file (`x.go` and `x_test.go`;
+   `a.dispatch(nil, "name", args, nil)` runs a command as a window calls
+   it), and the frontend's in the layer that catches its mistake.
 
 ## Add a UI string
 
@@ -140,7 +149,7 @@ Every string the user sees is in all ten locale files in
    form.
 
 If the string names a control the AI should point users to, also check
-`src-tauri/src/ai/ui-names/*.txt` and the help guides in `src/help/`:
+`backend/ai/ui-names/*.txt` and the help guides in `src/help/`:
 their tests compare them with the strings.
 
 ## Add a plugin API call
@@ -157,8 +166,8 @@ Example: `layout.panels()` and `onDidChangePanels` (commit 36709ec9), or
    `src/plugins/host/broker-*.ts` file of its namespace (`layoutHandlers`
    in `broker-layout.ts`, …). It checks its arguments with the helpers
    there; a call that reaches the backend goes through
-   `src/platform/ipc-plugins.ts` and a Rust command in
-   `src-tauri/src/plugins/` that checks the grant again.
+   `src/platform/ipc-plugins.ts` and a Go command in
+   `backend/plugin_*.go` that checks the grant again.
 3. **The permission**: add the method to its permission in
    `src/plugins/api-permissions.ts`, the one table the broker and the
    install check both read. An event the window sends goes into
@@ -172,7 +181,7 @@ Example: `layout.panels()` and `onDidChangePanels` (commit 36709ec9), or
    `docs/dev/plugins/reference.md` and the AI skill's copy from
    `textus.d.ts`; `plugin-reference.test.ts` fails while they are stale.
 6. **Create mode's guide**: name the call in
-   `src-tauri/src/ai/skills/plugin.md`; `src/plugins/plugin-guide.test.ts`
+   `backend/ai/skills/plugin.md`; `src/plugins/plugin-guide.test.ts`
    fails on a call it doesn't name.
 7. **The version**: a release that adds calls raises `API_VERSION` in
    `src/plugins/host/runtime/host-core.js`, the version in `textus.d.ts`'s header, and the table in
@@ -221,10 +230,11 @@ Example: `layout.panels()` and `onDidChangePanels` (commit 36709ec9), or
 - **OS facts** (a Mac's `Cmd`, Windows' window frame) are in
   `src/platform/os.ts` (`modIsMeta`, `isWindowsPlatform`,
   `isLinuxPlatform`).
-- **Rust**: `#[cfg(desktop)]` / `#[cfg(mobile)]` for what iOS can't do,
-  `#[cfg(target_os = "…")]` for one OS; permissions in
-  `src-tauri/capabilities/` (`desktop.json` is desktop only); configuration
-  in `tauri.<platform>.conf.json`.
+- **Go**: a file named for its OS (`x_windows.go`, `x_darwin.go`,
+  `x_linux.go`) or a `//go:build` line for one OS, `runtime.GOOS` in a
+  small branch; configuration per platform in `mygo.json` (`macos`,
+  `windows`, `linux`), and files that ship with one platform's app in
+  `resources/<platform>/`.
 - **Old engines**: CSS newer than Chromium 105 goes behind `@supports`
   for WebView2 ([webview-support.md](webview-support.md)).
 - **Input methods on Linux**: WebKitGTK commits a composition as

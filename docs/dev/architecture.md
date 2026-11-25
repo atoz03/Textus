@@ -267,7 +267,8 @@ Not in the Go backend yet (the Rust sources are at
 `git show 8da2d2f0:src-tauri/...`): the platform
 touches `system.go` answers without acting on them (the Roman input
 source for a plugin's key mode, the Edit menu's native actions, drag
-modifiers), and the iOS and Android builds. Web page tabs are native
+modifiers), the AI's live evals ([ai-eval.md](../design/ai-eval.md)),
+and the iOS and Android builds. Web page tabs are native
 pages on macOS and Windows only, and tabs drag between windows there
 only: Linux, Wayland above all, gives no window positions.
 `src/platform/capabilities.ts` turns the frontend's side of what is

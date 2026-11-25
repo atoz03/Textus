@@ -3,7 +3,7 @@ import type { Shortcuts } from "../../prefs/SettingsContext";
 import type { StringKey, Strings } from "../../i18n/strings";
 
 /**
- * The menu bar as data (menu.json), read by Rust's native bar (menu/table.rs)
+ * The menu bar as data (menu.json), read by the macOS bar (backend/menu.go)
  * and by the app-drawn menu: ids, order, keys and labels in one place.
  */
 
