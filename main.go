@@ -29,6 +29,8 @@ var (
 	exportFormats []byte
 	//go:embed src/editor/images/image-types.json
 	imageTypes []byte
+	//go:embed src/ai/ai-error-kinds.json
+	errorKinds []byte
 )
 
 func main() {
@@ -47,6 +49,7 @@ func main() {
 		ErrorTable:       errorTable,
 		ExportFormats:    exportFormats,
 		ImageTypes:       imageTypes,
+		ErrorKinds:       errorKinds,
 	})
 	if err != nil {
 		log.Fatal(err)

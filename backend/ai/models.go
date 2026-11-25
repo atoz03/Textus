@@ -2,8 +2,6 @@ package ai
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json/v2"
 	"fmt"
 	"io"
@@ -11,7 +9,8 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"sync"
+
+	"textus/backend/ai/aicompat"
 )
 
 // A provider's model list, and how each kind of server takes a key.
@@ -61,35 +60,9 @@ func tidy(entries []listed) []string {
 	return ids
 }
 
-// opencodeSession is one session id for this run of the app: stable, so
-// OpenCode's routing and prompt cache hold across a conversation's steps.
-var opencodeSession = sync.OnceValue(func() string {
-	b := make([]byte, 8)
-	rand.Read(b)
-	return "textus-" + hex.EncodeToString(b)
-})
-
-// WithKey puts key on req as the server at baseURL takes it. Google's APIs
-// (Vertex reads a bearer token as OAuth) get x-goog-api-key, except
-// Gemini's OpenAI-compatible layer, which wants a bearer like everyone
-// else; OpenCode refuses a request without a session id to route it by.
-func WithKey(req *http.Request, baseURL, key string) {
-	host := ""
-	if u, err := url.Parse(baseURL); err == nil {
-		host = u.Hostname()
-	}
-	switch {
-	case host == "generativelanguage.googleapis.com":
-		req.Header.Set("Authorization", "Bearer "+key)
-	case strings.HasSuffix(host, ".googleapis.com"):
-		req.Header.Set("x-goog-api-key", key)
-	case host == "opencode.ai":
-		req.Header.Set("Authorization", "Bearer "+key)
-		req.Header.Set("x-opencode-session", opencodeSession())
-	default:
-		req.Header.Set("Authorization", "Bearer "+key)
-	}
-}
+// WithKey puts key on req as the server at baseURL takes it (aicompat's
+// WithKey, the agent's own).
+func WithKey(req *http.Request, baseURL, key string) { aicompat.WithKey(req, baseURL, key) }
 
 // getJSON GETs u and reads its JSON answer into v; a failure says the
 // status and what the server said.
@@ -145,21 +118,8 @@ func ListModels(ctx context.Context, client *http.Client, baseURL string, key *s
 }
 
 // AnthropicAuth is how a request to Anthropic is signed: an API key, or a
-// Claude sign-in's token.
-type AnthropicAuth struct {
-	APIKey, OAuthToken string
-}
-
-// Sign puts the auth and API version on req.
-func (a AnthropicAuth) Sign(req *http.Request) {
-	req.Header.Set("anthropic-version", "2023-06-01")
-	if a.OAuthToken != "" {
-		req.Header.Set("Authorization", "Bearer "+a.OAuthToken)
-		req.Header.Set("anthropic-beta", "claude-code-20250219,oauth-2025-04-20")
-		return
-	}
-	req.Header.Set("x-api-key", a.APIKey)
-}
+// Claude sign-in's token (aicompat's, which the agent signs with too).
+type AnthropicAuth = aicompat.AnthropicAuth
 
 // anthropicAPI is Anthropic's API root; tests point it elsewhere.
 var anthropicAPI = "https://api.anthropic.com"

@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 
 	"github.com/egoist/mygo"
+
+	"textus/backend/ai/aicompat"
 )
 
 // Shared are the files the frontend and the backend both read, embedded by
@@ -26,6 +28,7 @@ type Shared struct {
 	ErrorTable       []byte // src/i18n/errors.json
 	ExportFormats    []byte // src/registry/export-formats.json
 	ImageTypes       []byte // src/editor/images/image-types.json
+	ErrorKinds       []byte // src/ai/ai-error-kinds.json
 }
 
 // App is the running app: its state shared by every command.
@@ -72,6 +75,11 @@ func newApp(shared Shared, dirs Dirs) *App {
 	appVersion = shared.Version
 	loadErrorTable(shared.ErrorTable)
 	loadImageTypes(shared.ImageTypes)
+	if len(shared.ErrorKinds) > 0 {
+		if err := aicompat.LoadErrorKinds(shared.ErrorKinds); err != nil {
+			log.Printf("textus: ai-error-kinds.json: %v", err)
+		}
+	}
 	a.menu = newMenuState(shared.MenuTable, shared.ExportFormats)
 	return a
 }

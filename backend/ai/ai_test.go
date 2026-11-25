@@ -86,10 +86,13 @@ func TestEachServerGetsTheKeyAsItTakesIt(t *testing.T) {
 			t.Errorf("%s: %v", base, req.Header)
 		}
 	}
-	req, _ := http.NewRequest("GET", "https://opencode.ai/", nil)
-	WithKey(req, "https://opencode.ai/zen/go/v1", "k")
-	if s := req.Header.Get("x-opencode-session"); s == "" || s != opencodeSession() {
-		t.Error("OpenCode got no session")
+	session := func() string {
+		req, _ := http.NewRequest("GET", "https://opencode.ai/", nil)
+		WithKey(req, "https://opencode.ai/zen/go/v1", "k")
+		return req.Header.Get("x-opencode-session")
+	}
+	if s := session(); s == "" || s != session() {
+		t.Error("OpenCode got no session, or a new one each request")
 	}
 }
 

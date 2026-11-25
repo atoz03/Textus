@@ -7,7 +7,8 @@ import (
 	_ "embed"
 	"encoding/json/v2"
 	"fmt"
-	"strings"
+
+	"textus/backend/ai/aicompat"
 )
 
 // Provider is one supported AI service, as data. catalog.json is
@@ -66,29 +67,19 @@ func Find(id string) (Provider, bool) {
 const NotConfigured = "This provider isn't set up yet - configure it in Settings > Textus AI."
 
 // Vendor is which server is behind the chat-completions dialect, where one
-// differs from OpenAI's enough to matter.
-type Vendor uint8
+// differs from OpenAI's enough to matter (aicompat's).
+type Vendor = aicompat.Vendor
 
 const (
-	Generic Vendor = iota
+	Generic = aicompat.Generic
 	// Ark is Volcengine Ark (Doubao), whose Seed models think by default.
-	Ark
+	Ark = aicompat.Ark
 	// DeepSeek's models think by default, at effort high.
-	DeepSeek
+	DeepSeek = aicompat.DeepSeek
 	// MiniMax writes its thinking into the answer unless asked not to.
-	MiniMax
+	MiniMax = aicompat.MiniMax
 )
 
 // ChatVendor is the server a chat-completions base URL points at: by host
 // rather than catalog id, so a custom endpoint with an Ark URL is Ark too.
-func ChatVendor(baseURL string) Vendor {
-	switch {
-	case strings.Contains(baseURL, ".volces.com"):
-		return Ark
-	case strings.Contains(baseURL, "api.deepseek.com"):
-		return DeepSeek
-	case strings.Contains(baseURL, "api.minimaxi.com"), strings.Contains(baseURL, "api.minimax.io"):
-		return MiniMax
-	}
-	return Generic
-}
+func ChatVendor(baseURL string) Vendor { return aicompat.ChatVendor(baseURL) }
