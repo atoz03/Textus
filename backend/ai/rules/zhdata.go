@@ -309,6 +309,22 @@ var twLegal = [][2]string{
 // twHK are Taiwan / Hong Kong character variants: (Taiwan, Hong Kong).
 var twHK = [][2]rune{{'裡', '裏'}, {'著', '着'}, {'線', '綫'}, {'衛', '衞'}}
 
+// hanScripts counts t's characters that have a form in the other script:
+// Simplified ones (hans) and Traditional ones (hant).
+func hanScripts(t *Text) (hans, hant int) {
+	for _, p := range scriptPairs {
+		for _, ch := range t.Chars {
+			if ch == p.s && p.kind != pairTradOnly {
+				hans++
+			}
+			if ch == p.t && p.kind != pairSimpOnly {
+				hant++
+			}
+		}
+	}
+	return hans, hant
+}
+
 // toSimplified is the Simplified form of a Traditional-only character.
 func toSimplified(c rune) (rune, bool) {
 	for _, p := range scriptPairs {

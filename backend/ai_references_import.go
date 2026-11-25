@@ -91,7 +91,7 @@ func (im *referenceImporter) file(from, rel string) {
 		im.done.Skipped++
 		return
 	}
-	im.put(rel, func(to string) error { return copyFile(from, to) })
+	im.put(rel, func(to string) error { return copyFileNew(from, to) })
 }
 
 // folder is a folder's readable files, kept in their subfolders under its

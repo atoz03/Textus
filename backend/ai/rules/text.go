@@ -351,3 +351,46 @@ func trimEnd(s string) string { return strings.TrimRightFunc(s, unicode.IsSpace)
 
 // trimStart is Rust's str::trim_start.
 func trimStart(s string) string { return strings.TrimLeftFunc(s, unicode.IsSpace) }
+
+// straightQuotePairs proposes open and close for each pair of straight
+// double quotes around text with a character inside picks, as long as the
+// quotes pair up.
+func straightQuotePairs(t *Text, o *out, rule, open, close, msg string, inside func(rune) bool) {
+	var marks []int
+	for i, ch := range t.Chars {
+		if ch == '"' && !t.Protected[i] {
+			marks = append(marks, i)
+		}
+	}
+	if len(marks)%2 != 0 {
+		return
+	}
+	for k := 0; k < len(marks); k += 2 {
+		a, b := marks[k], marks[k+1]
+		if slices.ContainsFunc(t.Chars[a+1:b], inside) {
+			o.fix(rule, a, a+1, open, msg)
+			o.fix(rule, b, b+1, close, msg)
+		}
+	}
+}
+
+// halfWidthRuns proposes each run of the full-width letters and digits
+// fullWidth picks in their half-width forms.
+func halfWidthRuns(t *Text, o *out, rule, msg string, fullWidth func(rune) bool) {
+	n := t.Len()
+	for i := 0; i < n; {
+		if !fullWidth(t.Chars[i]) {
+			i++
+			continue
+		}
+		a := i
+		for i < n && fullWidth(t.Chars[i]) {
+			i++
+		}
+		half := make([]rune, 0, i-a)
+		for _, r := range t.Chars[a:i] {
+			half = append(half, r-0xFEE0)
+		}
+		o.fix(rule, a, i, string(half), msg)
+	}
+}

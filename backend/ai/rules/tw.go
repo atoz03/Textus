@@ -35,17 +35,7 @@ func twRun(t *Text, c *ctx, o *out) {
 // in clearly Traditional text, never inside a quotation. One with several
 // Traditional forms (发: 發/髮) gets no single suggestion.
 func twScriptSimplified(t *Text, _ *ctx, o *out) {
-	hans, hant := 0, 0
-	for _, p := range scriptPairs {
-		for _, ch := range t.Chars {
-			if ch == p.s && p.kind != pairTradOnly {
-				hans++
-			}
-			if ch == p.t && p.kind != pairSimpOnly {
-				hant++
-			}
-		}
-	}
+	hans, hant := hanScripts(t)
 	if hant < 2*max(hans, 1) {
 		return
 	}
@@ -97,21 +87,7 @@ func twQuoteCorner(t *Text, c *ctx, o *out) {
 			i = j + 1
 		}
 	}
-	var marks []int
-	for i, ch := range t.Chars {
-		if ch == '"' && !t.Protected[i] {
-			marks = append(marks, i)
-		}
-	}
-	if len(marks)%2 == 0 {
-		for k := 0; k < len(marks); k += 2 {
-			a, b := marks[k], marks[k+1]
-			if slices.ContainsFunc(t.Chars[a+1:b], IsCJK) {
-				o.fix("tw.quote.corner", a, a+1, "「", msg)
-				o.fix("tw.quote.corner", b, b+1, "」", msg)
-			}
-		}
-	}
+	straightQuotePairs(t, o, "tw.quote.corner", "「", "」", msg, IsCJK)
 }
 
 // twHKMix is tw.script.hk-mix: Taiwanese and Hong Kong forms (裡/裏, 著/着,

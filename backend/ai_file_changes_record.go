@@ -170,7 +170,7 @@ func moveOrCopy(from, to string) error {
 		}
 		return os.RemoveAll(from)
 	}
-	if err := copyFile(from, to); err != nil {
+	if err := copyFileNew(from, to); err != nil {
 		return err
 	}
 	return os.Remove(from)

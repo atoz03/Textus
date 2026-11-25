@@ -96,22 +96,7 @@ func jaWidthAlnum(t *Text, c *ctx, o *out) {
 	fw := func(r rune) bool {
 		return r >= '０' && r <= '９' || !koyobun && (r >= 'Ａ' && r <= 'Ｚ' || r >= 'ａ' && r <= 'ｚ')
 	}
-	n := t.Len()
-	for i := 0; i < n; {
-		if !fw(t.Chars[i]) {
-			i++
-			continue
-		}
-		a := i
-		for i < n && fw(t.Chars[i]) {
-			i++
-		}
-		half := make([]rune, 0, i-a)
-		for _, r := range t.Chars[a:i] {
-			half = append(half, r-0xFEE0)
-		}
-		o.fix("ja.width.alnum", a, i, string(half), "全角の英数字は半角にします。")
-	}
+	halfWidthRuns(t, o, "ja.width.alnum", "全角の英数字は半角にします。", fw)
 }
 
 // jaSpaceTyped is ja.space.typed: a typed space between Japanese and Latin

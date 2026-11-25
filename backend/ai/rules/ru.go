@@ -26,21 +26,7 @@ func ruRun(t *Text, c *ctx, o *out) {
 // «…»; quotes inside «…» -> „…“.
 func ruQuoteStyle(t *Text, _ *ctx, o *out) {
 	msg := "В русском тексте кавычки «ёлочки», внутренние — „лапки“."
-	var marks []int
-	for i, ch := range t.Chars {
-		if ch == '"' && !t.Protected[i] {
-			marks = append(marks, i)
-		}
-	}
-	if len(marks)%2 == 0 {
-		for k := 0; k < len(marks); k += 2 {
-			a, b := marks[k], marks[k+1]
-			if slices.ContainsFunc(t.Chars[a+1:b], isCyrillic) {
-				o.fix("ru.quote.style", a, a+1, "«", msg)
-				o.fix("ru.quote.style", b, b+1, "»", msg)
-			}
-		}
-	}
+	straightQuotePairs(t, o, "ru.quote.style", "«", "»", msg, isCyrillic)
 	for i := 0; i < t.Len(); {
 		if t.Chars[i] == '“' && t.beforeNoneOr(i, func(r rune) bool { return isSpace(r) || r == '(' }) {
 			if j := slices.Index(t.Chars[i+1:], '”'); j >= 0 {

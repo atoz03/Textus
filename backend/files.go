@@ -178,6 +178,8 @@ func writeNewFile(dir, name string, data []byte, reuse bool) (string, error) {
 	return got, nil
 }
 
+// copyFileNew copies the file from to to, a path where nothing is yet; a
+// copy that fails leaves nothing there.
 func copyFileNew(from, to string) error {
 	f, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {

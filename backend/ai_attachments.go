@@ -118,7 +118,7 @@ func stage(source, attached string) (chatAttachment, error) {
 	}
 	name := freeName(attached, fileNameOf(source), numberedParen)
 	copied := filepath.Join(attached, name)
-	if err := copyFile(source, copied); err != nil {
+	if err := copyFileNew(source, copied); err != nil {
 		return chatAttachment{}, err
 	}
 	return readStaged(copied, name, attached)

@@ -45,17 +45,7 @@ func zhVariant(t *Text, _ *ctx, o *out) {
 // text - only a stray one (the text is clearly Simplified), never inside a
 // quotation.
 func zhScriptMixed(t *Text, _ *ctx, o *out) {
-	hans, hant := 0, 0
-	for _, p := range scriptPairs {
-		for _, ch := range t.Chars {
-			if ch == p.s && p.kind != pairTradOnly {
-				hans++
-			}
-			if ch == p.t && p.kind != pairSimpOnly {
-				hant++
-			}
-		}
-	}
+	hans, hant := hanScripts(t)
 	if hans < 2*max(hant, 1) {
 		return
 	}

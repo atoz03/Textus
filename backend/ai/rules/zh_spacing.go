@@ -187,21 +187,5 @@ func zhWidthAlnum(t *Text, c *ctx, o *out) {
 		return (r >= '０' && r <= '９' || r >= 'Ａ' && r <= 'Ｚ' || r >= 'ａ' && r <= 'ｚ') &&
 			!(twGongwen && unicode.IsNumber(r))
 	}
-	msg := zhm(c, "全角字母和数字应改为半角。", "全形字母和數字應改為半形。")
-	n := t.Len()
-	for i := 0; i < n; {
-		if !fw(t.Chars[i]) {
-			i++
-			continue
-		}
-		a := i
-		for i < n && fw(t.Chars[i]) {
-			i++
-		}
-		half := make([]rune, 0, i-a)
-		for _, r := range t.Chars[a:i] {
-			half = append(half, r-0xFEE0)
-		}
-		o.fix("zh.width.alnum", a, i, string(half), msg)
-	}
+	halfWidthRuns(t, o, "zh.width.alnum", zhm(c, "全角字母和数字应改为半角。", "全形字母和數字應改為半形。"), fw)
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -244,27 +243,9 @@ func adoptOldNotes(data, path, kept string) {
 	if os.MkdirAll(filepath.Dir(kept), 0o755) != nil {
 		return
 	}
-	if os.Rename(old, kept) != nil && copyFile(old, kept) == nil {
+	if os.Rename(old, kept) != nil && copyFileNew(old, kept) == nil {
 		_ = os.Remove(old)
 	}
-}
-
-func copyFile(from, to string) error {
-	in, err := os.Open(from)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		_ = os.Remove(to)
-		return err
-	}
-	return out.Close()
 }
 
 // carry renames what was kept under old to new, unless new has its own.
