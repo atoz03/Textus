@@ -50,8 +50,9 @@ export const canDragTabsBetweenWindows = false;
  *  platform keeps the framed page. */
 export const hasNativeWebPages = false;
 
-/** The Agent conversation popped out into its own OS window. Not yet. */
-export const canDetachChat = false;
+/** The Agent conversation popped out into its own OS window
+ *  (backend/detached_chat.go). */
+export const canDetachChat = isDesktopApp;
 
 /** Toggling OS fullscreen (zen mode, View > Toggle Full Screen). */
 export const canToggleFullscreen = isDesktopApp;

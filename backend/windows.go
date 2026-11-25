@@ -155,6 +155,10 @@ func (a *App) focusedEditorWindow(origin string) string {
 	if isEditorWindow(label) {
 		return label
 	}
+	// A chat window has no document: its editor window's.
+	if editor, ok := a.chats.editorFor(label); ok && a.window(editor) != nil {
+		return editor
+	}
 	if w := a.lastEditor(); w != nil {
 		return w.label
 	}
@@ -179,6 +183,9 @@ type windowSpec struct {
 	width, height int
 	minW, minH    int
 	at            *[2]float64
+	alwaysOnTop   bool
+	// parent keeps the window above it (a chat window on Wayland).
+	parent *mygo.Window
 }
 
 // openWindow creates a window of the app's frontend, with its boot snapshot
@@ -197,6 +204,8 @@ func (a *App) openWindow(spec windowSpec) (*appWindow, error) {
 		MinHeight:       spec.minH,
 		TitleBarStyle:   mygo.TitleBarHidden,
 		BackgroundColor: background,
+		AlwaysOnTop:     spec.alwaysOnTop,
+		Parent:          spec.parent,
 		Page:            mygo.PageOptions{PreloadScript: script},
 	}
 	if runtime.GOOS != "darwin" {
@@ -279,6 +288,7 @@ func (a *App) windowGone(w *appWindow) {
 	others := len(a.windows)
 	a.mu.Unlock()
 	a.forgetWindowSession(w.label)
+	a.forgetChatWindow(w.label)
 	if others == 0 && a.quitting.Load() {
 		a.exit()
 	}

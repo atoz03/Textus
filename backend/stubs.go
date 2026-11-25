@@ -34,7 +34,7 @@ var unsupportedCommands = []string{
 	"codex_login", "codex_logout", "claude_login", "claude_logout",
 	// chat and floating windows, web pages
 	"start_floating_tab_drag", "open_floating_window", "resize_floating_window", "floating_window_position",
-	"show_floating_owner", "detach_chat_window",
+	"show_floating_owner",
 	"web_page_show", "web_page_navigate", "web_page_reload",
 	// the command-line tool, the default editor
 	"install_cli_command", "set_default_editor",
@@ -82,8 +82,6 @@ var emptyAnswers = map[string]string{
 	"ai_can_think_deeper":         `false`,
 	"web_search_status":           `{"native":false,"service":null}`,
 	"list_image_providers":        `[]`,
-	"current_chat_window":         `null`,
-	"take_chat_handoff":           `null`,
 	"floating_desktop_supported":  `false`,
 	"list_window_bounds":          `[]`,
 	"start_window_drag_tracking":  `false`,

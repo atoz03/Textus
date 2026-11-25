@@ -56,6 +56,7 @@ type App struct {
 
 	menu   *menuState
 	drafts *draftStore
+	chats  chatWindows
 }
 
 func newApp(shared Shared, dirs Dirs) *App {
