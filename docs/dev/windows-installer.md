@@ -101,7 +101,7 @@ themselves, which other apps share; an uninstall run for an upgrade
 (`/UPDATE`) leaves them for the install that follows.
 
 **Settings › General › Default Markdown editor** writes the same values
-again (`src-tauri/src/commands/default_editor.rs`; a change to one needs the
+again (`backend/default_editor.go`; a change to one needs the
 other) and opens **Default apps** at Textus
 (`ms-settings:defaultapps?registeredAppUser=Textus`). Windows does not let
 an app make itself the default - the user's choice is a hashed `UserChoice`
