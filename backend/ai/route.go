@@ -1,9 +1,13 @@
 package ai
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
+
+	"textus/backend/ai/aicompat"
 )
 
 // Credentials look up what a route needs: a provider's stored key ("" for
@@ -76,4 +80,64 @@ func (c Credentials) chatRoute(provider string, entry Provider, r Route) (Route,
 		return Route{}, errors.New(NotConfigured)
 	}
 	return r, nil
+}
+
+// AgentProvider is the provider, credentials and model an agent request
+// runs on (route::agent_provider); false for a dialect without tool
+// calling, which the chat answers in one plain completion. model "" is the
+// provider's agent default; native is the provider's own web search, nil
+// for none. client sends the steps: it has no total timeout.
+func (c Credentials) AgentProvider(provider, model string, thinking aicompat.ThinkingLevel, native *aicompat.NativeSearch, client *http.Client) (aicompat.AgentProvider, bool, error) {
+	entry, ok := Find(provider)
+	if !ok {
+		return aicompat.AgentProvider{}, false, fmt.Errorf("unknown provider: %s", provider)
+	}
+	model = strings.TrimSpace(model)
+	if model == "" && entry.AgentDefaultModel != nil {
+		model = *entry.AgentDefaultModel
+	}
+	var endpoint aicompat.Endpoint
+	switch entry.Dialect {
+	case "openai-responses", "anthropic-messages":
+		r, err := c.Route(provider, model)
+		if err != nil {
+			return aicompat.AgentProvider{}, false, err
+		}
+		if entry.Dialect == "anthropic-messages" {
+			endpoint = aicompat.Endpoint{Kind: aicompat.AnthropicEndpoint, Anthropic: aicompat.AnthropicAuth{APIKey: r.key()}}
+			model = cmp.Or(model, AnthropicCompletionModel)
+		} else {
+			endpoint = aicompat.Endpoint{Kind: aicompat.OpenAIKeyEndpoint, APIKey: r.key()}
+			model = cmp.Or(model, OpenAICompletionModel)
+		}
+	case "openai-chat-completions":
+		// The model asked, else the agent default, else the server's own.
+		r, err := c.Route(provider, model)
+		if err != nil {
+			return aicompat.AgentProvider{}, false, err
+		}
+		model = r.Model
+		endpoint = aicompat.Endpoint{
+			Kind: aicompat.ChatEndpoint, APIKey: r.key(), BaseURL: r.BaseURL,
+			Vendor: ChatVendor(r.BaseURL), StreamUsage: aicompat.Provider(entry.ID).StreamUsage,
+		}
+	default:
+		return aicompat.AgentProvider{}, false, nil
+	}
+	return aicompat.AgentProvider{
+		ID: entry.ID, Model: model, Endpoint: endpoint, Thinking: thinking, NativeSearch: native, Client: client,
+	}, true, nil
+}
+
+// CanThinkDeeper reports whether the chat composer offers Deep thinking
+// for provider and its Agent model ("" is the provider's agent default).
+// With no model to look up - a custom endpoint's comes from its settings -
+// the table answers for one it doesn't know.
+func CanThinkDeeper(provider, model string) bool {
+	if model == "" {
+		if entry, ok := Find(provider); ok && entry.AgentDefaultModel != nil {
+			model = *entry.AgentDefaultModel
+		}
+	}
+	return aicompat.CanThinkDeeper(provider, model)
 }

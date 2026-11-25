@@ -325,10 +325,10 @@ export type ImageProviderEntry_Serialize = {
 	signInFor: string | null,
 };
 
-/**  One user message for the agent, as the frontend sends it. */
+/**  One user message for the agent, as the frontend sends it: backend/ai_agent.go messageRequest. */
 export type MessageRequest = MessageRequest_Serialize | MessageRequest_Deserialize;
 
-/**  One user message for the agent, as the frontend sends it. */
+/**  One user message for the agent, as the frontend sends it: backend/ai_agent.go messageRequest. */
 export type MessageRequest_Deserialize = {
 	provider: string,
 	/**  The document, block by block as the editor has it. */
@@ -370,7 +370,7 @@ export type MessageRequest_Deserialize = {
 	askBeforeFileChanges?: boolean | null,
 };
 
-/**  One user message for the agent, as the frontend sends it. */
+/**  One user message for the agent, as the frontend sends it: backend/ai_agent.go messageRequest. */
 export type MessageRequest_Serialize = {
 	provider: string,
 	/**  The document, block by block as the editor has it. */
@@ -446,14 +446,14 @@ export type SentBlock_Serialize = {
 /**
  *  One live fragment of an in-flight `ai_agent_message`. Display only: the
  *  command still resolves with the complete turn list, so a dropped event costs
- *  liveness, never correctness.
+ *  liveness, never correctness. backend/ai/agent_events.go StreamEvent.
  */
 export type StreamEvent = StreamEvent_Serialize | StreamEvent_Deserialize;
 
 /**
  *  One live fragment of an in-flight `ai_agent_message`. Display only: the
  *  command still resolves with the complete turn list, so a dropped event costs
- *  liveness, never correctness.
+ *  liveness, never correctness. backend/ai/agent_events.go StreamEvent.
  */
 export type StreamEvent_Deserialize = 
 /**  A chunk of the assistant's prose for the turn being generated. */
@@ -489,7 +489,7 @@ export type StreamEvent_Deserialize =
 /**
  *  One live fragment of an in-flight `ai_agent_message`. Display only: the
  *  command still resolves with the complete turn list, so a dropped event costs
- *  liveness, never correctness.
+ *  liveness, never correctness. backend/ai/agent_events.go StreamEvent.
  */
 export type StreamEvent_Serialize = 
 /**  A chunk of the assistant's prose for the turn being generated. */

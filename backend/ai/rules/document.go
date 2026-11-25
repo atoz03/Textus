@@ -110,6 +110,13 @@ func CheckDocument(markdown string, conv *Conventions, level Level, library []st
 	return checkDocumentWith(markdown, "", conv, level, library)
 }
 
+// CheckDocumentWith checks a draft for the document context: the draft
+// judged against the document's own convention majority, the document
+// itself not checked.
+func CheckDocumentWith(markdown, context string, conv *Conventions, level Level, library []string) DocReport {
+	return checkDocumentWith(markdown, context, conv, level, library)
+}
+
 // checkDocumentWith is CheckDocument with context (the rest of the
 // document, the text before a cursor; "" for none) counted into the
 // convention majority but not checked.

@@ -59,6 +59,23 @@ func UINamesOf(code string) (UINames, bool) {
 	return UINames{}, false
 }
 
+// nativeNames are the UI languages' names in themselves, as the language
+// menu shows them (src/prefs/appearance-tables.json langNames; a test
+// keeps them the same).
+var nativeNames = map[string]string{
+	"en": "English", "zh": "简体中文", "zh-Hant": "繁體中文", "ja": "日本語", "ko": "한국어",
+	"es": "Español", "fr": "Français", "de": "Deutsch", "ru": "Русский", "pt": "Português",
+}
+
+// NativeName is a UI language's name in itself; its English name for one
+// the table lacks.
+func NativeName(code string) string {
+	if name, ok := nativeNames[code]; ok {
+		return name
+	}
+	return rules.EnglishName(code)
+}
+
 // OfEnglish is this UI's name for what the English UI calls english.
 func (n UINames) OfEnglish(english string) string {
 	for _, pair := range n.Names {

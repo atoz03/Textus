@@ -28,7 +28,7 @@ import "encoding/json/jsontext"
 // unsupportedCommands fail with errUnsupported.
 var unsupportedCommands = []string{
 	// Textus AI's agent and sign-in
-	"ai_agent_message", "ai_steer", "pick_attachment_files", "attach_pasted",
+	"pick_attachment_files", "attach_pasted",
 	"ai_generated_image", "ai_retry_generated_image", "ai_generated_image_prompt", "ai_redraw_generated_image",
 	"ai_paper_run", "ai_paper_save_outline", "ai_paper_draft", "ai_paper_status",
 	"codex_login", "codex_logout", "claude_login", "claude_logout",
@@ -79,7 +79,6 @@ var emptyAnswers = map[string]string{
 	"notify_take_open":            `null`,
 	"claude_auth_status":          `{"configured":false}`,
 	"codex_auth_status":           `{"configured":false}`,
-	"ai_can_think_deeper":         `false`,
 	"web_search_status":           `{"native":false,"service":null}`,
 	"list_image_providers":        `[]`,
 	"floating_desktop_supported":  `false`,
@@ -94,7 +93,6 @@ var emptyAnswers = map[string]string{
 	"plugin_ai_tool_result":      `null`,
 	"plugin_http_cancel":         `null`,
 	"agent_stop":                 `null`,
-	"ai_cancel":                  `null`,
 	"ai_discard_generated_image": `null`,
 	"ai_paper_figures_drawn":     `null`,
 	"background_host_idle":       `null`,
