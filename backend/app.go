@@ -72,6 +72,7 @@ type App struct {
 	drags    tabDrags
 	pages    webPages
 	cli      cliBridge
+	bg       backgroundState
 }
 
 func newApp(shared Shared, dirs Dirs) *App {
@@ -191,11 +192,16 @@ func Run(shared Shared) error {
 		case len(windows) > 0:
 			a.queueWindowsToOpen(windows)
 		}
+		// Background mode costs one settings read while off.
+		if a.readFlag(backgroundSetting) {
+			a.applyBackground(changeStartup)
+		}
 	})
+	// Closing the last window leaves the app running on macOS, as Mac apps
+	// do, and elsewhere in background mode; it quits otherwise.
+	app.OnWindowAllClosed(a.lastWindowClosed)
 	if runtime.GOOS == "darwin" {
-		// Closing the last window leaves the app running, as Mac apps do;
-		// the Dock icon brings a window back.
-		app.OnWindowAllClosed(func() {})
+		// The Dock icon brings a window back.
 		app.OnActivate(func(visible bool) {
 			if !visible && a.stores != nil {
 				a.reopenWithoutWindows()

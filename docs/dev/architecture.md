@@ -249,6 +249,7 @@ frontend's dev server and build). The backend is the Go package
 | `drafts.go`, `docdata.go`, `chathistory.go`                                              | Drafts, a document's data beside it, the chat history folder.                                                                                     |
 | `files.go`, `pictures.go`, `tree.go`, `folder.go`, `walk.go`, `atomic.go`, `hidden_*.go` | Files and folders: reading, atomic writes, pictures beside a document, the sidebar's tree and its operations, the folder walk and watching.       |
 | `conventions.go`, `jsonc.go`, `links.go`                                                 | What a folder says about how it is written (`folder_conventions`), and links between documents.                                                   |
+| `background.go`, `tray.go`, `icons/tray/`                                                | Background mode: whether closing the last window quits, and its tray icon and menu ([lifecycle.md](lifecycle.md#background-mode)).                |
 | `menu.go`, `menu_bar.go`, `menu_dispatch.go`, `menu_recents.go`                          | The menu table (src/registry/menu/menu.json), the macOS bar, the id → `menu-<id>` dispatch, Open Recent.                                          |
 | `dialogs.go`, `shell.go`, `system.go`, `web.go`                                          | File dialogs, opening and revealing, system facts, clipboard, the window commands, and what is fetched from the web for the page.                 |
 | `export.go`, `themes.go`, `schemes.go`                                                   | Export through pandoc, imported themes, and the `asset:` / `font:` schemes that serve files to the page.                                          |
@@ -263,8 +264,7 @@ frontend's dev server and build). The backend is the Go package
 | `stubs.go`                                                                               | The iOS build's own commands, which fail on the desktop: no desktop command waits there any more.                                                 |
 
 Not in the Go backend yet (the Rust sources are at
-`git show 8da2d2f0:src-tauri/...`): the tray and running in the
-background (`background_status` says there is no tray), the platform
+`git show 8da2d2f0:src-tauri/...`): the platform
 touches `system.go` answers without acting on them (the Roman input
 source for a plugin's key mode, the Edit menu's native actions, drag
 modifiers), and the iOS and Android builds. Web page tabs are native

@@ -89,6 +89,8 @@ func init() {
 		if proxyKeysChanged(a.Patch) {
 			c.app.proxyChanged()
 		}
+		// Background mode's tray follows the setting and the UI language.
+		c.app.backgroundChanged(a.Patch)
 		c.app.emitAll("settings-changed", settingsChanged{Rev: rev, Patch: a.Patch, From: c.Label()})
 		return rev, nil
 	})

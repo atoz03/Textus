@@ -181,9 +181,6 @@ func init() {
 	command("edit_natively", func(c *Call, _ none) (bool, error) { return false, nil })
 	command("drag_modifiers", func(c *Call, _ none) (map[string]bool, error) { return map[string]bool{"shift": false}, nil })
 	command("app_distribution", func(c *Call, _ none) (string, error) { return "direct", nil })
-	command("background_status", func(c *Call, _ none) (map[string]string, error) {
-		return map[string]string{"tray": "unavailable"}, nil
-	})
 	command("release_instance", func(c *Call, _ none) (nothing, error) { return nil, nil })
 	// After an update is installed: every window closes as at Quit (an
 	// unsaved document asks, or is kept as a draft), then the new version
