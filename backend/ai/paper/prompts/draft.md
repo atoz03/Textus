@@ -1,6 +1,6 @@
-The drafting stage (draft.rs): a writer for each section, which hands it
-over with submit_section and is sent back what the checks find (checks.rs).
-The genre's `voice` and `cite` come from genre.rs. `figure.*` is how each
+The drafting stage (draft.go): a writer for each section, which hands it
+over with submit_section and is sent back what the checks find (checks.go).
+The genre's `voice` and `cite` come from genre.go. `figure.*` is how each
 kind of planned figure is to be written into the section.
 
 ## instructions

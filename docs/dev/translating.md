@@ -30,15 +30,15 @@ file changes, which is what lets each language be worked on alone.
 
 For a language `{code}`:
 
-| File                                         | What it holds                                                                                                                                                                                                                                            |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/i18n/locales/{code}.ts`                 | The UI's strings: any of `en.ts`'s keys, translated. `complete = true` once every key is there; then a missing key fails the tests.                                                                                                                      |
-| `src/help/markdown-guide.{code}.md`          | The Markdown guide (Help > Markdown Guide, Settings > General). New file: translate `markdown-guide.en.md`.                                                                                                                                              |
-| `src/help/agent-guide.{code}.md`             | The AI features guide (Help > AI Features Guide). New file: translate `agent-guide.en.md`.                                                                                                                                                               |
-| `src-tauri/src/ai/ui-names/{code}.txt`       | What the AI is told your UI calls things, so its answers point at labels that exist. Exists already, comment only. One line per line of `en.txt`: `English name = yours`.                                                                                |
-| `src-tauri/src/ai/style-headings/{code}.txt` | The headings "Learn my style" gives a style profile written in your language. Exists already, comment only. One line: title and seven sections, separated by `/`.                                                                                        |
-| `src-tauri/src/ai/rules/messages/{code}.txt` | What the grammar check and the conventions check say when a rule for every language fires on text in your language (a space before a comma, a doubled word). One line per line of `en.txt`.                                                              |
-| `src/ai/skills/texts/{code}.ts`              | The built-in skills' names in the `/` menu and Settings: a label, a one-line hint and the aliases people type after `/`, for each of the four (`proofread`, `theme`, `plugin`, `skill`); the others moved to the market in 1.3. Every skill is required. |
+| File                                   | What it holds                                                                                                                                                                                                                                            |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/i18n/locales/{code}.ts`           | The UI's strings: any of `en.ts`'s keys, translated. `complete = true` once every key is there; then a missing key fails the tests.                                                                                                                      |
+| `src/help/markdown-guide.{code}.md`    | The Markdown guide (Help > Markdown Guide, Settings > General). New file: translate `markdown-guide.en.md`.                                                                                                                                              |
+| `src/help/agent-guide.{code}.md`       | The AI features guide (Help > AI Features Guide). New file: translate `agent-guide.en.md`.                                                                                                                                                               |
+| `backend/ai/ui-names/{code}.txt`       | What the AI is told your UI calls things, so its answers point at labels that exist. Exists already, comment only. One line per line of `en.txt`: `English name = yours`.                                                                                |
+| `backend/ai/style-headings/{code}.txt` | The headings "Learn my style" gives a style profile written in your language. Exists already, comment only. One line: title and seven sections, separated by `/`.                                                                                        |
+| `backend/ai/rules/messages/{code}.txt` | What the grammar check and the conventions check say when a rule for every language fires on text in your language (a space before a comma, a doubled word). One line per line of `en.txt`.                                                              |
+| `src/ai/skills/texts/{code}.ts`        | The built-in skills' names in the `/` menu and Settings: a label, a one-line hint and the aliases people type after `/`, for each of the four (`proofread`, `theme`, `plugin`, `skill`); the others moved to the market in 1.3. Every skill is required. |
 
 Anything a file leaves out falls back to English, so a half-done language
 still works - but only a language whose seven files are all filled in is
@@ -230,7 +230,7 @@ languages:
 ```sh
 npm test            # every language: keys, placeholders, plurals, tutorial, guides
 npm run check       # the same plus types, lint and formatting
-cd src-tauri && cargo test   # ai-names and style-headings against your strings and guide
+go test ./backend/ai/...   # ui-names and style-headings against your strings and guide
 ```
 
 `src/ai/skills/texts/skills.test.ts` checks the skill labels, hints and
@@ -240,14 +240,14 @@ missing or unknown plural form, or - once `complete = true` - any key not
 translated. The tests in
 `src/help/help-guides.test.ts` compare your guides' outline with
 English's, and `src/i18n/ai-concepts.test.ts` checks the starter files and
-the Settings paths. In `src-tauri`,
-`the_prompt_names_things_exactly_as_the_ui_does`
-(`src/ai/agent/tests.rs`) checks every line of your `ui-names` file
+the Settings paths. In the Go backend,
+`TestThePromptNamesThingsExactlyAsTheUIDoes`
+(`backend/ai/agent_test.go`) checks every line of your `ui-names` file
 against your strings and guide, and
-`learned_profiles_use_the_template_headings` (`src/ai/project/tests.rs`)
+`TestLearnedProfilesUseTheTemplateHeadings` (`backend/ai/library_test.go`)
 your style headings.
 
-Then look at it: `npm run tauri dev` (or `npm run dev` for the app in a
+Then look at it: `npx mygo dev` (or `npm run dev` for the app in a
 browser), pick the language in Settings > General, and
 go through Settings (on a narrow window too), the AI panel, Quick Ask, the
 tutorial (Help > Welcome and Tutorial) and both guides. Nothing should be

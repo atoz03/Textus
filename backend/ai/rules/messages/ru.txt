@@ -1,4 +1,4 @@
-# Сообщения общих правил письма (src-tauri/src/ai/rules/messages.rs).
+# Сообщения общих правил письма (backend/ai/rules/messages.go).
 shared.nfc.invisible = Невидимый символ: удалите его.
 shared.nfc.compose = Разложенный диакритический знак: используйте составной символ.
 shared.space-before-punct = Перед этим знаком препинания пробел не ставится.

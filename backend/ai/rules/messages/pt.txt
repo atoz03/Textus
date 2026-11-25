@@ -1,4 +1,4 @@
-# Mensagens das regras de escrita comuns (src-tauri/src/ai/rules/messages.rs).
+# Mensagens das regras de escrita comuns (backend/ai/rules/messages.go).
 shared.nfc.invisible = Caractere invisível: remova-o.
 shared.nfc.compose = Acento decomposto: use o caractere composto.
 shared.space-before-punct = Sem espaço antes deste sinal de pontuação.

@@ -1,6 +1,6 @@
-The research stage (research.rs): the step that splits the topic into
+The research stage (research.go): the step that splits the topic into
 questions, and the helpers that research one question each. The genre's
-`research_angles` and `research_sources` come from its profile in genre.rs.
+`research_angles` and `research_sources` come from its profile in genre.go.
 
 ## plan
 

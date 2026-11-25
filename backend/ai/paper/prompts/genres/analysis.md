@@ -1,4 +1,4 @@
-What a analysis is, as each stage of the paper is told it (genre.rs): one
+What a analysis is, as each stage of the paper is told it (genre.go): one
 part of its profile under each heading. `{{genre.<genre>.<part>}}` takes
 another genre's part, `{{shared.<name>}}` a part of ../shared.md.
 

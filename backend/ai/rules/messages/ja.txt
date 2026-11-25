@@ -1,4 +1,4 @@
-# 共通の表記ルールのメッセージ（src-tauri/src/ai/rules/messages.rs）。
+# 共通の表記ルールのメッセージ（backend/ai/rules/messages.go）。
 shared.nfc.invisible = 見えない文字があります。削除してください。
 shared.nfc.compose = 分解された結合文字です。合成済みの文字を使ってください。
 shared.space-before-punct = この句読点の前にスペースは不要です。

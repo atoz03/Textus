@@ -1,4 +1,4 @@
-# Meldungen der gemeinsamen Schreibregeln (src-tauri/src/ai/rules/messages.rs).
+# Meldungen der gemeinsamen Schreibregeln (backend/ai/rules/messages.go).
 shared.nfc.invisible = Unsichtbares Zeichen: bitte entfernen.
 shared.nfc.compose = Zerlegter Akzent: das zusammengesetzte Zeichen verwenden.
 shared.space-before-punct = Kein Leerzeichen vor diesem Satzzeichen.

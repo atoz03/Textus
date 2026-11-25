@@ -1,6 +1,6 @@
 The step that writes the finished piece's title and abstract from its
-sections (finish.rs). `{{opening}}` is the genre's own rule for them, from
-genre.rs. It replies with JSON.
+sections (finish.go). `{{opening}}` is the genre's own rule for them, from
+genre.go. It replies with JSON.
 
 ## opening
 

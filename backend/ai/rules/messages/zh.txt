@@ -1,4 +1,4 @@
-# 共享写作规则的提示语（src-tauri/src/ai/rules/messages.rs）。
+# 共享写作规则的提示语（backend/ai/rules/messages.go）。
 shared.nfc.invisible = 不可见字符：请删除。
 shared.nfc.compose = 分解形式的附加符号：请改用合成字符。
 shared.space-before-punct = 此标点前不应有空格。

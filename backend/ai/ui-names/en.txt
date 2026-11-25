@@ -1,6 +1,6 @@
 # The names the AI is told the app gives its concepts and controls, as the
 # English UI shows them (src/i18n/locales/en.ts and src/help/agent-guide.en.md;
-# agent.rs's workspace_section describes the app with them). A note in
+# agent_prompt.go's workspaceSection describes the app with them). A note in
 # parentheses says which of two same-named things is meant and is not part
 # of the name.
 #

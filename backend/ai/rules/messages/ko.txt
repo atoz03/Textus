@@ -1,4 +1,4 @@
-# 공통 표기 규칙 메시지 (src-tauri/src/ai/rules/messages.rs).
+# 공통 표기 규칙 메시지 (backend/ai/rules/messages.go).
 shared.nfc.invisible = 보이지 않는 문자가 있습니다. 지워 주세요.
 shared.nfc.compose = 분해된 결합 문자입니다. 완성형 문자를 쓰세요.
 shared.space-before-punct = 이 문장 부호 앞에는 띄어 쓰지 않습니다.

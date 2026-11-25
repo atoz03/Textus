@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"textus/backend/ai/aicompat"
+	"textus/backend/ai/rules"
 )
 
 // The ports of src-tauri/src/ai/agent/tests.rs and lists/tests.rs.
@@ -407,6 +408,158 @@ func TestTheWorkspaceSectionSaysWhichFolderAndWhy(t *testing.T) {
 	}
 	if review := RequestPreamble(&chosen, ModeReview, "ja"); !strings.Contains(review, "Review mode (レビュー in their Japanese UI)") || !strings.Contains(review, "General mode (汎用)") {
 		t.Fatal(review)
+	}
+}
+
+// readRepo is a file of the repository, "" when it isn't there.
+func readRepo(path string) string {
+	raw, _ := os.ReadFile("../../" + path)
+	return string(raw)
+}
+
+func TestThePromptNamesThingsExactlyAsTheUIDoes(t *testing.T) {
+	// Every UI label the agent is told about must be the one the user sees,
+	// in each language. Read from the frontend's files.
+	names := readRepo("src/i18n/names.ts")
+	if !strings.Contains(names, `export const AI_NAME = "`+AIName+`";`) {
+		t.Error("AI_NAME differs from src/i18n/names.ts")
+	}
+	var config struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(readRepo("mygo.json")), &config); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(names, `export const APP_NAME = "`+config.Name+`";`) || !strings.HasPrefix(AIName, config.Name+" ") {
+		t.Errorf("APP_NAME in src/i18n/names.ts and AI_NAME differ from %q, mygo.json's name", config.Name)
+	}
+	// The same languages as the UI offers, in the same order.
+	_, list, _ := strings.Cut(readRepo("src/i18n/langs.ts"), "export const LANGS = [")
+	list, _, found := strings.Cut(list, "] as const")
+	if !found {
+		t.Fatal("no LANGS in src/i18n/langs.ts")
+	}
+	var codes, ours []string
+	for i, part := range strings.Split(list, `"`) {
+		if i%2 == 1 {
+			codes = append(codes, part)
+		}
+	}
+	for _, l := range rules.UILanguages {
+		ours = append(ours, l.Code)
+	}
+	if !slices.Equal(codes, ours) {
+		t.Errorf("LANGS is %q, the backend's %q", codes, ours)
+	}
+
+	// A chosen project folder: the case that names every label.
+	root := "/tmp/novel"
+	chosen := AgentWorkspace{Root: &root, RootSource: RootChosen, Memories: NoMemories()}
+	english := entries(uiFile("ui-names", "en"))
+	for _, language := range rules.UILanguages {
+		code := language.Code
+		uiStrings := readRepo("src/i18n/locales/" + code + ".ts")
+		guide := strings.ToLower(readRepo("src/help/agent-guide." + code + ".md"))
+		// A name is the UI's, or, for the few that are no label - "project
+		// menu" - the help guide's. "Style (the chip)": the label is what
+		// precedes the note.
+		known := func(name string) bool {
+			name, _, _ = strings.Cut(name, " (")
+			return strings.Contains(uiStrings, name) || strings.Contains(guide, strings.ToLower(name))
+		}
+		if code == "en" {
+			for _, name := range english {
+				if !known(name) {
+					t.Errorf("neither the UI nor the guide says %s", name)
+				}
+			}
+			continue
+		}
+		lines := entries(uiFile("ui-names", code))
+		if len(lines) == 0 {
+			continue
+		}
+		var inEnglish []string
+		var pairs [][2]string
+		for _, line := range lines {
+			en, theirs, ok := strings.Cut(line, " = ")
+			if !ok {
+				t.Fatalf("ui-names/%s.txt: no \" = \" in %s", code, line)
+			}
+			inEnglish = append(inEnglish, en)
+			pairs = append(pairs, [2]string{en, theirs})
+		}
+		if !slices.Equal(inEnglish, english) {
+			t.Errorf("ui-names/%s.txt names every line of en.txt, in its order", code)
+		}
+		prompt := BuildInstructions(&chosen, md("draft"), true, ModeReview, "", code)
+		if !strings.Contains(prompt, "\nEnglish | "+NativeName(code)+"\n") {
+			t.Errorf("%s: the prompt lacks the names' header", code)
+		}
+		for _, pair := range pairs {
+			if !strings.Contains(prompt, pair[0]+" | "+pair[1]) {
+				t.Errorf("%s: the prompt lacks %s", code, pair[1])
+			}
+			if !known(pair[1]) {
+				t.Errorf("%s: neither the UI nor the guide says %s", code, pair[1])
+			}
+		}
+	}
+
+	// The labels the English description quotes, and those too short to
+	// look up on their own, are exactly the strings' entries.
+	prompt := BuildInstructions(&chosen, md("draft"), true, ModeReview, "", "en")
+	en := readRepo("src/i18n/locales/en.ts")
+	for _, label := range []string{
+		"Choose folder…",
+		"Use the sidebar's folder",
+		"Learn my style from samples…",
+		"Create style profile",
+		"Open style profile",
+		"New library entry…",
+		"Edit the folder's writing instructions",
+		"Writing Instructions (agent.md)",
+		"Edit agent.md",
+		"Import Skill…",
+		// The Settings pages and groups its paths go through.
+		"Memory & skills",
+		"Chat & writing",
+		"Continue & Check",
+		"Memory",
+	} {
+		if !strings.Contains(prompt, label) {
+			t.Errorf("the prompt lacks %s", label)
+		}
+		if !strings.Contains(en, `"`+label+`"`) {
+			t.Errorf("the UI has no %s", label)
+		}
+	}
+	zh, ja := readRepo("src/i18n/locales/zh.ts"), readRepo("src/i18n/locales/ja.ts")
+	for _, c := range []struct{ strings, entry string }{
+		{en, `agentWorkspaceRootLabel: "Folder"`},
+		{zh, `agentWorkspaceRootLabel: "文件夹"`},
+		{ja, `agentWorkspaceRootLabel: "フォルダー"`},
+		{zh, `navSkills: "技能"`},
+		{ja, `navSkills: "スキル"`},
+		{zh, `settingsTitle: "设置"`},
+		{ja, `settingsTitle: "設定"`},
+		{zh, `aiCompletionLabel: "续写"`},
+		{ja, `completionToneLabel: "補完のトーン"`},
+		{zh, `proposalAccept: "采纳"`},
+		{ja, `proposalAccept: "適用"`},
+		{zh, `proposalReject: "拒绝"`},
+		{ja, `proposalReject: "却下"`},
+	} {
+		if !strings.Contains(c.strings, c.entry) {
+			t.Errorf("the UI has no %s", c.entry)
+		}
+	}
+	if !strings.Contains(prompt, "Settings > "+AIName+" > Memory & skills > Folder") {
+		t.Error("the prompt lacks the folder's Settings path")
+	}
+	// The backend's own pointer to Settings names the same page.
+	if !strings.Contains(NotConfigured, "Settings > "+AIName+".") {
+		t.Errorf("NotConfigured: %s", NotConfigured)
 	}
 }
 

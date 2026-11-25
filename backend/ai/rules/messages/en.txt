@@ -1,4 +1,4 @@
-# Messages for the shared writing rules (src-tauri/src/ai/rules/messages.rs).
+# Messages for the shared writing rules (backend/ai/rules/messages.go).
 # One line per message: `rule.key = text`; {0}, {1} are filled in by the code.
 # Translators: keep every key and placeholder; see docs/dev/translating.md.
 shared.nfc.invisible = Invisible character: remove it.

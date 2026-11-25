@@ -1,5 +1,5 @@
 The step that reads a writing request and decides which genre it calls for
-and how long it is, before any research (choose.rs). It replies with JSON.
+and how long it is, before any research (choose.go). It replies with JSON.
 
 ## instructions
 

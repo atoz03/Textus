@@ -1,6 +1,6 @@
-The review stage (review.rs): one reader of the whole draft, reporting with
+The review stage (review.go): one reader of the whole draft, reporting with
 report_issues what each section's writer should revise. The genre's
-`review_for` comes from genre.rs.
+`review_for` comes from genre.go.
 
 ## instructions
 

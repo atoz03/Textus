@@ -1,7 +1,7 @@
-The outline stage (outline.rs): one step plans the sections and figures
+The outline stage (outline.go): one step plans the sections and figures
 from the research notes and hands them over with submit_outline. The
-genre's `thesis` and `outline_order` come from genre.rs; the numbers from
-the outline's shape (tuning.rs and the genre's scale).
+genre's `thesis` and `outline_order` come from genre.go; the numbers from
+the outline's shape (tuning.go and the genre's scale).
 
 ## instructions
 
