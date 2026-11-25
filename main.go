@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json/v2"
 	"log"
+	"os"
 
 	"textus/backend"
 )
@@ -42,7 +43,7 @@ func main() {
 	if err := json.Unmarshal(packageJSON, &pkg); err != nil {
 		log.Fatalf("textus: package.json: %v", err)
 	}
-	err := backend.Run(backend.Shared{
+	shared := backend.Shared{
 		Version:          pkg.Version,
 		BackendDefaults:  backendDefaults,
 		AppearanceTables: appearanceTables,
@@ -53,8 +54,13 @@ func main() {
 		ImageTypes:       imageTypes,
 		ErrorKinds:       errorKinds,
 		Permissions:      pluginPermissions,
-	})
-	if err != nil {
+	}
+	// `textus help`, `textus search ...`: answered and gone before any
+	// window.
+	if code, ok := backend.RunCLI(shared); ok {
+		os.Exit(code)
+	}
+	if err := backend.Run(shared); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -305,6 +305,7 @@ func (a *App) windowGone(w *appWindow) {
 	a.mu.Unlock()
 	a.forgetWindowSession(w.label)
 	a.forgetChatWindow(w.label)
+	a.cliWindowGone(w.label)
 	switch kindOf(w.label) {
 	case kindEditor:
 		// Its floating views go with it (it runs their plugins), and its

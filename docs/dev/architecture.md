@@ -258,19 +258,19 @@ frontend's dev server and build). The backend is the Go package
 | `ai_endpoints.go`, `ai_state.go`, `ai_suggest.go`                                        | Textus AI: custom endpoints, model lists, kept proposals, revision choices, completions, titles, next messages.                                   |
 | `ai/`                                                                                    | Package `ai`: the provider catalog, how each server takes a key, routes, one request in each dialect, completions.                                |
 | `extract/`                                                                               | Package `extract`: a .docx read as Markdown, for import and for the AI.                                                                           |
-| `stubs.go`                                                                               | The commands of what this build doesn't do yet: those that report answer that there is nothing, the rest fail.                                    |
+| `cli_*.go`, `cli/`                                                                       | The `textus` terminal command: run before the app (`RunCLI`), answered by the running app, and installed ([cli.md](cli.md)).                      |
+| `stubs.go`                                                                               | The iOS build's own commands, which fail on the desktop: no desktop command waits there any more.                                                 |
 
-Not in the Go backend yet (`stubs.go`; the Rust sources are at
-`git show 8da2d2f0:src-tauri/...`): Textus AI's agent and what hangs off
-it (the chat turn and its tools, attachments, generated images, memory,
-skills and the agent workspace, the paper writer, file-change records),
-the grammar check and the rules engine, ChatGPT and Claude sign-in (those
-providers are reached by API key), plugins and what they reach (files,
-git, ssh, http, storage, MCP, agents) with the scheduled jobs,
-notifications and floating windows that are theirs, chat windows, web
-page tabs, the `textus` command, the default editor, the tray, and the
-iOS and Android builds. `src/platform/capabilities.ts` turns the
-frontend's side of them off.
+Not in the Go backend yet (the Rust sources are at
+`git show 8da2d2f0:src-tauri/...`): the tray and running in the
+background (`background_status` says there is no tray), the platform
+touches `system.go` answers without acting on them (the Roman input
+source for a plugin's key mode, the Edit menu's native actions, drag
+modifiers), and the iOS and Android builds. Web page tabs are native
+pages on macOS and Windows only, and tabs drag between windows there
+only: Linux, Wayland above all, gives no window positions.
+`src/platform/capabilities.ts` turns the frontend's side of what is
+missing off.
 
 A shape that exists on both sides carries a comment on each side naming
 the other; change both together.

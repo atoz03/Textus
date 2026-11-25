@@ -104,8 +104,9 @@ export const canPickFolder = isDesktopApp || isIOSApp;
  *  plugin, platform/scoped-folder.ts). */
 export const canOpenFolder = isDesktopApp || isMobileApp;
 
-/** Settings' "install the `textus` terminal command". Not yet. */
-export const canInstallCliCommand = false;
+/** Settings' "install the `textus` terminal command"
+ *  (backend/cli_install.go). iOS has no terminal. */
+export const canInstallCliCommand = isDesktopApp;
 
 /** Moving files to the Trash: iOS's is the Files app's Recently Deleted. */
 export const canTrashFiles = isDesktopApp || isIOSApp;

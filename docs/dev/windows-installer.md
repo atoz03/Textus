@@ -110,7 +110,7 @@ only the Settings app writes - so the user picks Textus there.
 ## The `textus` command
 
 Textus installs it itself on startup, and again from **Settings › General**
-(`src-tauri/src/commands/cli.rs`): `bin\textus.cmd` beside `Textus.exe`, and
+(`backend/cli_install_windows.go`): `bin\textus.cmd` beside `Textus.exe`, and
 that folder on the user's `PATH` (`HKCU\Environment`). The script sets
 `TEXTUS_CLI=1` and runs `"%~dp0..\Textus.exe" %*` without `start`, so a
 command's output and exit code reach the terminal; given paths or nothing,

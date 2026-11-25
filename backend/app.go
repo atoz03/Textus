@@ -71,6 +71,7 @@ type App struct {
 	floats   floatingWindows
 	drags    tabDrags
 	pages    webPages
+	cli      cliBridge
 }
 
 func newApp(shared Shared, dirs Dirs) *App {
@@ -175,6 +176,10 @@ func Run(shared Shared) error {
 		a.startSchedule()
 		go a.installMovedSkills(context.Background())
 		a.installMenu()
+		// The `textus` terminal command: installed where no password is
+		// needed, and answered while the app runs.
+		go a.installCLIQuietly()
+		a.listenForCLI()
 		cwd, _ := os.Getwd()
 		paths, windows := a.launchOpens(os.Args, cwd)
 		if err := a.buildMainWindow(); err != nil {

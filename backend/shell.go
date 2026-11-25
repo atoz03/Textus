@@ -170,6 +170,10 @@ func init() {
 		if err := requireNonEmpty(a.Path); err != nil {
 			return nil, err
 		}
+		// `textus export` prints where it saved; no file manager window.
+		if c.app.isCLIExportTarget(a.Path) {
+			return nil, nil
+		}
 		mygo.Shell.ShowItemInFolder(a.Path)
 		return nil, nil
 	})

@@ -131,6 +131,10 @@ func init() {
 		FilterName  string `json:"filterName"`
 		Ext         string `json:"ext"`
 	}) (*string, error) {
+		// A `textus export` saves where the terminal said, without asking.
+		if target, ok := c.app.takeCLIExportTarget(); ok {
+			return &target, nil
+		}
 		return saveFile(c, a.DefaultName, nil, filter{a.FilterName, []string{a.Ext}})
 	})
 	command("pick_open_folder", func(c *Call, _ none) (*string, error) {

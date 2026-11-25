@@ -300,7 +300,7 @@ export type ChatHandoff = {
 
 /**
  *  What Settings shows: `Outdated` is a script an older Textus wrote,
- *  which only opens the app.
+ *  which only opens the app. Go: cliStatus in backend/cli_install.go.
  */
 export type CliStatus = "installed" | "outdated" | "missing";
 

@@ -15,11 +15,11 @@ import { absoluteIn } from "../utils/path";
 
 /**
  * The `textus` commands a window answers: the command palette, plugins,
- * themes and export. Rust's listener (src-tauri/src/cli/app.rs) hands them
- * over; plugins' tools and skills it answers itself.
+ * themes and export. The backend's listener (backend/cli_server.go) hands
+ * them over; plugins' tools and skills it answers itself.
  */
 
-/** Shape shared with CliRequestEvent in src-tauri/src/cli/app.rs. */
+/** Go: cliRequestEvent in backend/cli_server.go. */
 export interface CliRequest {
   id: string;
   command: string;
