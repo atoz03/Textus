@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"textus/backend/plugins"
 )
 
 // skippedDirs are build output and dependencies: left out of every walk,
@@ -330,19 +332,24 @@ func fileExt(path string) string {
 	return strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
 }
 
+// isMarkdown: a Markdown document, by its extension - one of these or a
+// plugin's document type.
 func isMarkdown(path string) bool {
-	switch fileExt(path) {
+	switch ext := fileExt(path); ext {
 	case "md", "markdown", "mdx":
 		return true
+	default:
+		return plugins.IsDocumentType(ext)
 	}
-	return false
 }
 
-// isTextFile: what Textus opens as text, Markdown and plain.
+// isTextFile: what Textus opens as text, Markdown and plain, and the
+// plugins' document types.
 func isTextFile(path string) bool {
-	switch fileExt(path) {
+	switch ext := fileExt(path); ext {
 	case "md", "markdown", "mdx", "txt", "text":
 		return true
+	default:
+		return plugins.IsDocumentType(ext)
 	}
-	return false
 }

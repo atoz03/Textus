@@ -135,8 +135,8 @@ func (paperFolders) Text(folder, path string) (string, bool) {
 
 // paperKit is the researchers' kit: the tools every mode shares, the
 // project folder's files and the paper's folder's attached/ beside them,
-// and the reference library.
-func (a *App) paperKit(project, folder string, seesImages bool) *paper.Kit {
+// the reference library, and installed - the plugins' tools.
+func (a *App) paperKit(project, folder string, seesImages bool, installed ...ai.Tool) *paper.Kit {
 	tools := ai.SharedToolRegistry()
 	if project != "" || folder != "" {
 		for _, tool := range (agentFolders{root: project, scratch: folder, seesImages: seesImages, data: a.dirs.Data}).tools() {
@@ -144,6 +144,9 @@ func (a *App) paperKit(project, folder string, seesImages bool) *paper.Kit {
 		}
 	}
 	if tool, ok := referencesTool(project); ok {
+		tools.Add(tool)
+	}
+	for _, tool := range installed {
 		tools.Add(tool)
 	}
 	return &paper.Kit{
@@ -154,8 +157,9 @@ func (a *App) paperKit(project, folder string, seesImages bool) *paper.Kit {
 
 // paperRun researches and outlines the paper r asks for, in the
 // document's project, its progress sent with send; a paper begun before
-// goes on from what it kept.
-func (a *App) paperRun(ctx context.Context, r paperRequest, send func(paper.Event) bool) (paper.Paper, error) {
+// goes on from what it kept. The researchers are offered the plugins'
+// tools of window, the asking window.
+func (a *App) paperRun(ctx context.Context, window string, r paperRequest, send func(paper.Event) bool) (paper.Paper, error) {
 	entry, err := a.paperProvider(r.agentRequest)
 	if err != nil {
 		return paper.Paper{}, err
@@ -170,7 +174,6 @@ func (a *App) paperRun(ctx context.Context, r paperRequest, send func(paper.Even
 	request := paper.Request{
 		ID: deref(r.ID), Topic: r.Topic, Genre: r.Genre, Language: r.Language, TargetChars: r.TargetChars,
 		SubHelpers: r.SubHelpers, Native: native, Service: a.searchService(deref(r.SearchService), deref(r.SearxngURL)),
-		Kit: func(folder string) *paper.Kit { return a.paperKit(project, folder, entry.SupportsVision) },
 	}
 	// As many pictures as one send may make: the outline plans no more.
 	if run, ok := a.imageRun(r.ImageModel, entry.ID, docPath, r.RequestID); ok {
@@ -182,6 +185,10 @@ func (a *App) paperRun(ctx context.Context, r paperRequest, send func(paper.Even
 		s, err := a.paperSession(r.agentRequest, entry, root, native, send)
 		if err != nil {
 			return paper.Paper{}, err
+		}
+		// A plugin's tool call waits no longer than the request runs.
+		request.Kit = func(folder string) *paper.Kit {
+			return a.paperKit(project, folder, entry.SupportsVision, a.installedTools(ctx, window)...)
 		}
 		written, err := paper.Run(ctx, s, request)
 		if err != nil {
@@ -226,7 +233,7 @@ func init() {
 	command("ai_paper_run", func(c *Call, a struct {
 		Request paperRequest `json:"request"`
 	}) (paper.Paper, error) {
-		return c.app.paperRun(c.ctx, a.Request, sender(c))
+		return c.app.paperRun(c.ctx, c.Label(), a.Request, sender(c))
 	})
 	command("ai_paper_draft", func(c *Call, a struct {
 		Request draftRequest `json:"request"`

@@ -31,6 +31,8 @@ var (
 	imageTypes []byte
 	//go:embed src/ai/ai-error-kinds.json
 	errorKinds []byte
+	//go:embed src/plugins/store/permissions.json
+	pluginPermissions []byte
 )
 
 func main() {
@@ -50,6 +52,7 @@ func main() {
 		ExportFormats:    exportFormats,
 		ImageTypes:       imageTypes,
 		ErrorKinds:       errorKinds,
+		Permissions:      pluginPermissions,
 	})
 	if err != nil {
 		log.Fatal(err)

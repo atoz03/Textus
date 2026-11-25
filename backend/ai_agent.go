@@ -60,12 +60,21 @@ type agentRun struct {
 	r    messageRequest
 	mode ai.AgentMode
 	ui   string
+	// window is the asking window's label, whose plugins' tools the
+	// request offers; "" for none.
+	window string
 	// send sends a live event to the window, paced.
 	send func(ai.StreamEvent)
 }
 
 // agentMessage answers r: the new turns for the frontend's history.
 func (a *App) agentMessage(ctx context.Context, r messageRequest, send func(ai.StreamEvent)) ([]aicompat.AgentTurn, error) {
+	return a.agentMessageFrom(ctx, "", r, send)
+}
+
+// agentMessageFrom answers r for the window labelled window, whose
+// plugins' tools it offers.
+func (a *App) agentMessageFrom(ctx context.Context, window string, r messageRequest, send func(ai.StreamEvent)) ([]aicompat.AgentTurn, error) {
 	if err := a.ensureAIOn(); err != nil {
 		return nil, err
 	}
@@ -73,7 +82,7 @@ func (a *App) agentMessage(ctx context.Context, r messageRequest, send func(ai.S
 	if !ok {
 		return nil, fmt.Errorf("unknown provider: %s", r.Provider)
 	}
-	run := agentRun{app: a, r: r, mode: r.Mode, ui: deref(r.UILanguage), send: send}
+	run := agentRun{app: a, r: r, mode: r.Mode, ui: deref(r.UILanguage), window: window, send: send}
 	if run.ui == "" {
 		run.ui = "en"
 	}
@@ -193,7 +202,7 @@ type toolRun struct {
 }
 
 // registry is the tools the request offers.
-func (run *agentRun) registry(t toolRun) *ai.ToolRegistry {
+func (run *agentRun) registry(ctx context.Context, t toolRun) *ai.ToolRegistry {
 	tools := ai.BuiltinTools(t.ws.HasUsableSkills(), run.mode)
 	if t.folders.root != "" || t.folders.scratch != "" {
 		for _, tool := range t.folders.tools() {
@@ -224,6 +233,17 @@ func (run *agentRun) registry(t toolRun) *ai.ToolRegistry {
 	}
 	// The user's earlier conversations, when they refer to one.
 	tools.Add(searchConversationsTool(run.app.stores.chat))
+	for _, tool := range run.app.installedTools(ctx, run.window) {
+		tools.Add(tool)
+	}
+	// What the folder's index knows: tasks, backlinks, tags.
+	for _, tool := range run.app.folderTools(ctx, run.window, t.folders.root) {
+		tools.Add(tool)
+	}
+	// Create mode reads the plugins installed, to change one.
+	if run.mode == ai.ModeCreate {
+		tools.Add(run.app.readPluginTool())
+	}
 	return tools
 }
 
@@ -240,7 +260,7 @@ func (run *agentRun) withTools(ctx context.Context, t toolRun) ([]aicompat.Agent
 	tc.Undecided = ai.UndecidedEdits(t.history)
 	tc.WithPictures(ai.UndecidedPictures(t.history))
 	tc.Skills, tc.UILanguage, tc.Conventions, tc.Library = t.ws.Skills, run.ui, t.conv, ai.LibraryNames(t.ws.Library)
-	tools := run.registry(t)
+	tools := run.registry(ctx, t)
 	specs := tools.Specs()
 	// Pictures written into the text, begun as their lines stream in.
 	var inline *ai.InlinePictures
@@ -342,7 +362,7 @@ func init() {
 		})
 		defer paced.Flush()
 		return cancellable(c.ctx, a.Request.RequestID, func(ctx context.Context) ([]aicompat.AgentTurn, error) {
-			return c.app.agentMessage(ctx, a.Request, paced.Send)
+			return c.app.agentMessageFrom(ctx, c.Label(), a.Request, paced.Send)
 		})
 	})
 	// Whether the chat composer offers Deep thinking for this provider and

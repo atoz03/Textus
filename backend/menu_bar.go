@@ -109,6 +109,7 @@ func (b *menuBuilder) section(name string) []*mygo.MenuItem {
 			id := exportPandocPrefix + f.Format
 			out = append(out, &mygo.MenuItem{ID: id, Label: b.text(id, f.Menu), Click: b.click(id)})
 		}
+		out = append(out, b.pluginExportMenuItems()...)
 	case "recent":
 		if len(b.recentFiles) == 0 && len(b.recentDirs) == 0 {
 			return []*mygo.MenuItem{{ID: recentNoneID, Label: b.text(recentNoneID, b.m.texts[recentNoneID]), Disabled: true}}
@@ -126,12 +127,7 @@ func (b *menuBuilder) section(name string) []*mygo.MenuItem {
 		}
 		out = append(out, mygo.Separator(), &mygo.MenuItem{ID: recentClearID, Label: b.text(recentClearID, b.m.texts[recentClearID]), Click: b.click(recentClearID)})
 	case "plugins":
-		// This build runs no plugins: none has a command to show.
-		out = append(out,
-			&mygo.MenuItem{ID: noPluginCommandsID, Label: b.text(noPluginCommandsID, b.m.texts[noPluginCommandsID]), Disabled: true},
-			mygo.Separator(),
-			&mygo.MenuItem{ID: managePluginsID, Label: b.text(managePluginsID, b.m.texts[managePluginsID]), Click: b.click(managePluginsID)},
-		)
+		out = b.pluginMenuItems()
 	}
 	return out
 }

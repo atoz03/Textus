@@ -13,7 +13,7 @@ import (
 
 // The schemes pages load from besides the app's own: asset:// serves a
 // file of the disk to an <img> or <video> (src/platform/file-src.ts), and
-// textus-plugin:// the plugins this build does not run.
+// textus-plugin:// a plugin's own files to its frames (plugin_menu.go).
 
 // assetDenied keeps the files that hold secrets out of the asset scheme,
 // whatever a page asks for: the app's own settings and keys, and the
@@ -108,9 +108,7 @@ func registerSchemes(a *App) {
 	if err := mygo.Protocol.HandleFunc("asset", a.serveAsset); err != nil {
 		panic(err)
 	}
-	if err := mygo.Protocol.HandleFunc("textus-plugin", func(w http.ResponseWriter, r *http.Request) {
-		http.NotFound(w, r)
-	}); err != nil {
+	if err := mygo.Protocol.HandleFunc("textus-plugin", a.servePluginFile); err != nil {
 		panic(err)
 	}
 }

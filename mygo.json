@@ -12,6 +12,7 @@
   "frontendDist": "dist",
   "bindings": "src/platform/native/host-client.ts",
   "out": "dist-app",
+  "urlSchemes": ["textus"],
   "fileAssociations": [
     {
       "ext": ["md", "markdown"],

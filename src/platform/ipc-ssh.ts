@@ -1,5 +1,5 @@
 import type * as Generated from "./bindings/plugin-access";
-import { call, command } from "./ipc-call";
+import { callBytes, command } from "./ipc-call";
 
 /** A plugin's links to servers through the user's own ssh (desktop). */
 export const ssh = {
@@ -16,10 +16,8 @@ export const ssh = {
     path: string,
   ): Promise<Generated.RemoteEntry[]> =>
     command("plugin_ssh_list", id, session, path),
-  read: async (id: string, session: number, path: string) =>
-    new Uint8Array(
-      await call<ArrayBuffer>("plugin_ssh_read", { id, session, path }),
-    ),
+  read: (id: string, session: number, path: string) =>
+    callBytes("plugin_ssh_read", { id, session, path }),
   write: (
     id: string,
     session: number,

@@ -9,6 +9,8 @@ import (
 	"slices"
 	"sort"
 	"unicode/utf8"
+
+	"textus/backend/ai"
 )
 
 // HistoryKind names a history the frontend keeps: "chat" or "clipboard".
@@ -110,8 +112,20 @@ func loadStores(dirs Dirs) *Stores {
 		clipboard: loadStore(filepath.Join(dirs.Data, fileName(historyClipboard.stem())), "entries", true, false),
 		chat:      loadChatHistory(dirs.Data),
 	}
+	if s.settings.missingAtLoad {
+		s.seedNewProfile()
+	}
 	s.carryKeptApart(dirs.Config)
 	return s
+}
+
+// seedNewProfile marks a new profile as having no moved skills to bring
+// over; an older settings file lacks the mark and gets them installed
+// (installMovedSkills). In memory until the first write.
+func (s *Stores) seedNewProfile() {
+	s.settings.mu.Lock()
+	defer s.settings.mu.Unlock()
+	mergeTopLevel(s.settings.object, jsonObject{movedSkillsKey: mustJSON(ai.MovedToMarket)})
 }
 
 // carryKeptApart moves what older versions kept in files of their own (the

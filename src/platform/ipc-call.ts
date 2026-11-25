@@ -117,3 +117,16 @@ export async function call<T>(command: string, args?: object): Promise<T> {
     throw new IpcError(command, err);
   }
 }
+
+/**
+ * Calls a command answering raw bytes. The Go backend sends a `[]byte` as
+ * base64 text; a stand-in (src/dev/host-shim.ts) may hand an ArrayBuffer.
+ */
+export async function callBytes(
+  command: string,
+  args?: object,
+): Promise<Uint8Array> {
+  const answer = await call<ArrayBuffer | Uint8Array | string>(command, args);
+  if (typeof answer !== "string") return new Uint8Array(answer);
+  return Uint8Array.from(atob(answer), (c) => c.charCodeAt(0));
+}

@@ -5,17 +5,16 @@ import "encoding/json/jsontext"
 // The commands of the subsystems this build does not have yet, and why
 // each waits:
 //
-//   - Plugins and what they reach (files, git, ssh, http, stores, MCP,
-//     agents), and the plugin and skill catalogs. Scheduled jobs,
-//     notifications and floating windows are plugin features: their
-//     grants are the plugins', so they come with plugins.
+//   - What plugins reach beyond the app's own files: git, ssh, MCP servers
+//     and external agents. Scheduled jobs, notifications and floating
+//     windows are plugin features too: their grants are the plugins'.
 //   - Web page tabs: native webviews of their own, laid over a tab.
 //   - The command-line tool, whose install needs the CLI mode itself, and
 //     the default editor.
 //   - The iOS build's own files.
 //
 // A command whose answer only reports what is there answers that there is
-// nothing (no plugin, no job, no window), so the pages that ask as they
+// nothing (no server, no job, no window), so the pages that ask as they
 // open carry on; one that would do something fails with errUnsupported,
 // which the page shows as that action failing.
 
@@ -27,23 +26,13 @@ var unsupportedCommands = []string{
 	"web_page_show", "web_page_navigate", "web_page_reload",
 	// the command-line tool, the default editor
 	"install_cli_command", "set_default_editor",
-	// plugins and what they reach
-	"plugin_fs_list", "plugin_fs_documents", "plugin_fs_search", "plugin_fs_write", "plugin_fs_rename",
-	"plugin_fs_trash", "plugin_fs_trash_path", "plugin_fs_mkdir", "plugin_fs_stat", "plugin_fs_create",
-	"plugin_fs_read_versioned", "plugin_app_settings", "plugin_fs_write_if", "plugin_secret_get", "plugin_secret_set",
-	"plugin_metadata_all", "plugin_metadata_get", "plugin_metadata_of_texts",
+	// what plugins reach: git, ssh, MCP servers, external agents
 	"plugin_git_status", "plugin_git_log", "plugin_git_show", "plugin_git_commit", "plugin_git_fetch",
 	"plugin_git_push", "plugin_git_pull", "git_trust_repository",
 	"plugin_ssh_hosts", "plugin_ssh_allow", "plugin_ssh_connect", "plugin_ssh_home", "plugin_ssh_list",
-	"plugin_ssh_write", "plugin_ssh_create", "plugin_ssh_rename", "plugin_ssh_remove", "plugin_ssh_close",
-	"plugin_http", "plugin_store_get", "plugin_store_set", "plugin_store_keys", "plugin_store_read",
-	"plugin_store_write", "plugin_store_files", "plugin_store_delete", "plugin_store_usage", "plugin_store_clear",
-	"plugin_export", "plugins_set_all", "plugin_ai_status", "plugin_ai_allow", "plugin_ai_complete",
-	"plugin_ai_stream", "plugin_set", "plugin_install", "plugin_install_files", "plugin_load_dev",
-	"plugin_uninstall", "plugin_pick_package", "plugin_open_scripts_dir", "plugin_catalog", "plugin_catalog_readme",
-	"plugin_catalog_icon", "skill_catalog", "skill_install_catalog", "plugin_install_catalog",
+	"plugin_ssh_read", "plugin_ssh_write", "plugin_ssh_create", "plugin_ssh_rename", "plugin_ssh_remove",
+	"plugin_ssh_close",
 	"mcp_restart", "mcp_try", "agent_start", "agent_send",
-	"plugin_file", "plugin_fs_read", "plugin_read_resource", "plugin_ssh_read",
 	// scheduled jobs and notifications
 	"schedule_set", "notify_show",
 	// the iOS build's own files (native-files.ts)
@@ -55,28 +44,16 @@ var unsupportedCommands = []string{
 // build's answer: nothing.
 var emptyAnswers = map[string]string{
 	// nothing to report
-	"plugins_state":               `{"allOn":false,"plugins":{}}`,
-	"plugins_installed":           `[]`,
-	"plugin_take_uris":            `[]`,
-	"take_pending_plugin_command": `null`,
-	"plugin_catalog_cached":       `null`,
-	"plugin_dev_stamp":            `null`,
-	"mcp_status":                  `[]`,
-	"schedule_list":               `[]`,
-	"schedule_take_runs":          `[]`,
-	"schedule_clear":              `false`,
-	"notify_take_open":            `null`,
-	"floating_desktop_supported":  `false`,
-	"list_window_bounds":          `[]`,
-	"start_window_drag_tracking":  `false`,
-	"cli_command_status":          `"missing"`,
+	"mcp_status":                 `[]`,
+	"schedule_list":              `[]`,
+	"schedule_take_runs":         `[]`,
+	"schedule_clear":             `false`,
+	"notify_take_open":           `null`,
+	"floating_desktop_supported": `false`,
+	"list_window_bounds":         `[]`,
+	"start_window_drag_tracking": `false`,
+	"cli_command_status":         `"missing"`,
 	// told, and nothing to do with it
-	"set_plugin_menu":       `null`,
-	"set_plugin_exports":    `null`,
-	"set_tray_plugin_items": `null`,
-	"plugin_ai_tools_set":   `null`,
-	"plugin_ai_tool_result": `null`,
-	"plugin_http_cancel":    `null`,
 	"agent_stop":            `null`,
 	"background_host_idle":  `null`,
 	"cli_listening":         `null`,

@@ -4,7 +4,7 @@ import type * as Access from "./bindings/plugin-access";
 /** A plugin file as text. */
 export type PluginFile = Generated.PluginFile;
 import { Channel } from "./native/core";
-import { call, command, desktopActionCommand } from "./ipc-call";
+import { callBytes, command, desktopActionCommand } from "./ipc-call";
 import { isFarUrl } from "./far-files";
 import { canPickPluginFolder, trashesNatively } from "./capabilities";
 import { nativeFiles } from "./native-files";
@@ -35,11 +35,6 @@ export type PluginDocumentMeta = Access.DocumentMeta_Serialize;
  *  folder): its files go through far-plugin-fs.ts, not Rust. */
 const inContent = (root: string) => isFarUrl(root);
 const contentFs = () => import("./far-plugin-fs").then((m) => m.farPluginFs);
-
-/** A raw IPC response's bytes, which specta can't type, so those commands
- *  go through `call`. */
-const bytes = async (pending: Promise<ArrayBuffer>) =>
-  new Uint8Array(await pending);
 
 /** One tool an MCP server offers. */
 export type McpToolInfo = Generated.McpTool;
@@ -157,13 +152,13 @@ export const plugins = {
   /** Settings › Plugins › Open Scripts Folder. Desktop only. */
   openScriptsDir: () => desktopActionCommand("plugin_open_scripts_dir"),
   file: (id: string, rel: string) =>
-    bytes(call<ArrayBuffer>("plugin_file", { id, rel })),
+    callBytes("plugin_file", { id, rel }),
   /** The file a plugin's tab was opened on; on Android it may be a
    *  content:// file picked with Open…, outside any folder. */
   readResource: (id: string, path: string) =>
     inContent(path)
       ? contentFs().then((f) => f.readResource(path))
-      : bytes(call<ArrayBuffer>("plugin_read_resource", { id, path })),
+      : callBytes("plugin_read_resource", { id, path }),
   writeResource: (id: string, path: string, text: string) =>
     inContent(path)
       ? contentFs().then((f) => f.writeResource(path, text))
@@ -171,7 +166,7 @@ export const plugins = {
   fsRead: (id: string, root: string, path: string) =>
     inContent(root)
       ? contentFs().then((f) => f.read(root, path))
-      : bytes(call<ArrayBuffer>("plugin_fs_read", { id, root, path })),
+      : callBytes("plugin_fs_read", { id, root, path }),
   fsList: (id: string, root: string, path: string) =>
     inContent(root)
       ? contentFs().then((f) => f.list(root, path))

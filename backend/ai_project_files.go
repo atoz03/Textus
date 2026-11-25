@@ -14,6 +14,7 @@ import (
 
 	"textus/backend/ai"
 	"textus/backend/extract"
+	"textus/backend/plugins"
 )
 
 // The project folder's files as Textus AI reads them: which are text, the
@@ -65,7 +66,10 @@ func imageMime(ext string) string {
 	return ""
 }
 
-func isAgentTextFile(path string) bool { return slices.Contains(agentTextExtensions, fileExt(path)) }
+func isAgentTextFile(path string) bool {
+	ext := fileExt(path)
+	return slices.Contains(agentTextExtensions, ext) || plugins.IsDocumentType(ext)
+}
 
 type fileKind int
 
@@ -82,7 +86,7 @@ const (
 func fileKindOf(path string) fileKind {
 	ext := fileExt(path)
 	switch {
-	case slices.Contains(agentTextExtensions, ext):
+	case slices.Contains(agentTextExtensions, ext), plugins.IsDocumentType(ext):
 		return kindText
 	case slices.Contains(documentExtensions, ext):
 		return kindDocument

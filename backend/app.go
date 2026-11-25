@@ -3,6 +3,7 @@
 package backend
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"log"
@@ -15,6 +16,7 @@ import (
 	"github.com/egoist/mygo"
 
 	"textus/backend/ai/aicompat"
+	"textus/backend/plugins"
 )
 
 // Shared are the files the frontend and the backend both read, embedded by
@@ -29,6 +31,7 @@ type Shared struct {
 	ExportFormats    []byte // src/registry/export-formats.json
 	ImageTypes       []byte // src/editor/images/image-types.json
 	ErrorKinds       []byte // src/ai/ai-error-kinds.json
+	Permissions      []byte // src/plugins/store/permissions.json
 }
 
 // App is the running app: its state shared by every command.
@@ -60,6 +63,7 @@ type App struct {
 	menu   *menuState
 	drafts *draftStore
 	chats  chatWindows
+	plug   pluginRuntime
 }
 
 func newApp(shared Shared, dirs Dirs) *App {
@@ -80,6 +84,12 @@ func newApp(shared Shared, dirs Dirs) *App {
 			log.Printf("textus: ai-error-kinds.json: %v", err)
 		}
 	}
+	if len(shared.Permissions) > 0 {
+		if err := plugins.LoadPermissions(shared.Permissions); err != nil {
+			log.Printf("textus: permissions.json: %v", err)
+		}
+	}
+	plugins.Coded = codeError
 	a.menu = newMenuState(shared.MenuTable, shared.ExportFormats)
 	return a
 }
@@ -90,6 +100,8 @@ func (a *App) load() {
 	a.stores = loadStores(a.dirs)
 	a.drafts = loadDrafts(a.dirs)
 	a.proxyChanged()
+	// The document types plugins add, before a window lists a folder.
+	a.refreshDocumentTypes()
 }
 
 // Run starts Textus and returns when it quits.
@@ -107,6 +119,8 @@ func Run(shared Shared) error {
 	a := newApp(shared, dirs)
 	mygo.Bind(&Host{app: a})
 	registerSchemes(a)
+	// Before Run, to receive the link Textus was started with.
+	a.listenForURIs()
 
 	// Windows and Linux start a new process per opened file: the first one
 	// takes the others' documents. Not in development, so a dev build runs
@@ -147,6 +161,7 @@ func Run(shared Shared) error {
 
 	app.WhenReady(func() {
 		a.load()
+		go a.installMovedSkills(context.Background())
 		a.installMenu()
 		cwd, _ := os.Getwd()
 		paths, windows := a.launchOpens(os.Args, cwd)

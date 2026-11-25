@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf16"
+
+	"textus/backend/plugins"
 )
 
 // Links between notes and to pictures, resolved the way the app that keeps
@@ -134,10 +136,15 @@ func folderDistance(from, to []string) int {
 }
 
 // fileNames are the names a link may mean: a note's link without an
-// extension names any of its spellings, then the name as written.
+// extension names any of its spellings (a plugin's document types last),
+// then the name as written.
 func fileNames(link string, kind linkKind) []string {
 	if kind == linkNote && !isMarkdown(link) {
-		return []string{link + ".md", link + ".markdown", link + ".mdx", link}
+		names := []string{link + ".md", link + ".markdown", link + ".mdx"}
+		for _, ext := range plugins.DocumentTypes() {
+			names = append(names, link+"."+ext)
+		}
+		return append(names, link)
 	}
 	return []string{link}
 }
