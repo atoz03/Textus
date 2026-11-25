@@ -107,14 +107,16 @@ func (a *App) agentModels(c *Call, provider string) ([]string, error) {
 	client := netClient(modelListTimeout)
 	switch {
 	case entry.Dialect == "anthropic-messages":
-		key, err := a.providerKey(entry.ID)
+		// The Claude sign-in first, as every request takes it.
+		r, err := a.credentials().Route(provider, "")
 		if err != nil {
 			return nil, err
 		}
-		if key == "" {
-			return nil, errors.New(ai.NotConfigured)
+		auth := ai.AnthropicAuth{APIKey: deref(r.Key)}
+		if r.SignIn != nil {
+			auth = ai.AnthropicAuth{OAuthToken: r.SignIn.Access}
 		}
-		return ai.ListAnthropicModels(c.ctx, client, ai.AnthropicAuth{APIKey: key})
+		return ai.ListAnthropicModels(c.ctx, client, auth)
 	// A ChatGPT sign-in's token can't list models: only the API key can.
 	case entry.Dialect == "openai-responses":
 		key, err := a.providerKey(entry.ID)

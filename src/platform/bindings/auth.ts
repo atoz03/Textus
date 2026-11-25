@@ -32,7 +32,7 @@ export const commands = {
 };
 
 /* Types */
-/**  Whether a provider's sign-in is kept. */
+/**  Whether a provider's sign-in is kept: backend/ai_signin.go authStatus. */
 export type AuthStatus = {
 	configured: boolean,
 };

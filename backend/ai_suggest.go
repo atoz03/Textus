@@ -19,7 +19,7 @@ const writingTimeout = 120 * time.Second
 
 // credentials are where a request's key or endpoint is looked up.
 func (a *App) credentials() ai.Credentials {
-	return ai.Credentials{Key: a.providerKey, Endpoint: a.customEndpoint}
+	return ai.Credentials{Key: a.providerKey, Endpoint: a.customEndpoint, SignIn: a.signInFor}
 }
 
 // complete sends one short request to provider's model ("" for its

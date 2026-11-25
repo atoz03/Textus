@@ -10,17 +10,27 @@ import (
 	"textus/backend/ai/aicompat"
 )
 
+// Originator names the app to OpenAI on a ChatGPT sign-in's requests.
+const Originator = "textus"
+
 // Credentials look up what a route needs: a provider's stored key ("" for
-// none) and a custom endpoint by its own id.
+// none), a custom endpoint by its own id, and the ChatGPT ("openai") or
+// Claude ("anthropic") sign-in, valid for a request - false when not
+// signed in. SignIn may be nil: no sign-in.
 type Credentials struct {
 	Key      func(provider string) (string, error)
 	Endpoint func(id string) (CustomEndpoint, bool)
+	SignIn   func(provider string) (aicompat.SignIn, bool, error)
 }
+
+// signInNames name the sign-ins in their errors.
+var signInNames = map[string]string{"openai": "ChatGPT", "anthropic": "Claude"}
 
 // Route resolves provider (a catalog id, or a custom endpoint's own id)
 // and model ("" for the provider's default) to where one request goes. A
-// ChatGPT or Claude sign-in is not in this build: OpenAI and Anthropic are
-// reached by API key.
+// ChatGPT or Claude sign-in is preferred to a key when both are set up:
+// it's the richer entitlement, and what a user who did both probably
+// wants.
 func (c Credentials) Route(provider, model string) (Route, error) {
 	entry, ok := Find(provider)
 	if !ok {
@@ -29,6 +39,18 @@ func (c Credentials) Route(provider, model string) (Route, error) {
 	r := Route{Provider: entry, Model: strings.TrimSpace(model)}
 	switch entry.Dialect {
 	case "openai-responses", "anthropic-messages":
+		if c.SignIn != nil {
+			signIn, ok, err := c.SignIn(entry.ID)
+			// Signed in but its refresh failed: said as it is, not quietly
+			// swapped for a pasted key (another account) or "not set up".
+			if err != nil {
+				return Route{}, fmt.Errorf("%s sign-in: %v", signInNames[entry.ID], err)
+			}
+			if ok {
+				r.SignIn = &signIn
+				return r, nil
+			}
+		}
 		key, err := c.Key(entry.ID)
 		if err != nil {
 			return Route{}, err
@@ -92,10 +114,12 @@ func (c Credentials) AgentProvider(provider, model string, thinking aicompat.Thi
 	if !ok {
 		return aicompat.AgentProvider{}, false, fmt.Errorf("unknown provider: %s", provider)
 	}
-	model = strings.TrimSpace(model)
-	if model == "" && entry.AgentDefaultModel != nil {
-		model = *entry.AgentDefaultModel
+	requested := strings.TrimSpace(model)
+	agentDefault := ""
+	if entry.AgentDefaultModel != nil {
+		agentDefault = *entry.AgentDefaultModel
 	}
+	model = cmp.Or(requested, agentDefault)
 	var endpoint aicompat.Endpoint
 	switch entry.Dialect {
 	case "openai-responses", "anthropic-messages":
@@ -103,10 +127,20 @@ func (c Credentials) AgentProvider(provider, model string, thinking aicompat.Thi
 		if err != nil {
 			return aicompat.AgentProvider{}, false, err
 		}
-		if entry.Dialect == "anthropic-messages" {
-			endpoint = aicompat.Endpoint{Kind: aicompat.AnthropicEndpoint, Anthropic: aicompat.AnthropicAuth{APIKey: r.key()}}
+		switch {
+		case entry.Dialect == "anthropic-messages":
+			auth := aicompat.AnthropicAuth{APIKey: r.key()}
+			if r.SignIn != nil {
+				auth = aicompat.AnthropicAuth{OAuthToken: r.SignIn.Access}
+			}
+			endpoint = aicompat.Endpoint{Kind: aicompat.AnthropicEndpoint, Anthropic: auth}
 			model = cmp.Or(model, AnthropicCompletionModel)
-		} else {
+		case r.SignIn != nil:
+			endpoint = aicompat.Endpoint{Kind: aicompat.CodexEndpoint, AccessToken: r.SignIn.Access, AccountID: r.SignIn.AccountID, Originator: Originator}
+			// Clamped, not just defaulted: a model saved while the API key
+			// was in use is a hard 400 here.
+			model = aicompat.CodexUsableModel(requested, cmp.Or(agentDefault, aicompat.CodexCompletionModel))
+		default:
 			endpoint = aicompat.Endpoint{Kind: aicompat.OpenAIKeyEndpoint, APIKey: r.key()}
 			model = cmp.Or(model, OpenAICompletionModel)
 		}

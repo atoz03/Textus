@@ -30,7 +30,6 @@ var unsupportedCommands = []string{
 	// Textus AI's agent and sign-in
 	"ai_generated_image", "ai_retry_generated_image", "ai_generated_image_prompt", "ai_redraw_generated_image",
 	"ai_paper_run", "ai_paper_save_outline", "ai_paper_draft", "ai_paper_status",
-	"codex_login", "codex_logout", "claude_login", "claude_logout",
 	// chat and floating windows, web pages
 	"start_floating_tab_drag", "open_floating_window", "resize_floating_window", "floating_window_position",
 	"show_floating_owner",
@@ -76,8 +75,6 @@ var emptyAnswers = map[string]string{
 	"schedule_take_runs":          `[]`,
 	"schedule_clear":              `false`,
 	"notify_take_open":            `null`,
-	"claude_auth_status":          `{"configured":false}`,
-	"codex_auth_status":           `{"configured":false}`,
 	"web_search_status":           `{"native":false,"service":null}`,
 	"list_image_providers":        `[]`,
 	"floating_desktop_supported":  `false`,

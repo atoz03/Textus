@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+
+	"textus/backend/ai/aicompat"
 )
 
 // One request with no tools, for the short writing calls (a title, the
@@ -35,6 +38,8 @@ type Route struct {
 	BaseURL string
 	// Key is the API key; nil for a server that takes none.
 	Key *string
+	// SignIn is the ChatGPT or Claude sign-in, which goes instead of a key.
+	SignIn *aicompat.SignIn
 }
 
 // key is the route's key, "" for none.
@@ -50,6 +55,9 @@ func (r Route) key() string {
 func Complete(ctx context.Context, client *http.Client, r Route, instructions, userText string) (string, error) {
 	switch r.Provider.Dialect {
 	case "openai-responses":
+		if r.SignIn != nil {
+			return completeCodex(ctx, client, r, instructions, userText)
+		}
 		return completeResponses(ctx, client, r, instructions, userText)
 	case "anthropic-messages":
 		return completeAnthropic(ctx, client, r, instructions, userText)
@@ -137,10 +145,31 @@ func completeResponses(ctx context.Context, client *http.Client, r Route, instru
 	return "", nil
 }
 
+// completeCodex is one request with a ChatGPT sign-in, whose backend
+// only streams: the agent's step, without tools.
+func completeCodex(ctx context.Context, client *http.Client, r Route, instructions, userText string) (string, error) {
+	p := aicompat.AgentProvider{
+		ID: r.Provider.ID, Model: aicompat.CodexUsableModel(r.Model, aicompat.CodexCompletionModel), Thinking: aicompat.Fast, Client: client,
+		Endpoint: aicompat.Endpoint{Kind: aicompat.CodexEndpoint, AccessToken: r.SignIn.Access, AccountID: r.SignIn.AccountID, Originator: Originator},
+	}
+	step, _, err := p.Step(ctx, instructions, []aicompat.AgentTurn{aicompat.UserTurn(userText)}, nil, aicompat.Ignore)
+	if err != nil {
+		return "", err
+	}
+	if !step.Done {
+		return "", errors.New("The model asked for a tool it wasn't given.")
+	}
+	return step.Text, nil
+}
+
 func completeAnthropic(ctx context.Context, client *http.Client, r Route, instructions, userText string) (string, error) {
 	model := r.Model
 	if model == "" {
 		model = AnthropicCompletionModel
+	}
+	auth := AnthropicAuth{APIKey: r.key()}
+	if r.SignIn != nil {
+		auth = AnthropicAuth{OAuthToken: r.SignIn.Access}
 	}
 	body := map[string]any{
 		"model": model,
@@ -148,7 +177,7 @@ func completeAnthropic(ctx context.Context, client *http.Client, r Route, instru
 		"max_tokens": 4096,
 		// The instructions end in a cache breakpoint: these calls fire often
 		// with the same instructions before changing text.
-		"system":   []any{map[string]any{"type": "text", "text": instructions, "cache_control": map[string]string{"type": "ephemeral"}}},
+		"system":   aicompat.AnthropicSystem(auth, instructions),
 		"messages": []any{map[string]string{"role": "user", "content": userText}},
 	}
 	// Haiku thinks by default, latency an inline suggestion can't afford.
@@ -161,7 +190,6 @@ func completeAnthropic(ctx context.Context, client *http.Client, r Route, instru
 			Text *string `json:"text"`
 		} `json:"content"`
 	}
-	auth := AnthropicAuth{APIKey: r.key()}
 	if err := post(ctx, client, anthropicAPI+"/v1/messages", auth.Sign, body, &answer, "Claude request failed"); err != nil {
 		return "", err
 	}
