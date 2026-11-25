@@ -38,15 +38,30 @@ func (a *App) complete(ctx context.Context, provider, model, instructions, text 
 
 // completionRequest is ai_complete's input (src/platform/bindings/ai.ts
 // CompletionRequest). Its docPath and workspaceRoot pick the project whose
-// style profile and library a completion follows, which this build doesn't
-// read yet.
+// style profile and library a completion follows.
 type completionRequest struct {
-	Provider string              `json:"provider"`
-	Before   string              `json:"before"`
-	After    string              `json:"after"`
-	Style    *string             `json:"style"`
-	Model    *string             `json:"model"`
-	Hints    *ai.CompletionHints `json:"hints"`
+	Provider      string              `json:"provider"`
+	Before        string              `json:"before"`
+	After         string              `json:"after"`
+	Style         *string             `json:"style"`
+	Model         *string             `json:"model"`
+	Hints         *ai.CompletionHints `json:"hints"`
+	DocPath       *string             `json:"docPath"`
+	WorkspaceRoot *string             `json:"workspaceRoot"`
+}
+
+// grammarRequest is ai_grammar_check's input (src/platform/bindings/ai.ts
+// GrammarRequest). The document and project folder pick the conventions
+// profile and the library names the rules check; the UI language is the
+// explanations'.
+type grammarRequest struct {
+	Provider      string  `json:"provider"`
+	Paragraph     string  `json:"paragraph"`
+	Strictness    *string `json:"strictness"`
+	Model         *string `json:"model"`
+	DocPath       *string `json:"docPath"`
+	WorkspaceRoot *string `json:"workspaceRoot"`
+	UILanguage    *string `json:"uiLanguage"`
 }
 
 func init() {
@@ -64,11 +79,43 @@ func init() {
 			hints = *r.Hints
 		}
 		instructions, text := ai.CompletionPrompt(r.Before, r.After, hints, deref(r.Style))
+		// The project's style profile and the library entries the text
+		// mentions, as the agent gets them.
+		ws := c.app.cachedWorkspace(deref(r.DocPath), deref(r.WorkspaceRoot))
+		instructions = ai.WritingContext(instructions, &ws, r.Before, r.After)
 		raw, err := c.app.complete(c.ctx, r.Provider, deref(r.Model), instructions, text)
 		if err != nil {
 			return "", err
 		}
 		return ai.FinishSuggestion(r.Before, r.After, raw, hints), nil
+	})
+	// The paragraph's issues, each placed exactly, with the rules engine's
+	// findings the model missed.
+	command("ai_grammar_check", func(c *Call, a struct {
+		Request grammarRequest `json:"request"`
+	}) ([]ai.GrammarIssue, error) {
+		if err := c.app.ensureAIOn(); err != nil {
+			return nil, err
+		}
+		r := a.Request
+		ws := c.app.cachedWorkspace(deref(r.DocPath), deref(r.WorkspaceRoot))
+		conv, library := c.app.conventionsFor(&ws), ai.LibraryNames(ws.Library)
+		strictness, ui := deref(r.Strictness), deref(r.UILanguage)
+		check := func() ([]ai.GrammarIssue, error) {
+			raw, err := c.app.complete(c.ctx, r.Provider, deref(r.Model), ai.GrammarInstructions(strictness, ui), ai.GrammarUserText(r.Paragraph))
+			if err != nil {
+				return nil, err
+			}
+			return ai.FinishGrammar(raw, r.Paragraph, strictness, conv, library, ui)
+		}
+		// One retry on a malformed reply: the cheap default model now and
+		// then answers something that isn't the issue array, and a second
+		// sample almost always parses.
+		issues, err := check()
+		if errors.Is(err, ai.ErrNoIssues) {
+			return check()
+		}
+		return issues, err
 	})
 	// A short title for a document from its first few thousand characters,
 	// or null; the frontend falls back to the first line.

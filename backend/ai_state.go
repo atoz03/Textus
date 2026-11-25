@@ -48,21 +48,29 @@ func enclosingProject(folder string) (string, bool) {
 	}
 }
 
-// projectRoot is the project folder a request works in: the folder opened
-// or chosen, else the nearest enclosing project of the document; never a
-// home folder or a drive root. A lone document's own folder is not one.
-func projectRoot(docPath, rootOverride string) (string, bool) {
-	root, ok := "", false
+// resolveRoot is the folder opened or chosen, else the nearest enclosing
+// folder with .textus/, too broad or not. A lone document's own folder is
+// not one: it may be Downloads or Desktop, so the agent works in the
+// conversation's scratch folder instead.
+func resolveRoot(docPath, rootOverride string) (string, bool) {
 	if picked := strings.TrimSpace(rootOverride); picked != "" {
 		if info, err := os.Stat(picked); err == nil && info.IsDir() {
-			root, ok = picked, true
+			return picked, true
 		}
 	}
-	if !ok && docPath != "" {
+	if docPath != "" {
 		if dir := filepath.Dir(docPath); dir != "." && dir != "" {
-			root, ok = enclosingProject(dir)
+			return enclosingProject(dir)
 		}
 	}
+	return "", false
+}
+
+// projectRoot is the project folder a request works in: the resolved
+// root, unless it is too broad to treat as one (a home folder, a drive
+// root).
+func projectRoot(docPath, rootOverride string) (string, bool) {
+	root, ok := resolveRoot(docPath, rootOverride)
 	return root, ok && !isTooBroad(root)
 }
 

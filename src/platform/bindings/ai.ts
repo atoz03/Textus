@@ -137,8 +137,10 @@ export type Exchange = {
 	reply: string,
 };
 
+/**  One issue the grammar check found: backend/ai/grammar.go GrammarIssue. */
 export type GrammarIssue = GrammarIssue_Serialize | GrammarIssue_Deserialize;
 
+/**  One issue the grammar check found: backend/ai/grammar.go GrammarIssue. */
 export type GrammarIssue_Deserialize = {
 	/**
 	 *  Unicode-scalar offsets of the span in the paragraph, computed here, so
@@ -165,6 +167,7 @@ export type GrammarIssue_Deserialize = {
 	rule?: string | null,
 };
 
+/**  One issue the grammar check found: backend/ai/grammar.go GrammarIssue. */
 export type GrammarIssue_Serialize = {
 	/**
 	 *  Unicode-scalar offsets of the span in the paragraph, computed here, so
@@ -186,10 +189,10 @@ export type GrammarIssue_Serialize = {
 	rule?: string,
 };
 
-/**  ai_grammar_check's inputs, the keys of `ai.grammarCheck`'s invoke. */
+/**  ai_grammar_check's inputs, the keys of `ai.grammarCheck`'s invoke: backend/ai_suggest.go grammarRequest. */
 export type GrammarRequest = GrammarRequest_Serialize | GrammarRequest_Deserialize;
 
-/**  ai_grammar_check's inputs, the keys of `ai.grammarCheck`'s invoke. */
+/**  ai_grammar_check's inputs, the keys of `ai.grammarCheck`'s invoke: backend/ai_suggest.go grammarRequest. */
 export type GrammarRequest_Deserialize = {
 	provider: string,
 	paragraph: string,
@@ -200,7 +203,7 @@ export type GrammarRequest_Deserialize = {
 	uiLanguage?: string | null,
 };
 
-/**  ai_grammar_check's inputs, the keys of `ai.grammarCheck`'s invoke. */
+/**  ai_grammar_check's inputs, the keys of `ai.grammarCheck`'s invoke: backend/ai_suggest.go grammarRequest. */
 export type GrammarRequest_Serialize = {
 	provider: string,
 	paragraph: string,

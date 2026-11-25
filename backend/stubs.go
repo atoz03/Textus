@@ -10,8 +10,6 @@ import "encoding/json/jsontext"
 //     workspace (agent.md, the skill layers), project files, the paper
 //     writer, and the records of the files a turn changed. They come
 //     together with the agent, which they serve.
-//   - The grammar check: it runs the rules engine beside the model, as the
-//     inline completion's last pass does (ai_complete works without it).
 //   - ChatGPT and Claude sign-in: those providers are reached by API key.
 //   - Plugins and what they reach (files, git, ssh, http, stores, MCP,
 //     agents). Scheduled jobs, notifications and floating windows are
@@ -29,7 +27,7 @@ import "encoding/json/jsontext"
 
 // unsupportedCommands fail with errUnsupported.
 var unsupportedCommands = []string{
-	// Textus AI's agent, sign-in and the grammar check
+	// Textus AI's agent and sign-in
 	"ai_agent_message", "ai_steer", "pick_attachment_files", "attach_pasted",
 	"ai_generated_image", "ai_retry_generated_image", "ai_generated_image_prompt", "ai_redraw_generated_image",
 	"memory_pass", "ai_offer_skill", "library_use", "memory_undo", "memory_move", "memory_restore",
@@ -39,7 +37,6 @@ var unsupportedCommands = []string{
 	"list_project_files", "pick_text_files", "read_project_file", "ensure_global_agent_md", "load_agent_workspace",
 	"open_global_agent_dir", "import_agent_skill", "customize_builtin_skill", "reset_builtin_skill",
 	"set_skill_modes", "set_skill_off", "save_written_skill", "delete_global_skill",
-	"ai_grammar_check",
 	"codex_login", "codex_logout", "claude_login", "claude_logout",
 	// chat and floating windows, web pages
 	"start_floating_tab_drag", "open_floating_window", "resize_floating_window", "floating_window_position",
