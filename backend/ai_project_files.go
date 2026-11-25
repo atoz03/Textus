@@ -12,6 +12,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"textus/backend/ai"
 	"textus/backend/extract"
 )
 
@@ -261,27 +262,16 @@ func extractDocument(path string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return extract.HTMLMarkdown(string(raw)), nil
+		return extract.HTMLMarkdown(strings.ToValidUTF8(string(raw), "\uFFFD")), nil
 	}
 	return "", codeError("notDocument")
-}
-
-// charUnits is a character's weight in maxReadUnits: a CJK character is
-// about a token where English takes about four letters, so it counts 3.
-func charUnits(c rune) int {
-	switch {
-	case c >= 0x1100 && c <= 0x11ff, c >= 0x2e80 && c <= 0x9fff, c >= 0xac00 && c <= 0xd7af,
-		c >= 0xf900 && c <= 0xfaff, c >= 0xff00 && c <= 0xffef, c >= 0x20000 && c <= 0x3ffff:
-		return 3
-	}
-	return 1
 }
 
 // lineUnits is a line's weight, its line break included.
 func lineUnits(line string) int {
 	n := 1
 	for _, c := range line {
-		n += charUnits(c)
+		n += ai.CharUnits(c)
 	}
 	return n
 }
@@ -336,10 +326,10 @@ func excerpt(rel, text string, r lineRange) string {
 			if out.Len() == 0 {
 				budget := maxReadUnits
 				for _, c := range line {
-					if charUnits(c) > budget {
+					if ai.CharUnits(c) > budget {
 						break
 					}
-					budget -= charUnits(c)
+					budget -= ai.CharUnits(c)
 					out.WriteRune(c)
 				}
 				out.WriteByte('\n')

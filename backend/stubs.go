@@ -30,13 +30,7 @@ var unsupportedCommands = []string{
 	// Textus AI's agent and sign-in
 	"ai_agent_message", "ai_steer", "pick_attachment_files", "attach_pasted",
 	"ai_generated_image", "ai_retry_generated_image", "ai_generated_image_prompt", "ai_redraw_generated_image",
-	"memory_pass", "ai_offer_skill", "library_use", "memory_undo", "memory_move", "memory_restore",
-	"save_offered_skill", "memory_delete", "memory_remember",
 	"ai_paper_run", "ai_paper_save_outline", "ai_paper_draft", "ai_paper_status",
-	"ai_file_changes", "ai_set_file_changes", "ensure_project_file", "import_references_picked", "learn_style",
-	"list_project_files", "pick_text_files", "read_project_file", "ensure_global_agent_md", "load_agent_workspace",
-	"open_global_agent_dir", "import_agent_skill", "customize_builtin_skill", "reset_builtin_skill",
-	"set_skill_modes", "set_skill_off", "save_written_skill", "delete_global_skill",
 	"codex_login", "codex_logout", "claude_login", "claude_logout",
 	// chat and floating windows, web pages
 	"start_floating_tab_drag", "open_floating_window", "resize_floating_window", "floating_window_position",
@@ -87,7 +81,6 @@ var emptyAnswers = map[string]string{
 	"codex_auth_status":           `{"configured":false}`,
 	"ai_can_think_deeper":         `false`,
 	"web_search_status":           `{"native":false,"service":null}`,
-	"list_skills":                 `[]`,
 	"list_image_providers":        `[]`,
 	"current_chat_window":         `null`,
 	"take_chat_handoff":           `null`,

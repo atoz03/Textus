@@ -63,8 +63,8 @@ const (
 )
 
 // Exchange is one turn of a conversation: the writer's messages so far,
-// oldest first, and the reply to the last (src/platform/bindings/ai.ts
-// Exchange).
+// oldest first, and the reply to the last (Exchange in
+// src/platform/bindings/ai.ts and ai-memory.ts).
 type Exchange struct {
 	Messages []string `json:"messages"`
 	Reply    string   `json:"reply"`

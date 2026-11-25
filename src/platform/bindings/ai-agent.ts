@@ -418,10 +418,10 @@ export type MessageRequest_Serialize = {
  */
 export type Pasted = { kind: "path"; path: string } | { kind: "bytes"; name: string; dataBase64: string };
 
-/**  One block as the request carries it. */
+/**  One block as the request carries it: backend/ai/docblocks.go SentBlock. */
 export type SentBlock = SentBlock_Serialize | SentBlock_Deserialize;
 
-/**  One block as the request carries it. */
+/**  One block as the request carries it: backend/ai/docblocks.go SentBlock. */
 export type SentBlock_Deserialize = {
 	id: string,
 	markdown: string,
@@ -432,7 +432,7 @@ export type SentBlock_Deserialize = {
 	kind?: string,
 };
 
-/**  One block as the request carries it. */
+/**  One block as the request carries it: backend/ai/docblocks.go SentBlock. */
 export type SentBlock_Serialize = {
 	id: string,
 	markdown: string,

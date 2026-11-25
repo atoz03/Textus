@@ -312,10 +312,10 @@ export type AgentWorkspace_Serialize = {
 	remember: boolean,
 };
 
-/**  One change to one file. */
+/**  One change to one file: backend/ai_file_changes.go FileChange. */
 export type FileChange = FileChange_Serialize | FileChange_Deserialize;
 
-/**  One change to one file. */
+/**  One change to one file: backend/ai_file_changes.go FileChange. */
 export type FileChange_Deserialize = {
 	id: string,
 	/**  The file, from the folder. */
@@ -334,7 +334,7 @@ export type FileChange_Deserialize = {
 	revision?: boolean,
 };
 
-/**  One change to one file. */
+/**  One change to one file: backend/ai_file_changes.go FileChange. */
 export type FileChange_Serialize = {
 	id: string,
 	/**  The file, from the folder. */
@@ -380,7 +380,7 @@ export type Forgotten_Serialize = {
 	forgotten: string,
 };
 
-/**  What an import did. */
+/**  What an import did: backend/ai_references_import.go importedReferences. */
 export type ImportedReferences = {
 	/**  Files copied or unpacked into references/. */
 	imported: number,

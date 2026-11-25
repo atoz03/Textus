@@ -105,7 +105,7 @@ export type AgentMode_Serialize =
  */
 "create";
 
-/**  One exchange, as the pass reads it. */
+/**  One exchange, as the pass reads it: backend/ai/suggest.go Exchange. */
 export type Exchange = {
 	/**
 	 *  The user's messages in the conversation so far, oldest first; the
@@ -119,7 +119,7 @@ export type Exchange = {
 /**
  *  Which library entries reached Textus AI, for the Memory tab's marks: sent or
  *  left out, and whether from the last request (`lastRequest`) or from the
- *  document's text alone.
+ *  document's text alone: backend/ai/library.go LibraryUse.
  */
 export type LibraryUse = {
 	included: string[],
@@ -131,13 +131,13 @@ export type LibraryUse = {
 
 /**
  *  Where something is remembered from, for the record: the conversation as
- *  ai_agent_message gets it and the document open in it.
+ *  ai_agent_message gets it and the document open in it: backend/ai/memory_pass.go MemorySource.
  */
 export type MemorySource = MemorySource_Serialize | MemorySource_Deserialize;
 
 /**
  *  Where something is remembered from, for the record: the conversation as
- *  ai_agent_message gets it and the document open in it.
+ *  ai_agent_message gets it and the document open in it: backend/ai/memory_pass.go MemorySource.
  */
 export type MemorySource_Deserialize = {
 	id?: string | null,
@@ -146,17 +146,17 @@ export type MemorySource_Deserialize = {
 
 /**
  *  Where something is remembered from, for the record: the conversation as
- *  ai_agent_message gets it and the document open in it.
+ *  ai_agent_message gets it and the document open in it: backend/ai/memory_pass.go MemorySource.
  */
 export type MemorySource_Serialize = {
 	id: string | null,
 	title: string | null,
 };
 
-/**  ai_offer_skill's inputs, as memory_pass's. */
+/**  ai_offer_skill's inputs, as memory_pass's: backend/ai_memory_commands.go passRequest. */
 export type OfferRequest = OfferRequest_Serialize | OfferRequest_Deserialize;
 
-/**  ai_offer_skill's inputs, as memory_pass's. */
+/**  ai_offer_skill's inputs, as memory_pass's: backend/ai_memory_commands.go passRequest. */
 export type OfferRequest_Deserialize = {
 	provider: string,
 	model?: string | null,
@@ -165,7 +165,7 @@ export type OfferRequest_Deserialize = {
 	exchange: Exchange,
 };
 
-/**  ai_offer_skill's inputs, as memory_pass's. */
+/**  ai_offer_skill's inputs, as memory_pass's: backend/ai_memory_commands.go passRequest. */
 export type OfferRequest_Serialize = {
 	provider: string,
 	model: string | null,
@@ -174,10 +174,10 @@ export type OfferRequest_Serialize = {
 	exchange: Exchange,
 };
 
-/**  memory_pass's inputs, the keys of `ai.memoryPass`'s invoke. */
+/**  memory_pass's inputs, the keys of `ai.memoryPass`'s invoke: backend/ai_memory_commands.go passRequest. */
 export type PassRequest = PassRequest_Serialize | PassRequest_Deserialize;
 
-/**  memory_pass's inputs, the keys of `ai.memoryPass`'s invoke. */
+/**  memory_pass's inputs, the keys of `ai.memoryPass`'s invoke: backend/ai_memory_commands.go passRequest. */
 export type PassRequest_Deserialize = {
 	provider: string,
 	model?: string | null,
@@ -187,7 +187,7 @@ export type PassRequest_Deserialize = {
 	exchange: Exchange,
 };
 
-/**  memory_pass's inputs, the keys of `ai.memoryPass`'s invoke. */
+/**  memory_pass's inputs, the keys of `ai.memoryPass`'s invoke: backend/ai_memory_commands.go passRequest. */
 export type PassRequest_Serialize = {
 	provider: string,
 	model: string | null,
@@ -199,13 +199,13 @@ export type PassRequest_Serialize = {
 
 /**
  *  What a remember call did, which the chat's chip shows and undoes.
- *  `previous` is the file as it was before an update, for Undo to put back.
+ *  `previous` is the file as it was before an update, for Undo to put back: backend/ai/memory_pass.go Remembering.
  */
 export type Remembering = Remembering_Serialize | Remembering_Deserialize;
 
 /**
  *  What a remember call did, which the chat's chip shows and undoes.
- *  `previous` is the file as it was before an update, for Undo to put back.
+ *  `previous` is the file as it was before an update, for Undo to put back: backend/ai/memory_pass.go Remembering.
  */
 export type Remembering_Deserialize = {
 	remembered: string,
@@ -227,7 +227,7 @@ export type Remembering_Deserialize = {
 
 /**
  *  What a remember call did, which the chat's chip shows and undoes.
- *  `previous` is the file as it was before an update, for Undo to put back.
+ *  `previous` is the file as it was before an update, for Undo to put back: backend/ai/memory_pass.go Remembering.
  */
 export type Remembering_Serialize = {
 	remembered: string,
@@ -253,7 +253,7 @@ export type Remembering_Serialize = {
  */
 export type Scope = "project" | "personal";
 
-/**  A skill offered after an exchange. */
+/**  A skill offered after an exchange: backend/ai/memory_tidy.go SkillOffer. */
 export type SkillOffer = {
 	name: string,
 	description: string,
