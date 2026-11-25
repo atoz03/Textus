@@ -60,11 +60,14 @@ type App struct {
 	quitting        atomic.Bool
 	openingAtLaunch atomic.Bool
 
-	menu   *menuState
-	drafts *draftStore
-	chats  chatWindows
-	plug   pluginRuntime
-	mcp    mcpHub
+	menu     *menuState
+	drafts   *draftStore
+	chats    chatWindows
+	plug     pluginRuntime
+	mcp      mcpHub
+	sched    scheduler
+	notes    notifications
+	appState appStateWatch
 }
 
 func newApp(shared Shared, dirs Dirs) *App {
@@ -120,8 +123,10 @@ func Run(shared Shared) error {
 	a := newApp(shared, dirs)
 	mygo.Bind(&Host{app: a})
 	registerSchemes(a)
-	// Before Run, to receive the link Textus was started with.
+	// Before Run, to receive the link Textus was started with, and the
+	// notification whose click started it.
 	a.listenForURIs()
+	app.OnNotificationClick(a.notificationClicked)
 
 	// Windows and Linux start a new process per opened file: the first one
 	// takes the others' documents. Not in development, so a dev build runs
@@ -164,6 +169,7 @@ func Run(shared Shared) error {
 		a.load()
 		// Secrets an older build left in the settings go to the key store.
 		a.sealSavedMCP()
+		a.startSchedule()
 		go a.installMovedSkills(context.Background())
 		a.installMenu()
 		cwd, _ := os.Getwd()

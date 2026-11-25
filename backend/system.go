@@ -196,16 +196,6 @@ func init() {
 		c.app.quit()
 		return nil, nil
 	})
-	command("app_state", func(c *Call, _ none) (string, error) {
-		windows := c.app.allWindows()
-		if len(windows) == 0 {
-			return "background", nil
-		}
-		if c.app.windowOf(mygo.FocusedWindow()) != nil {
-			return "active", nil
-		}
-		return "inactive", nil
-	})
 	command("web_asset", func(c *Call, a struct {
 		URL  string `json:"url"`
 		Kind string `json:"kind"`

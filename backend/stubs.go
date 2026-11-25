@@ -25,8 +25,6 @@ var unsupportedCommands = []string{
 	"web_page_show", "web_page_navigate", "web_page_reload",
 	// the command-line tool, the default editor
 	"install_cli_command", "set_default_editor",
-	// scheduled jobs and notifications
-	"schedule_set", "notify_show",
 	// the iOS build's own files (native-files.ts)
 	"appearance", "begin_access", "create_document", "delete_entry", "haptic", "list_folder", "pick_document",
 	"pick_folder", "read_data", "read_text", "remembered", "rename_entry", "share", "trash", "write_text",
@@ -36,16 +34,11 @@ var unsupportedCommands = []string{
 // build's answer: nothing.
 var emptyAnswers = map[string]string{
 	// nothing to report
-	"schedule_list":              `[]`,
-	"schedule_take_runs":         `[]`,
-	"schedule_clear":             `false`,
-	"notify_take_open":           `null`,
 	"floating_desktop_supported": `false`,
 	"list_window_bounds":         `[]`,
 	"start_window_drag_tracking": `false`,
 	"cli_command_status":         `"missing"`,
 	// told, and nothing to do with it
-	"background_host_idle":  `null`,
 	"cli_listening":         `null`,
 	"cli_respond":           `null`,
 	"close_floating_window": `null`,

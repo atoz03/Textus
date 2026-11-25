@@ -186,6 +186,9 @@ type windowSpec struct {
 	alwaysOnTop   bool
 	// parent keeps the window above it (a chat window on Wayland).
 	parent *mygo.Window
+	// tweak changes the options last: a window out of sight, or one
+	// without a frame.
+	tweak func(o *mygo.WindowOptions)
 }
 
 // openWindow creates a window of the app's frontend, with its boot snapshot
@@ -216,12 +219,16 @@ func (a *App) openWindow(spec windowSpec) (*appWindow, error) {
 	if spec.at != nil && !isWayland() {
 		opts.X, opts.Y = int(spec.at[0]), int(spec.at[1])
 	}
+	if spec.tweak != nil {
+		spec.tweak(&opts)
+	}
 	w := &appWindow{label: spec.label}
 	a.mu.Lock()
 	a.windows[spec.label] = w
 	a.mu.Unlock()
 	w.win = mygo.NewWindow(opts)
 	a.wire(w)
+	a.appStateChanged()
 	return w, nil
 }
 
@@ -251,8 +258,12 @@ func (a *App) wire(w *appWindow) {
 	win.OnFocus(func() {
 		a.noteFocused(w.label)
 		_ = w.emit(eventFocus, true)
+		a.appStateChanged()
 	})
-	win.OnBlur(func() { _ = w.emit(eventBlur, false) })
+	win.OnBlur(func() {
+		_ = w.emit(eventBlur, false)
+		a.appStateChanged()
+	})
 	win.OnResize(func() {
 		width, height := win.Size()
 		_ = w.emit(eventResized, map[string]int{"width": width, "height": height})
@@ -289,6 +300,7 @@ func (a *App) windowGone(w *appWindow) {
 	a.mu.Unlock()
 	a.forgetWindowSession(w.label)
 	a.forgetChatWindow(w.label)
+	a.appStateChanged()
 	if others == 0 && a.quitting.Load() {
 		a.exit()
 	}
