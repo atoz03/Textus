@@ -353,6 +353,14 @@ func ReadyPicture(id string) ([]byte, string, bool) {
 	return slot.image.Bytes, slot.image.Ext, true
 }
 
+// KeepPicture keeps a picture found rather than made - a paper's web
+// picture - in the store as a made one, and answers its id.
+func KeepPicture(image aicompat.GeneratedImage) string {
+	id := newPicture()
+	finishPicture(id, pictureSlot{state: slotReady, image: image})
+	return id
+}
+
 // RestorePicture puts back a picture kept with its document, made in an
 // earlier run of the app, under its id - unless one by that id is waiting
 // already.
