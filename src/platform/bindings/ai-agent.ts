@@ -172,6 +172,7 @@ images?: ImageAttachment[] };
 /**
  *  A chat attachment: whatever the user picked, turned into something a model
  *  can read. Failures carry a real reason for the user to see.
+ *  backend/ai_attachments.go chatAttachment.
  */
 export type ChatAttachment = { kind: "text"; name: string; 
 /**  Extracted text, inlined into the prompt by the caller. */
@@ -414,7 +415,7 @@ export type MessageRequest_Serialize = {
 
 /**
  *  What was pasted into the composer: a copied picture's bytes, or a file
- *  copied in a file manager, by its path.
+ *  copied in a file manager, by its path. backend/ai_attachments.go pasted.
  */
 export type Pasted = { kind: "path"; path: string } | { kind: "bytes"; name: string; dataBase64: string };
 

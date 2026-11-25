@@ -28,7 +28,6 @@ import "encoding/json/jsontext"
 // unsupportedCommands fail with errUnsupported.
 var unsupportedCommands = []string{
 	// Textus AI's agent and sign-in
-	"pick_attachment_files", "attach_pasted",
 	"ai_generated_image", "ai_retry_generated_image", "ai_generated_image_prompt", "ai_redraw_generated_image",
 	"ai_paper_run", "ai_paper_save_outline", "ai_paper_draft", "ai_paper_status",
 	"codex_login", "codex_logout", "claude_login", "claude_logout",
