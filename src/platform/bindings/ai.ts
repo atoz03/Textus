@@ -38,7 +38,7 @@ export const PROVIDER_CATALOG = [{"agentDefaultModel":"gpt-6.1-sol","auth":["oau
 export const TEXTUS_AI_OFF = "textus-ai-off" as const;
 
 /* Types */
-/**  One search service. The ids are what Settings stores. */
+/**  One search service. The ids are what Settings stores: backend/ai/web/search.go Backend. */
 export type Backend = "deepseek" | "zhipu" | "kimi" | "bocha" | "tavily" | "brave" | "exa" | "searxng";
 
 /**  What the frontend knows about the cursor beyond the raw text around it: backend/ai/completion.go CompletionHints. */
@@ -216,13 +216,13 @@ export type GrammarRequest_Serialize = {
 
 /**
  *  What the composer's Web search button can do with the provider and model in
- *  use.
+ *  use: backend/ai_web.go webSearchStatus.
  */
 export type WebSearchStatus = WebSearchStatus_Serialize | WebSearchStatus_Deserialize;
 
 /**
  *  What the composer's Web search button can do with the provider and model in
- *  use.
+ *  use: backend/ai_web.go webSearchStatus.
  */
 export type WebSearchStatus_Deserialize = {
 	/**  The provider searches by itself. */
@@ -233,7 +233,7 @@ export type WebSearchStatus_Deserialize = {
 
 /**
  *  What the composer's Web search button can do with the provider and model in
- *  use.
+ *  use: backend/ai_web.go webSearchStatus.
  */
 export type WebSearchStatus_Serialize = {
 	/**  The provider searches by itself. */

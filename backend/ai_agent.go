@@ -9,6 +9,7 @@ import (
 	"textus/backend/ai"
 	"textus/backend/ai/aicompat"
 	"textus/backend/ai/rules"
+	"textus/backend/ai/web"
 )
 
 // The chat's agent: one user message, answered by the model with the
@@ -96,7 +97,10 @@ func (run *agentRun) answer(ctx context.Context, entry ai.Provider) ([]aicompat.
 	// A /name call gets the skill's instructions and reference packs
 	// filled in here, and history keeps the expanded message.
 	message := ai.ExpandMessage(r.Message, ws.Skills, document.Text, run.ui, ai.ChosenProfile(conv, document.Text))
-	history, forgot := ai.CompactTelling(r.History)
+	// Numbered on from the sources earlier replies cited - so from the
+	// history as it came, before it is cut down for sending.
+	plan := run.webPlan(ctx)
+	history, forgot := ai.CompactTelling(web.WithSourcesInText(r.History))
 	if forgot {
 		run.send(ai.StreamEvent{Type: "forgot"})
 	}
@@ -129,7 +133,7 @@ func (run *agentRun) answer(ctx context.Context, entry ai.Provider) ([]aicompat.
 	if r.Thinking != nil {
 		thinking = *r.Thinking
 	}
-	provider, tools, err := a.credentials().AgentProvider(r.Provider, deref(r.Model), thinking, nil, netClient(0))
+	provider, tools, err := a.credentials().AgentProvider(r.Provider, deref(r.Model), thinking, plan.Native, netClient(0))
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +144,7 @@ func (run *agentRun) answer(ctx context.Context, entry ai.Provider) ([]aicompat.
 	} else {
 		turns, err = run.withTools(ctx, toolRun{
 			provider: provider, ws: &ws, document: &document, conv: conv, history: history,
-			user: aicompat.UserTurn(text, images...), focus: focus, message: message, reading: reading,
+			user: aicompat.UserTurn(text, images...), focus: focus, message: message, reading: reading, plan: plan,
 			folders: agentFolders{root: deref(ws.Root), scratch: scratch, seesImages: entry.SupportsVision, data: a.dirs.Data},
 			edits:   a.newFileEdits(deref(ws.Root), deref(r.Conversation), docPath, askFirst),
 		})
@@ -156,7 +160,19 @@ func (run *agentRun) answer(ctx context.Context, entry ai.Provider) ([]aicompat.
 	if len(turns) > 0 && turns[0].Kind == aicompat.User {
 		turns[0].Text = message
 	}
+	plan.AttachSources(turns)
 	return turns, nil
+}
+
+// webPlan is how the request searches the web: the provider's own search,
+// or the search service Settings chose, while the Web search button is on.
+func (run *agentRun) webPlan(ctx context.Context) *web.Plan {
+	r := run.r
+	var service *web.Service
+	if r.WebSearch {
+		service = run.app.searchService(deref(r.SearchService), deref(r.SearxngURL))
+	}
+	return web.NewPlan(r.WebSearch, web.NativeSearchFor(r.Provider, deref(r.Model)), service, r.History).WithContext(ctx)
 }
 
 // toolRun is what a request with tools runs on.
@@ -171,6 +187,7 @@ type toolRun struct {
 	reading        ai.Reading
 	folders        agentFolders
 	edits          *fileEdits
+	plan           *web.Plan
 }
 
 // registry is the tools the request offers.
@@ -197,6 +214,9 @@ func (run *agentRun) registry(t toolRun) *ai.ToolRegistry {
 		tools.Remove(ai.SearchToolName)
 		tools.Remove(ai.ReadDocumentToolName)
 	}
+	for _, tool := range t.plan.Tools(t.focus) {
+		tools.Add(tool)
+	}
 	// The user's earlier conversations, when they refer to one.
 	tools.Add(searchConversationsTool(run.app.stores.chat))
 	return tools
@@ -206,6 +226,9 @@ func (run *agentRun) registry(t toolRun) *ai.ToolRegistry {
 // calls run, until the model replies or the steps run out.
 func (run *agentRun) withTools(ctx context.Context, t toolRun) ([]aicompat.AgentTurn, error) {
 	instructions := ai.BuildInstructions(t.ws, t.document, true, run.mode, t.focus, run.ui)
+	if section, ok := t.plan.PromptSection(); ok {
+		instructions += "\n\n" + section
+	}
 	tc := ai.NewToolContext(t.document)
 	// The text of proposals still undecided from earlier requests: an edit
 	// or a picture may go into it, each picture once.
@@ -214,8 +237,11 @@ func (run *agentRun) withTools(ctx context.Context, t toolRun) ([]aicompat.Agent
 	tc.Skills, tc.UILanguage, tc.Conventions, tc.Library = t.ws.Skills, run.ui, t.conv, ai.LibraryNames(t.ws.Library)
 	tools := run.registry(t)
 	specs := tools.Specs()
+	// A native search's citation goes to the request's sources instead.
 	forward := func(e aicompat.ProviderEvent) {
-		if event, ok := ai.EventOf(e); ok {
+		if e.Kind == aicompat.EventCitation {
+			t.plan.Cite(e.URL, e.Title)
+		} else if event, ok := ai.EventOf(e); ok {
 			run.send(event)
 		}
 	}
@@ -227,7 +253,8 @@ func (run *agentRun) withTools(ctx context.Context, t toolRun) ([]aicompat.Agent
 		if err != nil {
 			return aicompat.StepResult{}, err
 		}
-		settled, _ := ai.SettleStep(result, t.document, t.conv)
+		// Native search citations numbered.
+		settled, _ := ai.SettleStep(t.plan.FinishStep(result), t.document, t.conv)
 		return settled, nil
 	}
 	// Messages the user sends in while it works, read between steps.
@@ -259,6 +286,11 @@ func (run *agentRun) withTools(ctx context.Context, t toolRun) ([]aicompat.Agent
 	// second request.
 	if err != nil && t.provider.FallsBackToPlainChat() && ai.RefusesTools(err) && ctx.Err() == nil {
 		instructions := ai.BuildInstructions(t.ws, t.document, false, run.mode, t.focus, run.ui)
+		// No tools here, so no web_search: the user's message is searched
+		// up front instead.
+		if results, ok := t.plan.SearchAhead(t.focus); ok {
+			instructions += "\n\n" + results
+		}
 		return run.plainChat(ctx, instructions, t.history, t.message, t.provider.Model)
 	}
 	if err != nil {

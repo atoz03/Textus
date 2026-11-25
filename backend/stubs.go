@@ -75,7 +75,6 @@ var emptyAnswers = map[string]string{
 	"schedule_take_runs":          `[]`,
 	"schedule_clear":              `false`,
 	"notify_take_open":            `null`,
-	"web_search_status":           `{"native":false,"service":null}`,
 	"list_image_providers":        `[]`,
 	"floating_desktop_supported":  `false`,
 	"list_window_bounds":          `[]`,
