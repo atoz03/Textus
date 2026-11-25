@@ -187,7 +187,7 @@ path: string } | { kind: "image"; name: string;
 /**  "image/png", ... - what the provider is told this is. */
 mime: string; dataBase64: string; path: string };
 
-/**  A pending picture as the frontend takes it. */
+/**  A pending picture as the frontend takes it: backend/ai/images_pending.go GeneratedImageData. */
 export type GeneratedImageData = {
 	mime: string,
 	ext: string,
@@ -196,7 +196,7 @@ export type GeneratedImageData = {
 	height: number,
 };
 
-/**  How a service is asked for a picture. */
+/**  How a service is asked for a picture: backend/ai/aicompat/capabilities.go ImageAPI. */
 export type ImageApi = 
 /**  OpenAI's Images API with a GPT image model. */
 "open-ai" | 
@@ -216,7 +216,7 @@ export type ImageApi =
 "mini-max" | 
 /**
  *  The ChatGPT sign-in: the image_generation tool on ChatGPT's backend,
- *  not an Images API, so never through [`generate`].
+ *  not an Images API, so never through Generate.
  */
 "chat-gpt";
 
@@ -231,46 +231,46 @@ export type ImageAttachment = {
 };
 
 /**
- *  The image model setting as a request carries it. Keep in step with the
- *  frontend's `ImageModel`.
+ *  The image model setting as a request carries it: backend/ai/images.go
+ *  ImageModel. Keep in step with the frontend's `ImageModel`.
  */
 export type ImageModel = ImageModel_Serialize | ImageModel_Deserialize;
 
 /**
- *  The image model setting as a request carries it. Keep in step with the
- *  frontend's `ImageModel`.
+ *  The image model setting as a request carries it: backend/ai/images.go
+ *  ImageModel. Keep in step with the frontend's `ImageModel`.
  */
 export type ImageModel_Deserialize = {
 	provider: string,
 	model?: string,
 	/**  The compatible endpoint's address. */
 	baseUrl?: string,
-	/**  At most this many pictures per send; `PER_SEND` when unset. */
+	/**  At most this many pictures per send; `PerSend` when unset. */
 	limit?: number | null,
 };
 
 /**
- *  The image model setting as a request carries it. Keep in step with the
- *  frontend's `ImageModel`.
+ *  The image model setting as a request carries it: backend/ai/images.go
+ *  ImageModel. Keep in step with the frontend's `ImageModel`.
  */
 export type ImageModel_Serialize = {
 	provider: string,
 	model: string,
 	/**  The compatible endpoint's address. */
 	baseUrl: string,
-	/**  At most this many pictures per send; `PER_SEND` when unset. */
+	/**  At most this many pictures per send; `PerSend` when unset. */
 	limit: number | null,
 };
 
 /**
- *  One service Settings offers as Image model; the frontend uses its
- *  generated type.
+ *  One service Settings offers as Image model: backend/ai/images.go
+ *  ImageProviderEntry.
  */
 export type ImageProviderEntry = ImageProviderEntry_Serialize | ImageProviderEntry_Deserialize;
 
 /**
- *  One service Settings offers as Image model; the frontend uses its
- *  generated type.
+ *  One service Settings offers as Image model: backend/ai/images.go
+ *  ImageProviderEntry.
  */
 export type ImageProviderEntry_Deserialize = {
 	id: string,
@@ -280,7 +280,7 @@ export type ImageProviderEntry_Deserialize = {
 	/**  None for the compatible endpoint, whose address the user gives. */
 	baseUrl?: string | null,
 	/**
-	 *  Where the key is kept (auth::keys). The chat provider's own id
+	 *  Where the key is kept. The chat provider's own id
 	 *  wherever the same key works for both, so a provider already set up
 	 *  for chat needs no second key.
 	 */
@@ -298,8 +298,8 @@ export type ImageProviderEntry_Deserialize = {
 };
 
 /**
- *  One service Settings offers as Image model; the frontend uses its
- *  generated type.
+ *  One service Settings offers as Image model: backend/ai/images.go
+ *  ImageProviderEntry.
  */
 export type ImageProviderEntry_Serialize = {
 	id: string,
@@ -309,7 +309,7 @@ export type ImageProviderEntry_Serialize = {
 	/**  None for the compatible endpoint, whose address the user gives. */
 	baseUrl: string | null,
 	/**
-	 *  Where the key is kept (auth::keys). The chat provider's own id
+	 *  Where the key is kept. The chat provider's own id
 	 *  wherever the same key works for both, so a provider already set up
 	 *  for chat needs no second key.
 	 */

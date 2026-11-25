@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"textus/backend/ai"
 )
 
 // The AI requests running, by the id the frontend gave each: the chat's
@@ -123,6 +125,8 @@ func init() {
 		RequestID string `json:"requestId"`
 	}) (nothing, error) {
 		cancelRequest(a.RequestID)
+		// The pictures it asked for and are still being made stop too.
+		ai.StopPictures(a.RequestID)
 		return nil, nil
 	})
 	command("ai_steer", func(c *Call, a struct {

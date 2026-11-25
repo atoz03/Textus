@@ -27,8 +27,7 @@ import "encoding/json/jsontext"
 
 // unsupportedCommands fail with errUnsupported.
 var unsupportedCommands = []string{
-	// Textus AI's agent and sign-in
-	"ai_generated_image", "ai_retry_generated_image", "ai_generated_image_prompt", "ai_redraw_generated_image",
+	// Textus AI's paper writer
 	"ai_paper_run", "ai_paper_save_outline", "ai_paper_draft", "ai_paper_status",
 	// chat and floating windows, web pages
 	"start_floating_tab_drag", "open_floating_window", "resize_floating_window", "floating_window_position",
@@ -75,27 +74,25 @@ var emptyAnswers = map[string]string{
 	"schedule_take_runs":          `[]`,
 	"schedule_clear":              `false`,
 	"notify_take_open":            `null`,
-	"list_image_providers":        `[]`,
 	"floating_desktop_supported":  `false`,
 	"list_window_bounds":          `[]`,
 	"start_window_drag_tracking":  `false`,
 	"cli_command_status":          `"missing"`,
 	// told, and nothing to do with it
-	"set_plugin_menu":            `null`,
-	"set_plugin_exports":         `null`,
-	"set_tray_plugin_items":      `null`,
-	"plugin_ai_tools_set":        `null`,
-	"plugin_ai_tool_result":      `null`,
-	"plugin_http_cancel":         `null`,
-	"agent_stop":                 `null`,
-	"ai_discard_generated_image": `null`,
-	"ai_paper_figures_drawn":     `null`,
-	"background_host_idle":       `null`,
-	"cli_listening":              `null`,
-	"cli_respond":                `null`,
-	"close_floating_window":      `null`,
-	"web_page_hide":              `null`,
-	"web_page_close":             `null`,
+	"set_plugin_menu":        `null`,
+	"set_plugin_exports":     `null`,
+	"set_tray_plugin_items":  `null`,
+	"plugin_ai_tools_set":    `null`,
+	"plugin_ai_tool_result":  `null`,
+	"plugin_http_cancel":     `null`,
+	"agent_stop":             `null`,
+	"ai_paper_figures_drawn": `null`,
+	"background_host_idle":   `null`,
+	"cli_listening":          `null`,
+	"cli_respond":            `null`,
+	"close_floating_window":  `null`,
+	"web_page_hide":          `null`,
+	"web_page_close":         `null`,
 }
 
 func init() {

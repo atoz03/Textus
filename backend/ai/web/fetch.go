@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/net/html/charset"
 
+	"textus/backend/ai/aicompat"
 	"textus/backend/extract"
 )
 
@@ -75,60 +76,6 @@ type Fetched struct {
 // Refused is web_fetch's answer for an address that isn't public.
 const Refused = "That address is on this computer or a private network; web_fetch only reads public web pages."
 
-// IsPublic reports whether ip is on the public internet. An IPv4-mapped
-// IPv6 address is judged as the IPv4 address it carries; otherwise only
-// global unicast passes, less the special-purpose and documentation
-// ranges.
-func IsPublic(ip netip.Addr) bool {
-	ip = ip.Unmap()
-	if ip.Is4() {
-		o := ip.As4()
-		a, b, c := o[0], o[1], o[2]
-		return !(a == 0 || a == 10 || a == 127 ||
-			(a == 100 && b&0xc0 == 64) ||
-			(a == 169 && b == 254) ||
-			(a == 172 && b&0xf0 == 16) ||
-			(a == 192 && b == 0 && (c == 0 || c == 2)) ||
-			(a == 192 && b == 88 && c == 99) ||
-			(a == 192 && b == 168) ||
-			(a == 198 && b&0xfe == 18) ||
-			(a == 198 && b == 51 && c == 100) ||
-			(a == 203 && b == 0 && c == 113) ||
-			// Multicast 224/4, reserved 240/4 and broadcast.
-			a >= 224)
-	}
-	if !ip.Is6() {
-		return false
-	}
-	o := ip.As16()
-	s0, s1 := uint16(o[0])<<8|uint16(o[1]), uint16(o[2])<<8|uint16(o[3])
-	return s0&0xe000 == 0x2000 && s0 != 0x2002 &&
-		!(s0 == 0x2001 && (s1 < 0x0200 || s1 == 0x0db8)) &&
-		s0&0xfff0 != 0x3ff0
-}
-
-// allPublic reports whether every address a name resolved to is public -
-// none at all is not. All of them, not the first: a name answering with
-// one public and one private address would otherwise reach the private
-// one on a retry.
-func allPublic(addrs []netip.Addr) bool {
-	for _, ip := range addrs {
-		if !IsPublic(ip) {
-			return false
-		}
-	}
-	return len(addrs) > 0
-}
-
-// IsLocalName reports whether host means this machine or the local
-// network, refused before any lookup: a resolver may answer it from the
-// hosts file or mDNS, and a proxy resolves it on its own side.
-func IsLocalName(host string) bool {
-	host = strings.ToLower(strings.TrimRight(host, "."))
-	return host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") ||
-		strings.HasSuffix(host, ".internal") || strings.HasSuffix(host, ".home.arpa")
-}
-
 // target is the URL web_fetch is asked for, as it will be fetched:
 // http(s) only, no credentials, and plain http upgraded to https.
 func target(raw string, allowLocal bool) (*url.URL, error) {
@@ -180,7 +127,7 @@ func clientFor(ctx context.Context, u *url.URL, allowLocal bool) (*http.Client, 
 	}
 	literal, err := netip.ParseAddr(host)
 	isLiteral := err == nil
-	if !allowLocal && (IsLocalName(host) || (isLiteral && !IsPublic(literal))) {
+	if !allowLocal && (aicompat.IsLocalName(host) || (isLiteral && !aicompat.IsPublic(literal))) {
 		return nil, errors.New(Refused)
 	}
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
@@ -200,7 +147,7 @@ func clientFor(ctx context.Context, u *url.URL, allowLocal bool) (*http.Client, 
 	if err != nil || len(addrs) == 0 {
 		return nil, fmt.Errorf("Couldn't find the site %s.", host)
 	}
-	if !allowLocal && !allPublic(addrs) {
+	if !allowLocal && !aicompat.AllPublic(addrs) {
 		return nil, errors.New(Refused)
 	}
 	port := portOf(u)

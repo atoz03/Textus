@@ -2,7 +2,6 @@ package backend
 
 import (
 	"context"
-	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 
@@ -48,8 +47,8 @@ type messageRequest struct {
 	// UILanguage is the UI's, for the names the agent is told the app
 	// uses; nil is English.
 	UILanguage *string `json:"uiLanguage"`
-	// ImageModel is the image model; pictures aren't made in this build.
-	ImageModel jsontext.Value `json:"imageModel"`
+	// ImageModel is the image model, nil for none.
+	ImageModel *ai.ImageModel `json:"imageModel"`
 	// AskBeforeFileChanges: General mode's file changes wait to be
 	// applied. Nil is the app's own default, true.
 	AskBeforeFileChanges *bool `json:"askBeforeFileChanges"`
@@ -137,6 +136,7 @@ func (run *agentRun) answer(ctx context.Context, entry ai.Provider) ([]aicompat.
 	if err != nil {
 		return nil, err
 	}
+	pictures, _ := a.imageRun(r.ImageModel, entry.ID, docPath, r.RequestID)
 	var turns []aicompat.AgentTurn
 	if !tools {
 		instructions := ai.BuildInstructions(&ws, &document, false, run.mode, focus, run.ui)
@@ -144,7 +144,7 @@ func (run *agentRun) answer(ctx context.Context, entry ai.Provider) ([]aicompat.
 	} else {
 		turns, err = run.withTools(ctx, toolRun{
 			provider: provider, ws: &ws, document: &document, conv: conv, history: history,
-			user: aicompat.UserTurn(text, images...), focus: focus, message: message, reading: reading, plan: plan,
+			user: aicompat.UserTurn(text, images...), focus: focus, message: message, reading: reading, plan: plan, pictures: pictures,
 			folders: agentFolders{root: deref(ws.Root), scratch: scratch, seesImages: entry.SupportsVision, data: a.dirs.Data},
 			edits:   a.newFileEdits(deref(ws.Root), deref(r.Conversation), docPath, askFirst),
 		})
@@ -188,6 +188,8 @@ type toolRun struct {
 	folders        agentFolders
 	edits          *fileEdits
 	plan           *web.Plan
+	// pictures are the request's image model's, nil without one.
+	pictures *ai.ImageRun
 }
 
 // registry is the tools the request offers.
@@ -214,6 +216,9 @@ func (run *agentRun) registry(t toolRun) *ai.ToolRegistry {
 		tools.Remove(ai.SearchToolName)
 		tools.Remove(ai.ReadDocumentToolName)
 	}
+	if t.pictures != nil {
+		tools.Add(t.pictures.Tool(run.send))
+	}
 	for _, tool := range t.plan.Tools(t.focus) {
 		tools.Add(tool)
 	}
@@ -237,8 +242,18 @@ func (run *agentRun) withTools(ctx context.Context, t toolRun) ([]aicompat.Agent
 	tc.Skills, tc.UILanguage, tc.Conventions, tc.Library = t.ws.Skills, run.ui, t.conv, ai.LibraryNames(t.ws.Library)
 	tools := run.registry(t)
 	specs := tools.Specs()
+	// Pictures written into the text, begun as their lines stream in.
+	var inline *ai.InlinePictures
+	if t.pictures != nil && tools.Edits() {
+		inline = t.pictures.Inline(tc)
+	}
 	// A native search's citation goes to the request's sources instead.
 	forward := func(e aicompat.ProviderEvent) {
+		if inline != nil {
+			for _, picture := range inline.Observe(e) {
+				run.send(picture)
+			}
+		}
 		if e.Kind == aicompat.EventCitation {
 			t.plan.Cite(e.URL, e.Title)
 		} else if event, ok := ai.EventOf(e); ok {
@@ -253,8 +268,12 @@ func (run *agentRun) withTools(ctx context.Context, t toolRun) ([]aicompat.Agent
 		if err != nil {
 			return aicompat.StepResult{}, err
 		}
-		// Native search citations numbered.
+		// Native search citations numbered; pictures written into the text
+		// placed.
 		settled, _ := ai.SettleStep(t.plan.FinishStep(result), t.document, t.conv)
+		if inline != nil {
+			settled = inline.Place(settled)
+		}
 		return settled, nil
 	}
 	// Messages the user sends in while it works, read between steps.

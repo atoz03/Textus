@@ -124,36 +124,13 @@ func keptPictureID(id string) bool {
 	return !strings.ContainsFunc(id, func(c rune) bool { return !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9') })
 }
 
-// keepPictures keeps the pictures among ids in dir and lets go of the
-// rest; only picture files are removed, and the folder once empty.
-// Pictures made since are not written in: this build makes none yet.
-func keepPictures(dir string, ids []string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	for _, e := range entries {
-		ext := filepath.Ext(e.Name())
-		id := strings.TrimSuffix(e.Name(), ext)
-		picture := keptPictureID(id) && slices.Contains([]string{".png", ".jpg", ".jpeg", ".webp"}, ext) && e.Type().IsRegular()
-		if picture && !slices.Contains(ids, id) {
-			if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
-				return err
-			}
-		}
-	}
-	if left, err := os.ReadDir(dir); err == nil && len(left) == 0 {
-		return os.Remove(dir)
-	}
-	return nil
-}
-
 func (a *App) choicesPath() string {
 	return filepath.Join(a.dirs.Config, globalAgentDir, memoryFolder, choicesFile)
 }
 
 func init() {
-	// The proposals kept for the document, or null when there are none.
+	// The proposals kept for the document, or null when there are none -
+	// their pictures waiting again.
 	command("kept_proposals_read", func(c *Call, a struct {
 		DocPath       string  `json:"docPath"`
 		WorkspaceRoot *string `json:"workspaceRoot"`
@@ -166,6 +143,8 @@ func init() {
 		if err != nil || !jsontext.Value(raw).IsValid() {
 			return jsontext.Value("null"), nil
 		}
+		// Their pictures waiting again, for the frontend to fetch by id.
+		restorePictures(picturesDir(file))
 		return raw, nil
 	})
 	// Keeps kept for the document, with the pictures among pictures; null
