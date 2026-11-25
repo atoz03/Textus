@@ -274,21 +274,39 @@ type authStatus struct {
 	Configured bool `json:"configured"`
 }
 
-func init() {
-	for prefix, p := range map[string]*signInProvider{"codex": chatGPTSignIn, "claude": claudeSignIn} {
-		command(prefix+"_login", func(c *Call, _ none) (authStatus, error) {
-			err := c.app.signIn(c.ctx, p, func(link string) { _ = c.Send(link) })
-			return authStatus{Configured: err == nil}, err
-		})
-		command(prefix+"_auth_status", func(c *Call, _ none) (authStatus, error) {
-			_, ok, err := c.app.loadSignIn(p)
-			return authStatus{Configured: ok}, err
-		})
-		command(prefix+"_logout", func(c *Call, _ none) (nothing, error) {
-			if err := os.Remove(c.app.signInPath(p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return nil, err
-			}
-			return nil, nil
-		})
+// signInCommand signs in with p, streaming the link to open should the
+// browser not open by itself.
+func signInCommand(p *signInProvider) func(c *Call, _ none) (authStatus, error) {
+	return func(c *Call, _ none) (authStatus, error) {
+		err := c.app.signIn(c.ctx, p, func(link string) { _ = c.Send(link) })
+		return authStatus{Configured: err == nil}, err
 	}
+}
+
+// authStatusCommand says whether p's sign-in is set up.
+func authStatusCommand(p *signInProvider) func(c *Call, _ none) (authStatus, error) {
+	return func(c *Call, _ none) (authStatus, error) {
+		_, ok, err := c.app.loadSignIn(p)
+		return authStatus{Configured: ok}, err
+	}
+}
+
+// signOutCommand forgets p's sign-in.
+func signOutCommand(p *signInProvider) func(c *Call, _ none) (nothing, error) {
+	return func(c *Call, _ none) (nothing, error) {
+		if err := os.Remove(c.app.signInPath(p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		return nil, nil
+	}
+}
+
+func init() {
+	// Each by its own name, as src/platform/bindings/auth.ts calls it.
+	command("codex_login", signInCommand(chatGPTSignIn))
+	command("codex_auth_status", authStatusCommand(chatGPTSignIn))
+	command("codex_logout", signOutCommand(chatGPTSignIn))
+	command("claude_login", signInCommand(claudeSignIn))
+	command("claude_auth_status", authStatusCommand(claudeSignIn))
+	command("claude_logout", signOutCommand(claudeSignIn))
 }
