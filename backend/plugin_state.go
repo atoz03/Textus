@@ -44,6 +44,9 @@ type pluginRuntime struct {
 	trayItems []trayPluginItem
 	// pendingCommand is a tray command asked for while no window was open.
 	pendingCommand *string
+
+	// ssh are the plugins' links to servers.
+	ssh sshLinks
 }
 
 // pluginsRoot is plugins/ in the app's data folder.

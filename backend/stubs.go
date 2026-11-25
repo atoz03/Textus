@@ -5,9 +5,9 @@ import "encoding/json/jsontext"
 // The commands of the subsystems this build does not have yet, and why
 // each waits:
 //
-//   - What plugins reach beyond the app's own files: git, ssh, MCP servers
-//     and external agents. Scheduled jobs, notifications and floating
-//     windows are plugin features too: their grants are the plugins'.
+//   - MCP servers and external agents, which plugins and the AI reach.
+//     Scheduled jobs, notifications and floating windows are plugin
+//     features too: their grants are the plugins'.
 //   - Web page tabs: native webviews of their own, laid over a tab.
 //   - The command-line tool, whose install needs the CLI mode itself, and
 //     the default editor.
@@ -26,12 +26,7 @@ var unsupportedCommands = []string{
 	"web_page_show", "web_page_navigate", "web_page_reload",
 	// the command-line tool, the default editor
 	"install_cli_command", "set_default_editor",
-	// what plugins reach: git, ssh, MCP servers, external agents
-	"plugin_git_status", "plugin_git_log", "plugin_git_show", "plugin_git_commit", "plugin_git_fetch",
-	"plugin_git_push", "plugin_git_pull", "git_trust_repository",
-	"plugin_ssh_hosts", "plugin_ssh_allow", "plugin_ssh_connect", "plugin_ssh_home", "plugin_ssh_list",
-	"plugin_ssh_read", "plugin_ssh_write", "plugin_ssh_create", "plugin_ssh_rename", "plugin_ssh_remove",
-	"plugin_ssh_close",
+	// MCP servers, external agents
 	"mcp_restart", "mcp_try", "agent_start", "agent_send",
 	// scheduled jobs and notifications
 	"schedule_set", "notify_show",
