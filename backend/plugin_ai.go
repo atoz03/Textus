@@ -130,6 +130,15 @@ func (a *App) streamPluginAI(ctx context.Context, provider, model, system, promp
 	return result.Text, nil
 }
 
+// pluginAIRequest is a plugin's prompt for the writing model; cancelId
+// stops it (plugin_http_cancel).
+type pluginAIRequest struct {
+	Plugin   string  `json:"plugin"`
+	System   string  `json:"system"`
+	Prompt   string  `json:"prompt"`
+	CancelID *string `json:"cancelId"`
+}
+
 func init() {
 	// Whether Textus AI is on, and the plugin's yes and tokens this month.
 	command("plugin_ai_status", func(c *Call, a struct {
@@ -159,12 +168,7 @@ func init() {
 	})
 	// One answer from the user's writing model, whole. Stopped with
 	// plugin_http_cancel and cancelId.
-	command("plugin_ai_complete", func(c *Call, a struct {
-		Plugin   string  `json:"plugin"`
-		System   string  `json:"system"`
-		Prompt   string  `json:"prompt"`
-		CancelID *string `json:"cancelId"`
-	}) (string, error) {
+	command("plugin_ai_complete", func(c *Call, a pluginAIRequest) (string, error) {
 		provider, model, err := c.app.pluginModel(a.Plugin, a.System, a.Prompt)
 		if err != nil {
 			return "", err
@@ -179,12 +183,7 @@ func init() {
 	})
 	// The same, its text sent to the window as it comes; the whole answer
 	// at the end.
-	command("plugin_ai_stream", func(c *Call, a struct {
-		Plugin   string  `json:"plugin"`
-		System   string  `json:"system"`
-		Prompt   string  `json:"prompt"`
-		CancelID *string `json:"cancelId"`
-	}) (string, error) {
+	command("plugin_ai_stream", func(c *Call, a pluginAIRequest) (string, error) {
 		provider, model, err := c.app.pluginModel(a.Plugin, a.System, a.Prompt)
 		if err != nil {
 			return "", err

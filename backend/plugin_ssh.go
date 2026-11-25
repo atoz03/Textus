@@ -115,6 +115,19 @@ type sshArgs struct {
 	Path    string `json:"path"`
 }
 
+// sshPath is the link args name and their path on its server.
+func (a *App) sshPath(args sshArgs) (*ssh.Link, string, error) {
+	link, err := a.sshLink(args.ID, args.Session)
+	if err != nil {
+		return nil, "", err
+	}
+	path, err := ssh.Remote(args.Path)
+	if err != nil {
+		return nil, "", err
+	}
+	return link, path, nil
+}
+
 // RemoteEntry is one entry of a folder on the server (RemoteEntry in
 // src/platform/bindings/plugin-access.ts).
 type RemoteEntry struct {
@@ -183,11 +196,7 @@ func init() {
 		return link.SFTP.RealPath(".")
 	})
 	command("plugin_ssh_list", func(c *Call, a sshArgs) ([]RemoteEntry, error) {
-		link, err := c.app.sshLink(a.ID, a.Session)
-		if err != nil {
-			return nil, err
-		}
-		path, err := ssh.Remote(a.Path)
+		link, path, err := c.app.sshPath(a)
 		if err != nil {
 			return nil, err
 		}
@@ -205,11 +214,7 @@ func init() {
 	})
 	// A file's bytes (callBytes in src/platform/ipc-call.ts).
 	command("plugin_ssh_read", func(c *Call, a sshArgs) ([]byte, error) {
-		link, err := c.app.sshLink(a.ID, a.Session)
-		if err != nil {
-			return nil, err
-		}
-		path, err := ssh.Remote(a.Path)
+		link, path, err := c.app.sshPath(a)
 		if err != nil {
 			return nil, err
 		}
@@ -249,11 +254,7 @@ func init() {
 		sshArgs
 		Folder bool `json:"folder"`
 	}) (nothing, error) {
-		link, err := c.app.sshLink(a.ID, a.Session)
-		if err != nil {
-			return nil, err
-		}
-		path, err := ssh.Remote(a.Path)
+		link, path, err := c.app.sshPath(a.sshArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -291,11 +292,7 @@ func init() {
 	})
 	// Deletes a file, or an empty folder, for good.
 	command("plugin_ssh_remove", func(c *Call, a sshArgs) (nothing, error) {
-		link, err := c.app.sshLink(a.ID, a.Session)
-		if err != nil {
-			return nil, err
-		}
-		path, err := ssh.Remote(a.Path)
+		link, path, err := c.app.sshPath(a)
 		if err != nil {
 			return nil, err
 		}

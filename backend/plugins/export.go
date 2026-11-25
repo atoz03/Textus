@@ -48,34 +48,6 @@ func validPublisher(name string) bool {
 	return true
 }
 
-// copyFiles copies every file of the plugin under from to to.
-func copyFiles(from, to string) error {
-	if err := os.MkdirAll(to, 0o755); err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(from)
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		if NotPluginFile(e.Name()) {
-			continue
-		}
-		source, target := filepath.Join(from, e.Name()), filepath.Join(to, e.Name())
-		switch {
-		case e.IsDir():
-			if err := copyFiles(source, target); err != nil {
-				return err
-			}
-		case e.Type().IsRegular():
-			if err := copyFile(source, target); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // renameID renames the plugin's own ids (its commands, views, settings),
 // which all start with its id, in every text file: Textus refuses a
 // manifest whose ones don't.
@@ -142,7 +114,7 @@ func ExportTo(source, publisher, folder string) (string, error) {
 	if Exists(target) {
 		return "", fmt.Errorf("%s is already there.", target)
 	}
-	if err := copyFiles(source, target); err != nil {
+	if err := copyTree(source, target, nil); err != nil {
 		return "", err
 	}
 	if newID != id {

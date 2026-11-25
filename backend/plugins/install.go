@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,6 +125,22 @@ func isFile(path string) bool {
 // secrets or installed packages, and no link, which could point anywhere.
 // total counts what was copied, against MaxPackageBytes.
 func CopyDir(from, to string, total *int64) error {
+	return copyTree(from, to, func(e fs.DirEntry) error {
+		info, err := e.Info()
+		if err != nil {
+			return err
+		}
+		*total += info.Size()
+		if *total > MaxPackageBytes {
+			return Coded("pluginTooBig")
+		}
+		return nil
+	})
+}
+
+// copyTree copies the plugin's files under from to to, folders and files
+// alone; check, when given, sees each file first and may refuse it.
+func copyTree(from, to string, check func(fs.DirEntry) error) error {
 	if err := os.MkdirAll(to, 0o755); err != nil {
 		return err
 	}
@@ -138,17 +155,14 @@ func CopyDir(from, to string, total *int64) error {
 		source, target := filepath.Join(from, e.Name()), filepath.Join(to, e.Name())
 		switch {
 		case e.Type().IsDir():
-			if err := CopyDir(source, target, total); err != nil {
+			if err := copyTree(source, target, check); err != nil {
 				return err
 			}
 		case e.Type().IsRegular():
-			info, err := e.Info()
-			if err != nil {
-				return err
-			}
-			*total += info.Size()
-			if *total > MaxPackageBytes {
-				return Coded("pluginTooBig")
+			if check != nil {
+				if err := check(e); err != nil {
+					return err
+				}
 			}
 			if err := copyFile(source, target); err != nil {
 				return err
