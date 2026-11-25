@@ -279,3 +279,23 @@ func TestTheExcerptIsTheSentenceTheNoteRestsOn(t *testing.T) {
 		t.Fatal("an excerpt for pandas")
 	}
 }
+
+// A section citing the user's own files - a library file, an attached
+// one - by their addresses is checked like one citing web pages.
+func TestASectionCitingTheUsersFilesIsCheckedLikeOneCitingPages(t *testing.T) {
+	library := "references/Tides%202024/a.md"
+	section := testSection(10)
+	section.Figures = nil
+	cited := "Barrages store energy at high tide, by the notes [1](" + library + ")."
+	if found := problems(cited, &section, []numbered{{1, library}}, "en"); len(found) != 0 {
+		t.Fatal(found)
+	}
+	attached := "attached/my%20notes.md"
+	logs := OutlineSection{Title: "Logs", KeyPoints: []string{"logs"}, TargetWords: 8}
+	found := problems("The tides were logged every hour, the notes say [1]("+attached+").", &logs, []numbered{{1, attached}}, "en")
+	for _, p := range found {
+		if strings.HasPrefix(p.Text, "Nothing is cited") || strings.Contains(p.Text, "links to") {
+			t.Fatal(found)
+		}
+	}
+}

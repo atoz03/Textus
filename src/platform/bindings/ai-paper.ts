@@ -9,8 +9,9 @@ import { invoke as __INVOKE, Channel } from "../native/core";
 export const commands = {
 	/**
 	 *  Researches and outlines a paper on `topic` in the document's project,
-	 *  kept in `.textus/papers/<id>/`; a paper begun before goes on from what
-	 *  it kept. Stopped like any request, by `ai_cancel` with `request_id`.
+	 *  kept in its data folder (the scratch folder without one); a paper begun
+	 *  before goes on from what it kept. Stopped like any request, by
+	 *  `ai_cancel` with `request_id`.
 	 */
 	ai_paper_run: (request: PaperRequest_Deserialize, channel: Channel<PaperEvent_Deserialize>) => __INVOKE<Paper_Serialize>("ai_paper_run", { request, channel }),
 	/**
@@ -42,7 +43,8 @@ export const commands = {
  *  the document and project, the conversation, the search service, the
  *  image model, and the id it is stopped by (`ai::cancel`). A chat
  *  message's command takes these as its own parameters; Research's
- *  requests carry them flattened, beside what they add.
+ *  requests carry them flattened, beside what they add: backend/ai_paper.go
+ *  agentRequest.
  */
 export type AgentRequest = AgentRequest_Serialize | AgentRequest_Deserialize;
 
@@ -51,7 +53,8 @@ export type AgentRequest = AgentRequest_Serialize | AgentRequest_Deserialize;
  *  the document and project, the conversation, the search service, the
  *  image model, and the id it is stopped by (`ai::cancel`). A chat
  *  message's command takes these as its own parameters; Research's
- *  requests carry them flattened, beside what they add.
+ *  requests carry them flattened, beside what they add: backend/ai_paper.go
+ *  agentRequest.
  */
 export type AgentRequest_Deserialize = {
 	provider: string,
@@ -81,7 +84,8 @@ export type AgentRequest_Deserialize = {
  *  the document and project, the conversation, the search service, the
  *  image model, and the id it is stopped by (`ai::cancel`). A chat
  *  message's command takes these as its own parameters; Research's
- *  requests carry them flattened, beside what they add.
+ *  requests carry them flattened, beside what they add: backend/ai_paper.go
+ *  agentRequest.
  */
 export type AgentRequest_Serialize = {
 	provider: string,
@@ -106,7 +110,7 @@ export type AgentRequest_Serialize = {
 	askBeforeFileChanges: boolean,
 };
 
-/**  A count of each thing research spends. */
+/**  A count of each thing research spends: backend/ai/paper/budget.go BudgetCounts. */
 export type BudgetCounts = {
 	searches: number,
 	fetches: number,
@@ -117,14 +121,14 @@ export type BudgetCounts = {
 };
 
 /**
- *  What drafting an outlined paper takes. Mirrored in
- *  src/platform/bindings/ai-paper.ts.
+ *  What drafting an outlined paper takes: backend/ai_paper.go
+ *  draftRequest.
  */
 export type DraftRequest = DraftRequest_Serialize | DraftRequest_Deserialize;
 
 /**
- *  What drafting an outlined paper takes. Mirrored in
- *  src/platform/bindings/ai-paper.ts.
+ *  What drafting an outlined paper takes: backend/ai_paper.go
+ *  draftRequest.
  */
 export type DraftRequest_Deserialize = {
 	/**  The paper, outlined and its outline approved. */
@@ -137,8 +141,8 @@ export type DraftRequest_Deserialize = {
 } & AgentRequest_Deserialize;
 
 /**
- *  What drafting an outlined paper takes. Mirrored in
- *  src/platform/bindings/ai-paper.ts.
+ *  What drafting an outlined paper takes: backend/ai_paper.go
+ *  draftRequest.
  */
 export type DraftRequest_Serialize = {
 	/**  The paper, outlined and its outline approved. */
@@ -151,8 +155,8 @@ export type DraftRequest_Serialize = {
 } & AgentRequest_Serialize;
 
 /**
- *  One diagram or chart block to draw. Mirrored in
- *  src/platform/bindings/ai-paper.ts.
+ *  One diagram or chart block to draw: backend/ai/paper/events.go
+ *  FigureBlock.
  */
 export type FigureBlock = {
 	/**  "mermaid" or "chart". */
@@ -160,6 +164,7 @@ export type FigureBlock = {
 	code: string,
 };
 
+/**  How a figure is made: backend/ai/paper/paper.go FigureKind. */
 export type FigureKind = 
 /**  A picture made by the image service (`textus-picture:`). */
 "generated" | "mermaid" | 
@@ -168,7 +173,10 @@ export type FigureKind =
 /**  A picture found on the web, with its source and licence. */
 "web";
 
-/**  A figure the section will have, and how it is made. */
+/**
+ *  A figure the section will have, and how it is made:
+ *  backend/ai/paper/paper.go FigurePlan.
+ */
 export type FigurePlan = {
 	kind: FigureKind,
 	/**
@@ -178,7 +186,7 @@ export type FigurePlan = {
 	spec: string,
 };
 
-/**  The kind of piece. Mirrored in src/platform/bindings/ai-paper.ts. */
+/**  The kind of piece: backend/ai/paper/genre.go Genre. */
 export type Genre = 
 /**
  *  A researched paper with a thesis, an abstract and numbered
@@ -217,8 +225,8 @@ export type Genre =
 "brief";
 
 /**
- *  What the app does differently for a genre. Mirrored in
- *  src/platform/bindings/ai-paper.ts.
+ *  What the app does differently for a genre: backend/ai/paper/genre.go
+ *  GenreForm.
  */
 export type GenreForm = {
 	/**
@@ -234,43 +242,47 @@ export type GenreForm = {
 };
 
 /**
- *  The image model setting as a request carries it. Keep in step with the
- *  frontend's `ImageModel`.
+ *  The image model setting as a request carries it: backend/ai/images.go
+ *  ImageModel. Keep in step with the frontend's `ImageModel`.
  */
 export type ImageModel = ImageModel_Serialize | ImageModel_Deserialize;
 
 /**
- *  The image model setting as a request carries it. Keep in step with the
- *  frontend's `ImageModel`.
+ *  The image model setting as a request carries it: backend/ai/images.go
+ *  ImageModel. Keep in step with the frontend's `ImageModel`.
  */
 export type ImageModel_Deserialize = {
 	provider: string,
 	model?: string,
 	/**  The compatible endpoint's address. */
 	baseUrl?: string,
-	/**  At most this many pictures per send; `PER_SEND` when unset. */
+	/**  At most this many pictures per send; `PerSend` when unset. */
 	limit?: number | null,
 };
 
 /**
- *  The image model setting as a request carries it. Keep in step with the
- *  frontend's `ImageModel`.
+ *  The image model setting as a request carries it: backend/ai/images.go
+ *  ImageModel. Keep in step with the frontend's `ImageModel`.
  */
 export type ImageModel_Serialize = {
 	provider: string,
 	model: string,
 	/**  The compatible endpoint's address. */
 	baseUrl: string,
-	/**  At most this many pictures per send; `PER_SEND` when unset. */
+	/**  At most this many pictures per send; `PerSend` when unset. */
 	limit: number | null,
 };
 
-/**  The plan the user approves before drafting. Kept as `outline.json`. */
+/**
+ *  The plan the user approves before drafting. Kept as `outline.json`:
+ *  backend/ai/paper/paper.go Outline.
+ */
 export type Outline = {
 	thesis: string,
 	sections: OutlineSection[],
 };
 
+/**  One section of the outline: backend/ai/paper/paper.go OutlineSection. */
 export type OutlineSection = {
 	title: string,
 	keyPoints: string[],
@@ -280,13 +292,22 @@ export type OutlineSection = {
 	figures: FigurePlan[],
 };
 
-/**  One paper being written. Kept as `.textus/papers/<id>/paper.json`. */
+/**
+ *  One paper being written, kept as `papers/<id>/paper.json` in its
+ *  project's data folder: backend/ai/paper/paper.go Paper.
+ */
 export type Paper = Paper_Serialize | Paper_Deserialize;
 
-/**  One update from `ai_paper_run`. Display only: what is kept is on disk. */
+/**
+ *  One update from `ai_paper_run` or `ai_paper_draft`. Display only: what
+ *  is kept is on disk. backend/ai/paper/events.go Event, as Wire sends it.
+ */
 export type PaperEvent = PaperEvent_Serialize | PaperEvent_Deserialize;
 
-/**  One update from `ai_paper_run`. Display only: what is kept is on disk. */
+/**
+ *  One update from `ai_paper_run` or `ai_paper_draft`. Display only: what
+ *  is kept is on disk. backend/ai/paper/events.go Event, as Wire sends it.
+ */
 export type PaperEvent_Deserialize = { type: "phase"; phase: PaperPhase } | 
 /**  Section `index` of the outline is now `status`. */
 { type: "section"; index: number; status: SectionStatus } | { type: "budget"; used: BudgetCounts; remaining: BudgetCounts } | 
@@ -357,7 +378,10 @@ export type PaperEvent_Deserialize = { type: "phase"; phase: PaperPhase } |
  */
 { type: "questionDone"; question: number; notes: number; failed: boolean };
 
-/**  One update from `ai_paper_run`. Display only: what is kept is on disk. */
+/**
+ *  One update from `ai_paper_run` or `ai_paper_draft`. Display only: what
+ *  is kept is on disk. backend/ai/paper/events.go Event, as Wire sends it.
+ */
 export type PaperEvent_Serialize = { type: "phase"; phase: PaperPhase } | 
 /**  Section `index` of the outline is now `status`. */
 { type: "section"; index: number; status: SectionStatus } | { type: "budget"; used: BudgetCounts; remaining: BudgetCounts } | 
@@ -428,14 +452,21 @@ export type PaperEvent_Serialize = { type: "phase"; phase: PaperPhase } |
  */
 { type: "questionDone"; question: number; notes: number; failed: boolean };
 
+/**  The card's phase: backend/ai/paper/events.go Phase. */
 export type PaperPhase = "planning" | "researching" | "outlining" | 
 /**  Waiting for the user to approve the outline. */
 "awaitingOutline" | "drafting" | "reviewing" | "finishing" | "done";
 
-/**  How far a kept paper has come: what its card offers to go on with. */
+/**
+ *  How far a kept paper has come: what its card offers to go on with.
+ *  backend/ai/paper/status.go PaperProgress.
+ */
 export type PaperProgress = PaperProgress_Serialize | PaperProgress_Deserialize;
 
-/**  How far a kept paper has come: what its card offers to go on with. */
+/**
+ *  How far a kept paper has come: what its card offers to go on with.
+ *  backend/ai/paper/status.go PaperProgress.
+ */
 export type PaperProgress_Deserialize = {
 	paper: Paper_Deserialize,
 	outline?: Outline | null,
@@ -444,7 +475,10 @@ export type PaperProgress_Deserialize = {
 	form: GenreForm,
 };
 
-/**  How far a kept paper has come: what its card offers to go on with. */
+/**
+ *  How far a kept paper has come: what its card offers to go on with.
+ *  backend/ai/paper/status.go PaperProgress.
+ */
 export type PaperProgress_Serialize = {
 	paper: Paper_Serialize,
 	outline: Outline | null,
@@ -453,10 +487,10 @@ export type PaperProgress_Serialize = {
 	form: GenreForm,
 };
 
-/**  What starting a paper takes. Mirrored in src/platform/bindings/ai-paper.ts. */
+/**  What starting a paper takes: backend/ai_paper.go paperRequest. */
 export type PaperRequest = PaperRequest_Serialize | PaperRequest_Deserialize;
 
-/**  What starting a paper takes. Mirrored in src/platform/bindings/ai-paper.ts. */
+/**  What starting a paper takes: backend/ai_paper.go paperRequest. */
 export type PaperRequest_Deserialize = {
 	/**
 	 *  The paper to go on with, or the id a new one is kept under; None
@@ -480,7 +514,7 @@ export type PaperRequest_Deserialize = {
 	subHelpers?: boolean,
 } & AgentRequest_Deserialize;
 
-/**  What starting a paper takes. Mirrored in src/platform/bindings/ai-paper.ts. */
+/**  What starting a paper takes: backend/ai_paper.go paperRequest. */
 export type PaperRequest_Serialize = {
 	/**
 	 *  The paper to go on with, or the id a new one is kept under; None
@@ -504,7 +538,7 @@ export type PaperRequest_Serialize = {
 	subHelpers: boolean,
 } & AgentRequest_Serialize;
 
-/**  How far a paper has come. */
+/**  How far a paper has come: backend/ai/paper/paper.go Stage. */
 export type PaperStage = 
 /**
  *  Begun: its research is kept question by question in
@@ -523,7 +557,10 @@ export type PaperStage =
 /**  Written into its document. */
 "done";
 
-/**  One paper being written. Kept as `.textus/papers/<id>/paper.json`. */
+/**
+ *  One paper being written, kept as `papers/<id>/paper.json` in its
+ *  project's data folder: backend/ai/paper/paper.go Paper.
+ */
 export type Paper_Deserialize = {
 	id: string,
 	topic: string,
@@ -550,7 +587,10 @@ export type Paper_Deserialize = {
 	subHelpers?: boolean,
 };
 
-/**  One paper being written. Kept as `.textus/papers/<id>/paper.json`. */
+/**
+ *  One paper being written, kept as `papers/<id>/paper.json` in its
+ *  project's data folder: backend/ai/paper/paper.go Paper.
+ */
 export type Paper_Serialize = {
 	id: string,
 	topic: string,
@@ -577,17 +617,21 @@ export type Paper_Serialize = {
 	subHelpers: boolean,
 };
 
-/**  A paper's limits and what it has used of them. */
+/**
+ *  A paper's limits and what it has used of them:
+ *  backend/ai/paper/budget.go ResearchBudget.
+ */
 export type ResearchBudget = {
 	limits: BudgetCounts,
 	used: BudgetCounts,
 };
 
+/**  Where a section stands: backend/ai/paper/events.go SectionStatus. */
 export type SectionStatus = "drafting" | "drafted" | "revising";
 
 /**
  *  A source of the paper: its number in the research's numbering, and its
- *  entry in the reference list.
+ *  entry in the reference list. backend/ai/paper/events.go SourceEntry.
  */
 export type SourceEntry = {
 	n: number,

@@ -11,6 +11,17 @@ import (
 	"testing"
 )
 
+func TestEveryProviderWritesAPaperAFewCallsAtOnce(t *testing.T) {
+	for _, p := range Catalog {
+		if n, ok := paperAtOnce[p.ID]; !ok || n < 1 {
+			t.Errorf("%s: %d calls at once", p.ID, n)
+		}
+	}
+	if custom, _ := Find("custom:mine"); custom.PaperAtOnce() != 3 {
+		t.Fatal(custom.PaperAtOnce())
+	}
+}
+
 func TestTheCatalogIsTheFrontendsCatalog(t *testing.T) {
 	raw, err := os.ReadFile("../../src/platform/bindings/ai.ts")
 	if err != nil {

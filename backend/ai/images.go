@@ -245,6 +245,9 @@ func OfflineImageRun(limit int) *ImageRun {
 	return &ImageRun{job: ImageJob{API: aicompat.OpenAIImages, BaseURL: "https://127.0.0.1:1", APIKey: "sk", Model: "gpt-image-2"}, limit: limit}
 }
 
+// Limit is how many pictures one send may make.
+func (r *ImageRun) Limit() int { return r.limit }
+
 // ForRequest has stopping request requestID stop these pictures.
 func (r *ImageRun) ForRequest(requestID string) *ImageRun {
 	r.request = requestID

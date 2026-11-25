@@ -57,7 +57,8 @@ func (c *BudgetCounts) of(kind BudgetKind) *uint32 {
 	return &c.ModelSteps
 }
 
-// ResearchBudget is a paper's limits and what it has used of them.
+// ResearchBudget is a paper's limits and what it has used of them
+// (ResearchBudget in src/platform/bindings/ai-paper.ts).
 type ResearchBudget struct {
 	Limits BudgetCounts `json:"limits"`
 	Used   BudgetCounts `json:"used"`

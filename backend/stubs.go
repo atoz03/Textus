@@ -5,31 +5,23 @@ import "encoding/json/jsontext"
 // The commands of the subsystems this build does not have yet, and why
 // each waits:
 //
-//   - Textus AI's agent and what hangs off it: the chat turn and its tools,
-//     attachments, generated images, memory, skills and the agent
-//     workspace (agent.md, the skill layers), project files, the paper
-//     writer, and the records of the files a turn changed. They come
-//     together with the agent, which they serve.
-//   - ChatGPT and Claude sign-in: those providers are reached by API key.
 //   - Plugins and what they reach (files, git, ssh, http, stores, MCP,
-//     agents). Scheduled jobs, notifications and floating windows are
-//     plugin features: their grants are the plugins', so they come with
-//     plugins.
-//   - Chat windows, which hold the agent's conversation; web page tabs.
+//     agents), and the plugin and skill catalogs. Scheduled jobs,
+//     notifications and floating windows are plugin features: their
+//     grants are the plugins', so they come with plugins.
+//   - Web page tabs: native webviews of their own, laid over a tab.
 //   - The command-line tool, whose install needs the CLI mode itself, and
 //     the default editor.
 //   - The iOS build's own files.
 //
 // A command whose answer only reports what is there answers that there is
-// nothing (no plugin, no key, no job), so the pages that ask as they open
-// carry on; one that would do something fails with errUnsupported, which
-// the page shows as that action failing.
+// nothing (no plugin, no job, no window), so the pages that ask as they
+// open carry on; one that would do something fails with errUnsupported,
+// which the page shows as that action failing.
 
 // unsupportedCommands fail with errUnsupported.
 var unsupportedCommands = []string{
-	// Textus AI's paper writer
-	"ai_paper_run", "ai_paper_save_outline", "ai_paper_draft", "ai_paper_status",
-	// chat and floating windows, web pages
+	// floating windows, web pages
 	"start_floating_tab_drag", "open_floating_window", "resize_floating_window", "floating_window_position",
 	"show_floating_owner",
 	"web_page_show", "web_page_navigate", "web_page_reload",
@@ -79,20 +71,19 @@ var emptyAnswers = map[string]string{
 	"start_window_drag_tracking":  `false`,
 	"cli_command_status":          `"missing"`,
 	// told, and nothing to do with it
-	"set_plugin_menu":        `null`,
-	"set_plugin_exports":     `null`,
-	"set_tray_plugin_items":  `null`,
-	"plugin_ai_tools_set":    `null`,
-	"plugin_ai_tool_result":  `null`,
-	"plugin_http_cancel":     `null`,
-	"agent_stop":             `null`,
-	"ai_paper_figures_drawn": `null`,
-	"background_host_idle":   `null`,
-	"cli_listening":          `null`,
-	"cli_respond":            `null`,
-	"close_floating_window":  `null`,
-	"web_page_hide":          `null`,
-	"web_page_close":         `null`,
+	"set_plugin_menu":       `null`,
+	"set_plugin_exports":    `null`,
+	"set_tray_plugin_items": `null`,
+	"plugin_ai_tools_set":   `null`,
+	"plugin_ai_tool_result": `null`,
+	"plugin_http_cancel":    `null`,
+	"agent_stop":            `null`,
+	"background_host_idle":  `null`,
+	"cli_listening":         `null`,
+	"cli_respond":           `null`,
+	"close_floating_window": `null`,
+	"web_page_hide":         `null`,
+	"web_page_close":        `null`,
 }
 
 func init() {

@@ -62,6 +62,24 @@ func Find(id string) (Provider, bool) {
 	return Provider{}, false
 }
 
+// paperAtOnce is how many model calls a paper's run makes at once, by
+// provider: what the service's usual rate limits bear, or a local
+// server's slots. Kept out of catalog.json, which is the frontend's.
+var paperAtOnce = map[string]int{
+	"openai": 6, "anthropic": 4, "google": 6, "deepseek": 6, "xai": 4, "mistral": 3,
+	"groq": 3, "openrouter": 4, "opencode-go": 4, "moonshot": 3, "zhipu": 3, "qwen": 4,
+	"doubao": 4, "minimax": 4, "minimax-intl": 4, "ollama": 2, "custom": 3,
+}
+
+// PaperAtOnce is how many model calls a paper's run makes at once with
+// this provider.
+func (p Provider) PaperAtOnce() int {
+	if n, ok := paperAtOnce[p.ID]; ok {
+		return n
+	}
+	return 3
+}
+
 // NotConfigured is what a request to a provider that isn't set up fails
 // with.
 const NotConfigured = "This provider isn't set up yet - configure it in Settings > Textus AI."

@@ -162,7 +162,8 @@ func (SourcesEvent) EventType() string      { return "sources" }
 func (QuestionDoneEvent) EventType() string { return "questionDone" }
 
 // SourceEntry is a source of the paper: its number in the research's
-// numbering, and its entry in the reference list.
+// numbering, and its entry in the reference list (SourceEntry in
+// ai-paper.ts).
 type SourceEntry struct {
 	N     uint32 `json:"n"`
 	Entry string `json:"entry"`
