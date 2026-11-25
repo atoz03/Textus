@@ -184,9 +184,6 @@ func init() {
 	command("background_status", func(c *Call, _ none) (map[string]string, error) {
 		return map[string]string{"tray": "unavailable"}, nil
 	})
-	command("default_editor_status", func(c *Call, _ none) (map[string]bool, error) {
-		return map[string]bool{"supported": false, "isDefault": false, "chooseInSettings": false}, nil
-	})
 	command("release_instance", func(c *Call, _ none) (nothing, error) { return nil, nil })
 	// After an update is installed: every window closes as at Quit (an
 	// unsaved document asks, or is kept as a draft), then the new version

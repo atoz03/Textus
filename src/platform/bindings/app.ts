@@ -304,7 +304,8 @@ export type ChatHandoff = {
  */
 export type CliStatus = "installed" | "outdated" | "missing";
 
-/**  What Settings shows for the row. */
+/**  What Settings shows for the row. Go: defaultEditorStatus in
+ *  backend/default_editor.go. */
 export type DefaultEditorStatus = {
 	/**  False where this installation can't be made the default (an AppImage). */
 	supported: boolean,

@@ -113,9 +113,9 @@ export const canTrashFiles = isDesktopApp || isIOSApp;
 /** The Trash reached through the native plugin, not Rust's. */
 export const trashesNatively = isIOSApp;
 
-/** Settings' "Default Markdown editor". Not yet on the desktop; iOS has
- *  no default app to set. */
-export const canSetDefaultEditor = false;
+/** Settings' "Default Markdown editor" (backend/default_editor.go). iOS
+ *  has no default app to set. */
+export const canSetDefaultEditor = isDesktopApp;
 
 /** The phone menu's Documents list: iOS's own folder of documents; Android
  *  opens files and folders through the system's pickers instead. */

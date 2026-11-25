@@ -19,8 +19,8 @@ import "encoding/json/jsontext"
 
 // unsupportedCommands fail with errUnsupported.
 var unsupportedCommands = []string{
-	// the command-line tool, the default editor
-	"install_cli_command", "set_default_editor",
+	// the command-line tool
+	"install_cli_command",
 	// the iOS build's own files (native-files.ts)
 	"appearance", "begin_access", "create_document", "delete_entry", "haptic", "list_folder", "pick_document",
 	"pick_folder", "read_data", "read_text", "remembered", "rename_entry", "share", "trash", "write_text",
