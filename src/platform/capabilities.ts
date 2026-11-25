@@ -2,6 +2,7 @@ import {
   isAndroidPlatform,
   isDesktop,
   isIOSPlatform,
+  isLinuxPlatform,
   isMacPlatform,
   isWindowsPlatform,
 } from "./os";
@@ -49,9 +50,10 @@ export const hasNativeMenuBar = isDesktopApp && isMacPlatform();
 export const canDragTabsBetweenWindows =
   isDesktopApp && (isMacPlatform() || isWindowsPlatform());
 
-/** Web page tabs as a native webview over the tab. Not yet: every
- *  platform keeps the framed page. */
-export const hasNativeWebPages = false;
+/** Web page tabs as a native page over the tab: a child window of the
+ *  editor window kept over it (backend/web_pages.go). Linux keeps the
+ *  framed page: Wayland places no window where the app asks. */
+export const hasNativeWebPages = isDesktopApp && !isLinuxPlatform();
 
 /** The Agent conversation popped out into its own OS window
  *  (backend/detached_chat.go). */

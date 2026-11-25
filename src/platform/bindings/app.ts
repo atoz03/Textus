@@ -526,7 +526,7 @@ export type NativeEdit = "paste" | "undo" | "redo" | "select-all";
 
 /**
  *  Where the page goes in its window, in CSS pixels from the window's
- *  content's top left.
+ *  content's top left. Go: pageBounds in backend/web_pages.go.
  */
 export type PageBounds = {
 	x: number | null,

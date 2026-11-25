@@ -70,6 +70,7 @@ type App struct {
 	appState appStateWatch
 	floats   floatingWindows
 	drags    tabDrags
+	pages    webPages
 }
 
 func newApp(shared Shared, dirs Dirs) *App {

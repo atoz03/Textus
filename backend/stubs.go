@@ -19,8 +19,6 @@ import "encoding/json/jsontext"
 
 // unsupportedCommands fail with errUnsupported.
 var unsupportedCommands = []string{
-	// web pages
-	"web_page_show", "web_page_navigate", "web_page_reload",
 	// the command-line tool, the default editor
 	"install_cli_command", "set_default_editor",
 	// the iOS build's own files (native-files.ts)
@@ -34,10 +32,8 @@ var emptyAnswers = map[string]string{
 	// nothing to report
 	"cli_command_status": `"missing"`,
 	// told, and nothing to do with it
-	"cli_listening":  `null`,
-	"cli_respond":    `null`,
-	"web_page_hide":  `null`,
-	"web_page_close": `null`,
+	"cli_listening": `null`,
+	"cli_respond":   `null`,
 }
 
 func init() {

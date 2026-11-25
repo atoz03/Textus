@@ -68,6 +68,10 @@ func (a *App) serveAsset(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if a.fromWebPage(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	path, ok := assetPath(r)
 	if !ok {
 		http.NotFound(w, r)

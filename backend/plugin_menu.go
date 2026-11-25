@@ -161,6 +161,11 @@ func (a *App) listenForURIs() {
 // URLs instead, a large module (PlantUML's 3 MB engine) took WebKit
 // gigabytes to load.
 func (a *App) servePluginFile(w http.ResponseWriter, r *http.Request) {
+	// Never to a site in a tab: what plugins there are is the user's.
+	if a.fromWebPage(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	// The frames' origin is opaque: a module script is only run from a
 	// response that lets any origin have it.
 	w.Header().Set("Access-Control-Allow-Origin", "*")

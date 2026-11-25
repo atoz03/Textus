@@ -77,6 +77,7 @@ export function useNativeWebPage(
     window.addEventListener("resize", onResize);
     const stopCover = onWebPagesCover(onResize);
     const stopListening = unlistenAll(
+      // Go: webPageNavigated in backend/web_pages.go.
       listenToThisWindow<{ id: string; url: string; loading?: boolean }>(
         "web-page-navigated",
         (event) => {

@@ -80,9 +80,14 @@ func (a *App) window(label string) *appWindow {
 	return a.windows[label]
 }
 
+// windowOf is the app's window w is; for a tab's web page, the editor
+// window the page is laid over.
 func (a *App) windowOf(w *mygo.Window) *appWindow {
 	if w == nil {
 		return nil
+	}
+	if p := a.webPageOf(w); p != nil {
+		return p.owner
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -302,8 +307,10 @@ func (a *App) windowGone(w *appWindow) {
 	a.forgetChatWindow(w.label)
 	switch kindOf(w.label) {
 	case kindEditor:
-		// Its floating views go with it: it runs their plugins.
+		// Its floating views go with it (it runs their plugins), and its
+		// tabs' web pages.
 		a.closeFloatingOwnedBy(w.label)
+		a.closeWebPagesOf(w.label)
 	case kindFloating:
 		a.forgetFloatingWindow(w.label)
 	}
