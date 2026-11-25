@@ -189,10 +189,11 @@ The frontend reaches the Go backend only through `src/platform/`:
   `ipc-files.ts`, `ipc-plugins.ts`, `ipc-auth.ts`, `ipc-schedule.ts` and
   `ipc-ai-types.ts`, and `ipc.ts` re-exports them.
 - **`ipc-call.ts`** is how every command is called: `command(name, …args)`
-  for a command with typed bindings, `call(name, args)` for one without;
-  `aiCommand` / `aiCall` refuse while Textus AI is off; `desktopQueryCommand`
-  answers a fallback and `desktopActionCommand` / `desktopAction` reject on
-  iOS, where desktop-only commands aren't registered.
+  for a command with typed bindings, `callBytes(name, args)` for one
+  answering bytes (a Go `[]byte`, sent as base64);
+  `aiCommand` refuses while Textus AI is off; `desktopQueryCommand`
+  answers a fallback and `desktopActionCommand` rejects on iOS, where
+  desktop-only commands aren't registered.
 - **`bindings/*.ts`** name every command and its types. They were generated
   from the Rust commands up to 1.4.7 and are kept by hand since: `go test
 ./backend/` and `src/platform/commands.test.ts` fail while a command the

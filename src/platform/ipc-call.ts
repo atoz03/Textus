@@ -107,7 +107,8 @@ export function desktopActionCommand<K extends Command>(
       );
 }
 
-export async function call<T>(command: string, args?: object): Promise<T> {
+/** Calls a command without typed bindings. */
+async function call<T>(command: string, args?: object): Promise<T> {
   try {
     return await invoke<T>(
       command,
