@@ -196,8 +196,11 @@ export type AgentMode_Serialize =
 /**  What an agent's process says, in order. */
 export type AgentOutput = AgentOutput_Serialize | AgentOutput_Deserialize;
 
-/**  What an agent's process says, in order. */
+/**  What an agent's process says, in order (agentOutput in
+ *  backend/plugin_agents.go). */
 export type AgentOutput_Deserialize = 
+/**  It started: the handle agent_send and agent_stop take. */
+{ type: "started"; handle: number } | 
 /**
  *  Lines of its stdout, a protocol message each, gathered for a moment
  *  so a stream of tokens reaches the window a few times a frame at most.
@@ -206,8 +209,11 @@ export type AgentOutput_Deserialize =
 /**  It ended; the end of its stderr says why. */
 { type: "exit"; code?: number | null; stderr: string };
 
-/**  What an agent's process says, in order. */
+/**  What an agent's process says, in order (agentOutput in
+ *  backend/plugin_agents.go). */
 export type AgentOutput_Serialize = 
+/**  It started: the handle agent_send and agent_stop take. */
+{ type: "started"; handle: number } | 
 /**
  *  Lines of its stdout, a protocol message each, gathered for a moment
  *  so a stream of tokens reaches the window a few times a frame at most.

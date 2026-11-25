@@ -6,7 +6,6 @@ package programs
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -229,9 +228,6 @@ func (p *Piped) ExitCode() *int {
 	}
 	return &code
 }
-
-// ErrNotFound is a program that isn't on the login PATH.
-var ErrNotFound = errors.New("program not found")
 
 // Start starts program, found on the login PATH, in cwd when that is a
 // folder, with env added to the app's own environment.

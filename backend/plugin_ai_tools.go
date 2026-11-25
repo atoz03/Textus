@@ -216,10 +216,11 @@ func (a *App) readPluginTool() ai.Tool {
 	}}
 }
 
-// installedTools are the tools of the asking window's plugins the user
-// gave ai.tools: what every mode and the paper's researchers offer.
+// installedTools are the tools of the MCP servers the user turned on, and
+// of the asking window's plugins the user gave ai.tools: what every mode
+// and the paper's researchers offer.
 func (a *App) installedTools(ctx context.Context, asking string) []ai.Tool {
-	return a.pluginToolsFor(ctx, asking)
+	return append(a.mcpTools(ctx), a.pluginToolsFor(ctx, asking)...)
 }
 
 func init() {

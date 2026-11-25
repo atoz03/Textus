@@ -4,6 +4,8 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+
+	"textus/backend/mcp"
 )
 
 // Snapshot is a store's value and its revision.
@@ -73,6 +75,11 @@ func init() {
 	command("settings_patch", func(c *Call, a struct {
 		Patch jsonObject `json:"patch"`
 	}) (uint64, error) {
+		// MCP servers' secrets go to the key store before any window hears
+		// them.
+		if servers, ok := a.Patch[mcp.ServersKey]; ok {
+			a.Patch[mcp.ServersKey], _ = c.app.sealMCP(servers)
+		}
 		rev := c.app.stores.settings.patch(a.Patch)
 		_, theme := a.Patch["theme"]
 		_, themeID := a.Patch["themeId"]

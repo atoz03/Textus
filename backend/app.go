@@ -64,6 +64,7 @@ type App struct {
 	drafts *draftStore
 	chats  chatWindows
 	plug   pluginRuntime
+	mcp    mcpHub
 }
 
 func newApp(shared Shared, dirs Dirs) *App {
@@ -161,6 +162,8 @@ func Run(shared Shared) error {
 
 	app.WhenReady(func() {
 		a.load()
+		// Secrets an older build left in the settings go to the key store.
+		a.sealSavedMCP()
 		go a.installMovedSkills(context.Background())
 		a.installMenu()
 		cwd, _ := os.Getwd()
@@ -186,6 +189,9 @@ func Run(shared Shared) error {
 		})
 	}
 	app.OnQuit(func() {
+		a.stopMCP()
+		a.stopAgents()
+		a.closeSSH(func(string, uint32) bool { return false })
 		if a.stores != nil {
 			a.stores.flushAll()
 		}

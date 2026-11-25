@@ -5,9 +5,8 @@ import "encoding/json/jsontext"
 // The commands of the subsystems this build does not have yet, and why
 // each waits:
 //
-//   - MCP servers and external agents, which plugins and the AI reach.
-//     Scheduled jobs, notifications and floating windows are plugin
-//     features too: their grants are the plugins'.
+//   - Scheduled jobs, notifications and floating windows: plugin
+//     features whose grants are the plugins'.
 //   - Web page tabs: native webviews of their own, laid over a tab.
 //   - The command-line tool, whose install needs the CLI mode itself, and
 //     the default editor.
@@ -26,8 +25,6 @@ var unsupportedCommands = []string{
 	"web_page_show", "web_page_navigate", "web_page_reload",
 	// the command-line tool, the default editor
 	"install_cli_command", "set_default_editor",
-	// MCP servers, external agents
-	"mcp_restart", "mcp_try", "agent_start", "agent_send",
 	// scheduled jobs and notifications
 	"schedule_set", "notify_show",
 	// the iOS build's own files (native-files.ts)
@@ -39,7 +36,6 @@ var unsupportedCommands = []string{
 // build's answer: nothing.
 var emptyAnswers = map[string]string{
 	// nothing to report
-	"mcp_status":                 `[]`,
 	"schedule_list":              `[]`,
 	"schedule_take_runs":         `[]`,
 	"schedule_clear":             `false`,
@@ -49,7 +45,6 @@ var emptyAnswers = map[string]string{
 	"start_window_drag_tracking": `false`,
 	"cli_command_status":         `"missing"`,
 	// told, and nothing to do with it
-	"agent_stop":            `null`,
 	"background_host_idle":  `null`,
 	"cli_listening":         `null`,
 	"cli_respond":           `null`,

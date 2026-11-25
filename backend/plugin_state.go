@@ -47,6 +47,8 @@ type pluginRuntime struct {
 
 	// ssh are the plugins' links to servers.
 	ssh sshLinks
+	// agents are the external agents plugins started.
+	agents externalAgents
 }
 
 // pluginsRoot is plugins/ in the app's data folder.

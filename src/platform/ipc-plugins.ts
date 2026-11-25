@@ -52,26 +52,45 @@ export const mcp = {
   restart: (id: string) =>
     command("mcp_restart", id) as Promise<McpServerStatus[]>,
   /** Starts a server not saved yet, asks for its tools and stops it. The
-   *  server is a settings entry, opaque JSON to Rust. */
+   *  server is a settings entry, opaque JSON to the backend. */
   try: (server: unknown) => command("mcp_try", server as Generated.Value),
 };
 
 /** What an external agent's process says: a protocol line, or its end. */
-type AgentOutput = Generated.AgentOutput_Deserialize;
+type AgentOutput = Exclude<
+  Generated.AgentOutput_Deserialize,
+  { type: "started" }
+>;
 
-/** External agents a plugin names, started by Rust from its manifest
- *  (src-tauri/src/agents.rs). Desktop only. */
+/** External agents a plugin names, started by the backend from its
+ *  manifest (backend/plugin_agents.go). Desktop only. */
 export const agentsIpc = {
+  /** The agent's handle once it started. agent_start itself answers when
+   *  the agent ends, its channel saying first that it started; a stand-in
+   *  that answers at once answers with the handle. */
   start: (
     plugin: string,
     agent: string,
     cwd: string | null,
     onOutput: (out: AgentOutput) => void,
-  ): Promise<number> => {
-    const channel = new Channel<AgentOutput>();
-    channel.onmessage = onOutput;
-    return command("agent_start", plugin, agent, cwd, channel);
-  },
+  ): Promise<number> =>
+    new Promise<number>((resolve, reject) => {
+      let started = false;
+      const channel = new Channel<Generated.AgentOutput_Deserialize>();
+      channel.onmessage = (out) => {
+        if (out.type !== "started") return onOutput(out);
+        started = true;
+        resolve(out.handle);
+      };
+      command("agent_start", plugin, agent, cwd, channel).then(
+        (handle) => {
+          if (!started) resolve(handle);
+        },
+        (error: unknown) => {
+          if (!started) reject(error);
+        },
+      );
+    }),
   send: (handle: number, line: string) => command("agent_send", handle, line),
   stop: (handle: number) => command("agent_stop", handle),
 };
@@ -151,8 +170,7 @@ export const plugins = {
       : pickFilesPackage(),
   /** Settings › Plugins › Open Scripts Folder. Desktop only. */
   openScriptsDir: () => desktopActionCommand("plugin_open_scripts_dir"),
-  file: (id: string, rel: string) =>
-    callBytes("plugin_file", { id, rel }),
+  file: (id: string, rel: string) => callBytes("plugin_file", { id, rel }),
   /** The file a plugin's tab was opened on; on Android it may be a
    *  content:// file picked with Open…, outside any folder. */
   readResource: (id: string, path: string) =>
