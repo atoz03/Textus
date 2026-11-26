@@ -252,6 +252,54 @@ func TestFilesAreCreatedMovedListedSearchedAndRead(t *testing.T) {
 	}
 }
 
+func TestReadPrintsDocumentsAsMarkdownOrWhyNot(t *testing.T) {
+	dir := t.TempDir()
+	sheetTable := "## Counts\n\n| Words |\n| --- |\n| 120 |\n"
+	for name, file := range map[string]struct {
+		data []byte
+		want string
+	}{
+		"notes.docx": {paragraphsDocx("First", "Second"), "First\n\nSecond\n"},
+		"deck.pptx": {zipOf(t, [][2]string{{"ppt/slides/slide1.xml", `<p:sld xmlns:p="p" xmlns:a="a"><p:cSld><p:spTree><p:sp><p:nvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>` +
+			`<p:txBody><a:p><a:r><a:t>Hello</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`}}), "## Slide 1: Hello\n"},
+		"counts.xlsx": {zipOf(t, [][2]string{
+			{"xl/workbook.xml", `<workbook xmlns:r="r"><sheets><sheet name="Counts" sheetId="1" r:id="rId1"/></sheets></workbook>`},
+			{"xl/_rels/workbook.xml.rels", `<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`},
+			{"xl/worksheets/sheet1.xml", `<worksheet><sheetData><row><c t="inlineStr"><is><t>Words</t></is></c></row><row><c><v>120</v></c></row></sheetData></worksheet>`},
+		}), sheetTable},
+		"counts.ods": {zipOf(t, [][2]string{
+			{"mimetype", "application/vnd.oasis.opendocument.spreadsheet"},
+			{"content.xml", `<office:document-content xmlns:office="o" xmlns:table="t" xmlns:text="x"><office:body><office:spreadsheet><table:table table:name="Counts">` +
+				`<table:table-row><table:table-cell office:value-type="string"><text:p>Words</text:p></table:table-cell></table:table-row>` +
+				`<table:table-row><table:table-cell office:value-type="float" office:value="120"/></table:table-row></table:table></office:spreadsheet></office:body></office:document-content>`},
+		}), sheetTable},
+		"book.epub": {zipOf(t, [][2]string{
+			{"META-INF/container.xml", `<container><rootfiles><rootfile full-path="OEBPS/book.opf"/></rootfiles></container>`},
+			{"OEBPS/book.opf", `<package><metadata><dc:title xmlns:dc="dc">A Book</dc:title></metadata><manifest><item id="c1" href="one.xhtml"/></manifest><spine><itemref idref="c1"/></spine></package>`},
+			{"OEBPS/one.xhtml", `<html><body><h1>One</h1><p>It began.</p></body></html>`},
+		}), "**Title:** A Book\n\n# One\n\nIt began.\n"},
+		"letter.rtf": {[]byte(`{\rtf1\ansi {\b Dear} reader,\par}`), "**Dear** reader,\n"},
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), file.data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if code, out, errOut := runIn(dir, &fakeApp{}, "read", name); code != 0 || out != file.want {
+			t.Errorf("read %s: %d %q %q", name, code, out, errOut)
+		}
+	}
+	// Without the error table, a coded error reads as its code.
+	for name, file := range map[string]struct{ data, why string }{
+		"broken.rtf": {"plain text", "unreadable"},
+		"empty.xlsx": {"", "This spreadsheet can't be read."},
+		"blank.rtf":  {`{\rtf1 {\fonttbl\f0 Arial;}}`, "noText"},
+	} {
+		writeText(t, filepath.Join(dir, name), file.data)
+		if code, out, errOut := runIn(dir, &fakeApp{}, "read", name); code == 0 || !strings.Contains(errOut, file.why) {
+			t.Errorf("read %s: %d %q %q", name, code, out, errOut)
+		}
+	}
+}
+
 // Help and version answer without the app: a budget far above what they
 // take, but far below anything that started a window.
 func TestHelpAndVersionAnswerInMilliseconds(t *testing.T) {
