@@ -67,11 +67,14 @@ repository's `main`:
   and the short links `/discord`, `/qq`, `/wechat`
   and `/join`. The bucket's `manifest.json` names the newest stable
   release's installers under the keys the download page uses: `mac`,
-  `mac-intel`, `windows`, `linux`, `deb`, `rpm`, and from 1.1.0
-  `windows-arm64`, `linux-arm64`, `deb-arm64`, `rpm-arm64`
-  (`scripts/mirror-keys.mjs`; the files are listed in
-  [releasing.md](releasing.md#installers)). Keep existing keys as they are:
-  the site reads them.
+  `mac-intel`, `windows`, `windows-arm64`, `deb`, `rpm`, `deb-arm64`,
+  `rpm-arm64`, and the Linux archives' `linux-archive` and
+  `linux-arm64-archive` (`scripts/mirror-keys.mjs`; the files are listed in
+  [releasing.md](releasing.md#installers)). The Tauri releases' `linux` and
+  `linux-arm64` (the AppImages), `android` and `…-portable` keys have no
+  file in a Go release, so the site must offer the Linux archives in the
+  AppImages' place ([releasing.md](releasing.md#what-the-workflow-does)).
+  Keep existing keys as they are: the site reads them.
 - **catvinci.com** - project `catvinci-homepage`. A Worker handles the Join
   us form, and another forwards mail for studio@catvinci.com.
 

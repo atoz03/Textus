@@ -240,8 +240,9 @@ anything else.
 
 CI builds no iOS or Android app: both are still the Tauri builds, whose
 sources `main` no longer has ([architecture.md](architecture.md#the-backend)).
-Up to 1.4.6 an `ios` job built the iOS app for the simulator and started it
-there (`scripts/smoke-ios-sim.sh`), and an `android` job built the APK.
+Up to the 1.4.7 test builds an `ios` job built the iOS app for the
+simulator and started it there (`scripts/smoke-ios-sim.sh`), and an
+`android` job built the APK.
 
 ## How CI is laid out
 

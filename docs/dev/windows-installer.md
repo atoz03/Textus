@@ -14,9 +14,9 @@ Windows (`mygo build` downloads it); on Linux and macOS it must be
 installed (`apt install nsis`), or `-skip-installer` leaves the installer
 out.
 
-The Tauri builds up to 1.4.6 had an NSIS installer of their own (Tauri's
-template, vendored with Textus' pages), and before that an MSI on stable
-tags. Neither is built any more.
+The Tauri builds (up to 1.4.6, and the 1.4.7 test builds) had an NSIS
+installer of their own (Tauri's template, vendored with Textus' pages), and
+before that an MSI on stable tags. Neither is built any more.
 
 ## The pages, in order
 
@@ -39,8 +39,10 @@ The installer of a newer version offers the installed one's folder (its
 Textus and writes over it. In-app updates replace the same files without
 the installer.
 
-A Tauri-era install (up to 1.4.6, in `%LOCALAPPDATA%\Textus`) is not
-found by MyGo's installer: installing 1.4.7 puts a second copy in
+A Tauri-era install (up to 1.4.6 and the 1.4.7 test builds, in
+`%LOCALAPPDATA%\Textus`) is not found by MyGo's installer, which looks for
+its own uninstall entry (`…\Uninstall\com.catvinci.textus`; Tauri's was
+`…\Uninstall\Textus`): installing a Go build puts a second copy in
 `%LOCALAPPDATA%\Programs\Textus`, beside the old one and its own entry in
 Settings › Apps. The user's settings and documents are kept either way
 ([storage.md](storage.md)).

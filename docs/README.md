@@ -36,7 +36,7 @@ Platforms:
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | [ios-code-map.md](dev/ios-code-map.md)           | What the desktop and iOS apps share and what is desktop-only; the iPhone layout; building on a Mac |
 | [webview-support.md](dev/webview-support.md)     | The oldest web engines supported (WebView2 on Chromium 105), what broke below, the check that guards it |
-| [windows-installer.md](dev/windows-installer.md) | The NSIS installer, and why there is no MSI                                                       |
+| [windows-installer.md](dev/windows-installer.md) | MyGo's NSIS installer: its pages, upgrades, file associations and the `textus` command           |
 | [translating.md](dev/translating.md)             | The ten UI languages: the files of one language, tone, and how it is checked                      |
 
 Shipping and the project:

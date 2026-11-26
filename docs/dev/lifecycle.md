@@ -111,7 +111,7 @@ session.
 
 ## What a windowless process costs
 
-Measured on the last Tauri build (1.4.6) on Linux (Arch, niri on Wayland,
+Measured on the last stable Tauri build (1.4.6) on Linux (Arch, niri on Wayland,
 NVIDIA, WebKitGTK 2.50, release build, throwaway data folders, its own
 D-Bus session), as the process and all its children's PSS and CPU time;
 the Go build is yet to be measured the same way:
