@@ -383,7 +383,8 @@ export const defaultEditor = {
 
 // Distribution
 
-/** The channel this build was installed through. */
+/** The channel this build was installed through (backend/distribution.go
+ *  `distribution`, set when a release links it). */
 export type Distribution = "direct" | "homebrew" | "aur" | "portable";
 
 export const distribution = {
