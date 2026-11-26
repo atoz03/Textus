@@ -265,6 +265,12 @@ func extractDocument(path string) (string, error) {
 		return extract.PptxMarkdown(path)
 	case "epub":
 		return extract.EpubMarkdown(path)
+	case "rtf":
+		text, err := extract.RtfMarkdown(path)
+		if errors.Is(err, extract.ErrUnreadable) {
+			return "", codeError("unreadable")
+		}
+		return text, err
 	case "html", "htm", "xhtml":
 		raw, err := os.ReadFile(path)
 		if err != nil {
