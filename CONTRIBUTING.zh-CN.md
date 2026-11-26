@@ -13,13 +13,13 @@
 
 ## 搭建环境
 
-需要 [Node.js](https://nodejs.org) 22 以上（见 `.nvmrc`）、用 rustup 安装的 [Rust](https://rustup.rs)（`src-tauri/rust-toolchain.toml` 会自动选版本），以及各平台的编译工具：macOS 装 Xcode Command Line Tools；Windows 装 "Desktop development with C++"；Debian/Ubuntu 运行 `sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf`。
+需要 [Node.js](https://nodejs.org) 26 以上（见 `.nvmrc`）和 [Go](https://go.dev/dl/)（版本见 `go.mod`）。桌面 App 用 [MyGo](https://github.com/egoist/mygo) 构建，不需要 C 编译器；在 Linux 上依赖 GTK 3 和 WebKitGTK 4.1（Debian/Ubuntu 运行 `sudo apt install libwebkit2gtk-4.1-0`），在 Windows 上依赖 WebView2。
 
 ```sh
 git clone https://github.com/CatVinci-Studio/Textus.git
 cd Textus
 npm install
-npm run tauri dev   # 完整的 App，前端热更新
+npx mygo dev        # 完整的 App，前端热更新
 npm run dev         # 只有前端，http://localhost:1420，后端是模拟的
 ```
 
@@ -31,7 +31,7 @@ npm run dev         # 只有前端，http://localhost:1420，后端是模拟的
 npm run check
 ```
 
-PR 只需要这一条：类型、lint、单元测试、格式和代码形状规则。CI 在每个 PR 上跑同样的检查，改到 `src-tauri/` 时再加 Linux 上的 Rust 检查。e2e 和各平台的原生构建在每次发版前由维护者来跑。代码规范和对应的检查脚本见 [docs/dev/code-style.md](docs/dev/code-style.md)，新测试放在哪一层见 [testing.md](docs/dev/testing.md)。
+PR 只需要这一条：类型、lint、单元测试、格式和代码形状规则。CI 在每个 PR 上跑同样的检查，外加 Chromium 和 WebKit 上的全部 e2e；`npm run check:native` 运行 gofmt、`go vet` 和 Go 测试。推送前先跑一下改动附近的 e2e（`npx playwright test e2e/<file>`）。各平台的原生构建在每次发版前运行。代码规范和对应的检查脚本见 [docs/dev/code-style.md](docs/dev/code-style.md)，新测试放在哪一层见 [testing.md](docs/dev/testing.md)。
 
 ## Pull request
 
