@@ -3,6 +3,7 @@ package backend
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	_ "image/gif"
@@ -133,7 +134,7 @@ func intoFreeName(dir string, names []string, make func(path string) error, reus
 	if len(names) > 0 {
 		first = names[0]
 	}
-	return "", fmt.Errorf("no free name for %s", first)
+	return "", fmt.Errorf("no free name for %s: %w", first, fs.ErrExist)
 }
 
 func numberedNames(name string, style numberedStyle, skipOne bool) []string {
@@ -255,7 +256,64 @@ func undoMade(made []string) {
 	}
 }
 
-func (a *App) copyEntry(from, into string) (string, error) {
+// copyNaming is how a copy is named: as itself, refused when that is
+// taken; numbered when taken ("report 2.pdf"), as a file manager keeps
+// both; or as a copy beside the original in the words of the pattern, as
+// Finder names one ("{name} copy": "report copy.pdf", then "report copy
+// 2.pdf"). Its TypeScript side is `CopyNaming` in
+// src/platform/bindings/files.ts: "own", "numbered" or {"beside": pattern}.
+type copyNaming struct {
+	own    bool
+	beside *string
+}
+
+func (n *copyNaming) UnmarshalJSON(raw []byte) error {
+	var word string
+	if err := json.Unmarshal(raw, &word); err == nil {
+		switch word {
+		case "own":
+			*n = copyNaming{own: true}
+			return nil
+		case "numbered":
+			*n = copyNaming{}
+			return nil
+		}
+		return fmt.Errorf("unknown copy naming %q", word)
+	}
+	var beside struct {
+		Beside *string `json:"beside"`
+	}
+	if err := json.Unmarshal(raw, &beside); err != nil || beside.Beside == nil {
+		return fmt.Errorf("unknown copy naming %s", raw)
+	}
+	*n = copyNaming{beside: beside.Beside}
+	return nil
+}
+
+// names is the names a copy of name tries, in order.
+func (n copyNaming) names(name string, isDir bool) []string {
+	switch {
+	case n.own:
+		return []string{name}
+	case n.beside != nil:
+		stem, ext := name, ""
+		if i := strings.LastIndex(name, "."); !isDir && i > 0 {
+			stem, ext = name[:i], name[i:]
+		}
+		pattern := *n.beside
+		if !strings.Contains(pattern, "{name}") {
+			pattern = "{name} copy"
+		}
+		return numberedNames(strings.ReplaceAll(pattern, "{name}", stem)+ext, numberedFor(isDir), true)
+	}
+	return numberedNames(name, numberedFor(isDir), true)
+}
+
+// copyEntry copies the file or folder from (a folder with all it holds)
+// into the folder into, named as naming says, never over anything there;
+// secret is a place never copied from (the app's keys). It returns the
+// name the copy took.
+func copyEntry(from, into string, naming copyNaming, secret func(string) bool) (string, error) {
 	from, err := filepath.EvalSymlinks(from)
 	if err != nil {
 		return "", err
@@ -268,29 +326,33 @@ func (a *App) copyEntry(from, into string) (string, error) {
 		return "", codeError("notFolder")
 	}
 	name := filepath.Base(from)
+	if _, err := os.Lstat(filepath.Join(into, name)); naming.own && err == nil {
+		return "", codeError("exists")
+	}
 	info, err := os.Stat(from)
 	if err != nil {
 		return "", err
 	}
+	never := func(string) bool { return false }
 	if !info.IsDir() {
-		return intoFreeName(into, numberedNames(name, numberedSpace, true), func(to string) error {
+		got, err := intoFreeName(into, naming.names(name, false), func(to string) error {
 			return copyFileNew(from, to)
-		}, func(string) bool { return false })
+		}, never)
+		return got, existsError(err)
 	}
 	if _, under := pathUnder(into, from); under {
 		return "", codeError("copyIntoItself")
 	}
-	madeName, err := intoFreeName(into, numberedNames(name, numberedSpaceWhole, true), func(to string) error {
+	madeName, err := intoFreeName(into, naming.names(name, true), func(to string) error {
 		return os.Mkdir(to, 0o755)
-	}, func(string) bool { return false })
+	}, never)
 	if err != nil {
-		return "", err
+		return "", existsError(err)
 	}
 	to := filepath.Join(into, madeName)
 	made := []string{to}
-	if err := copyTree(from, to, func(p string) bool {
-		return inAnyDir(p, a.dirs.Config)
-	}, &made); err != nil {
+	if err := copyTree(from, to, secret, &made); err != nil {
+		// Half a copy is no copy: what was made here a moment ago goes.
 		undoMade(made)
 		return "", err
 	}
@@ -375,23 +437,39 @@ func init() {
 		}
 		return nil, writeAtomic(a.Path, raw)
 	})
-	command("copy_into_folder", func(c *Call, a struct {
-		Source string `json:"source"`
-		Into   string `json:"into"`
+	// The file tree's copy (a paste, Duplicate, a drag with Option or Ctrl,
+	// files dropped from a file manager): path copied into the folder into,
+	// named as naming says. The copy's path is in into's spelling.
+	command("tree_copy_entry", func(c *Call, a struct {
+		Path   string     `json:"path"`
+		Into   string     `json:"into"`
+		Naming copyNaming `json:"naming"`
 	}) (string, error) {
-		if err := requireNonEmpty(a.Source); err != nil {
+		if err := requireNonEmpty(a.Path); err != nil {
 			return "", err
 		}
 		if err := requireNonEmpty(a.Into); err != nil {
 			return "", err
 		}
-		if err := c.app.notASecret(a.Source); err != nil {
+		if err := c.app.notASecret(a.Path); err != nil {
 			return "", err
 		}
-		name, err := c.app.copyEntry(a.Source, a.Into)
+		config := c.app.dirs.Config
+		name, err := copyEntry(a.Path, a.Into, a.Naming, func(p string) bool {
+			return inAnyDir(p, config)
+		})
 		if err != nil {
 			return "", err
 		}
 		return filepath.Join(a.Into, name), nil
+	})
+	// Rows of the tree dragged out of the window, for a file manager or
+	// another app to take: MyGo starts the system's drag of files only from
+	// its own native UI, never from a page, so nothing takes them
+	// (canDragFilesOut in src/platform/capabilities.ts).
+	command("start_file_drag_out", func(c *Call, a struct {
+		Paths []string `json:"paths"`
+	}) (bool, error) {
+		return false, nil
 	})
 }

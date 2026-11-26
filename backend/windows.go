@@ -3,6 +3,7 @@ package backend
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"runtime"
 	"strconv"
@@ -186,9 +187,11 @@ type windowSpec struct {
 	url           string
 	title         string
 	width, height int
-	minW, minH    int
-	at            *[2]float64
-	alwaysOnTop   bool
+	// contentSize: width and height are the page area's, not the window's.
+	contentSize bool
+	minW, minH  int
+	at          *[2]float64
+	alwaysOnTop bool
 	// parent keeps the window above it (a chat window on Wayland).
 	parent *mygo.Window
 	// tweak changes the options last: a window out of sight, or one
@@ -208,6 +211,7 @@ func (a *App) openWindow(spec windowSpec) (*appWindow, error) {
 		URL:             spec.url,
 		Width:           spec.width,
 		Height:          spec.height,
+		UseContentSize:  spec.contentSize,
 		MinWidth:        spec.minW,
 		MinHeight:       spec.minH,
 		TitleBarStyle:   mygo.TitleBarHidden,
@@ -232,6 +236,11 @@ func (a *App) openWindow(spec windowSpec) (*appWindow, error) {
 	a.windows[spec.label] = w
 	a.mu.Unlock()
 	w.win = mygo.NewWindow(opts)
+	// MyGo centres a window asked for at (0, 0): one left in the corner
+	// goes back there.
+	if spec.at != nil && opts.X == 0 && opts.Y == 0 && !isWayland() {
+		w.win.SetPosition(0, 0)
+	}
 	a.wire(w)
 	a.appStateChanged()
 	return w, nil
@@ -251,8 +260,12 @@ func (a *App) wire(w *appWindow) {
 		})
 	}
 	win.OnClose(func(e *mygo.CloseEvent) {
-		if isEditorWindow(w.label) {
-			a.rememberEditorWindow(w)
+		// While it can still be read: its frame for the next launch, in the
+		// UI state and with its documents. Quit kept both already.
+		if isEditorWindow(w.label) && !a.quitting.Load() {
+			frame := a.closingFrame(w)
+			a.rememberEditorWindow(frame)
+			a.keepFrame(w.label, frame)
 		}
 		if w.closeListened.Load() && !w.destroying.Load() {
 			e.PreventDefault()
@@ -272,10 +285,16 @@ func (a *App) wire(w *appWindow) {
 	win.OnResize(func() {
 		width, height := win.Size()
 		_ = w.emit(eventResized, map[string]int{"width": width, "height": height})
+		if isEditorWindow(w.label) {
+			a.noteBounds(w)
+		}
 	})
 	win.OnMove(func() {
 		x, y := win.Position()
 		_ = w.emit(eventMoved, map[string]int{"x": x, "y": y})
+		if isEditorWindow(w.label) {
+			a.noteBounds(w)
+		}
 	})
 	win.OnFileDrop(func(e *mygo.FileDropEvent) {
 		_ = w.emit(eventDragDrop, map[string]any{
@@ -306,6 +325,10 @@ func (a *App) windowGone(w *appWindow) {
 	a.forgetWindowSession(w.label)
 	a.forgetChatWindow(w.label)
 	a.cliWindowGone(w.label)
+	a.trees.windowGone(w.label)
+	a.forgetBounds(w.label)
+	// A session its page never took goes with it.
+	a.takeSessionFor(w.label)
 	switch kindOf(w.label) {
 	case kindEditor:
 		// Its floating views go with it (it runs their plugins), and its
@@ -331,38 +354,68 @@ func removeString(list []string, s string) []string {
 	return out
 }
 
-// buildEditorWindow opens an editor window: the size the last one closed
-// at, or a small one for a single document.
-func (a *App) buildEditorWindow(label string, at *[2]float64, small bool) error {
-	width, height := smallWidth, smallHeight
-	url := "/index.html?window=small"
-	if !small {
-		width, height = 800, 600
-		if w, h, ok := a.editorWindowSize(); ok {
-			width, height = int(w), int(h)
-		}
-		url = "/"
+// buildEditorWindow opens an editor window: as frame was left, fitted to
+// today's screens, or else the size the last one closed at (a small one for
+// a single document), no bigger than the main screen, where the system
+// puts it or at.
+func (a *App) buildEditorWindow(label string, at *[2]float64, small bool, frame *keptFrame) error {
+	url := "/"
+	if small {
+		url = "/index.html?window=small"
 	}
-	_, err := a.openWindow(windowSpec{
+	spec := windowSpec{
 		label: label, url: url, title: "Textus",
-		width: width, height: height, minW: editorMinWidth, minH: editorMinHeight,
+		contentSize: true, minW: editorMinWidth, minH: editorMinHeight,
 		at: at,
-	})
+	}
+	size := [2]float64{smallWidth, smallHeight}
+	if frame != nil {
+		opening := reopen(*frame, screens(), editorLeast)
+		if isWayland() {
+			opening.Position = nil
+		}
+		a.seedBounds(label, keptFrame{Size: opening.Size, Position: opening.Position, Mode: modeNormal})
+		size, spec.at = opening.Size, opening.Position
+		spec.tweak = func(o *mygo.WindowOptions) {
+			o.Maximized = opening.mode() == modeMaximized
+			o.FullScreen = opening.mode() == modeFullscreen
+		}
+	} else {
+		if !small {
+			size = [2]float64{firstRunWidth, firstRunHeight}
+			if w, h, ok := a.editorWindowSize(); ok {
+				size = [2]float64{w, h}
+			}
+		}
+		_, size = place(nil, size, screens(), editorLeast)
+	}
+	spec.width, spec.height = int(math.Round(size[0])), int(math.Round(size[1]))
+	_, err := a.openWindow(spec)
 	return err
 }
 
-func (a *App) openNewWindow() error {
-	return a.buildEditorWindow(a.nextWindowLabel(), nil, false)
+// buildWindowAsLeft opens a window that comes back as it was left (frame,
+// fitted to today's screens), or else opens as a new one does.
+func (a *App) buildWindowAsLeft(label string, frame *keptFrame) error {
+	return a.buildEditorWindow(label, nil, false, frame)
 }
 
-// buildMainWindow opens the first window: where the last window closed, at
-// its size.
-func (a *App) buildMainWindow() error {
-	var at *[2]float64
-	if x, y, ok := a.editorWindowPosition(); ok && !isWayland() {
-		at = &[2]float64{x, y}
+func (a *App) openNewWindow() error {
+	return a.buildEditorWindow(a.nextWindowLabel(), nil, false, nil)
+}
+
+// buildMainWindow opens the first window as the first window restored was
+// left (restored), else the last window closed, else at the first run's
+// size, centred.
+func (a *App) buildMainWindow(restored *keptFrame) error {
+	frame := restored
+	if frame == nil {
+		frame = a.readEditorFrame()
 	}
-	return a.buildEditorWindow("main", at, false)
+	if frame == nil {
+		frame = &keptFrame{Size: [2]float64{firstRunWidth, firstRunHeight}, Mode: modeNormal}
+	}
+	return a.buildWindowAsLeft("main", frame)
 }
 
 // reopenWithoutWindows: the app opened again with no window shown (the Dock
@@ -380,7 +433,7 @@ func (a *App) reopenWithoutWindows() {
 		windows = a.readSessionWindows()
 	}
 	if len(windows) == 0 {
-		if err := a.openNewWindow(); err != nil {
+		if err := a.buildWindowAsLeft(a.nextWindowLabel(), a.readEditorFrame()); err != nil {
 			log.Printf("textus: cannot open a window: %v", err)
 		}
 		return

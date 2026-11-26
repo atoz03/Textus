@@ -54,6 +54,13 @@ type App struct {
 	pendingMenuEvent *string
 	argvPaths        map[string]int            // documents of command lines, not yet echoed as open-file events
 	detachedTabs     map[string]jsontext.Value // a tab moved out, by its new window
+	// pendingSessions is the session each window opened for one was built
+	// for, by the window's label.
+	pendingSessions map[string]WindowSession
+	// normalFrames is each editor window's normal bounds as last seen, by
+	// label: what it goes back to, kept when it closes maximized or full
+	// screen.
+	normalFrames map[string]keptFrame
 
 	windowCounter   atomic.Uint32
 	uiReady         atomic.Bool
@@ -73,6 +80,7 @@ type App struct {
 	pages    webPages
 	cli      cliBridge
 	bg       backgroundState
+	trees    treeWatches
 }
 
 func newApp(shared Shared, dirs Dirs) *App {
@@ -175,7 +183,11 @@ func Run(shared Shared) error {
 		a.listenForCLI()
 		cwd, _ := os.Getwd()
 		paths, windows := a.launchOpens(os.Args, cwd)
-		if err := a.buildMainWindow(); err != nil {
+		var restored *keptFrame
+		if len(paths) == 0 && len(windows) > 0 {
+			restored = windows[0].Frame
+		}
+		if err := a.buildMainWindow(restored); err != nil {
 			log.Printf("textus: cannot open the main window: %v", err)
 		}
 		switch {
@@ -318,24 +330,52 @@ func (a *App) editorWindowSize() (float64, float64, bool) {
 	return w, h, ok && w >= 320 && h >= 240
 }
 
-func (a *App) editorWindowPosition() (float64, float64, bool) {
-	return a.keptPair("editorWindowPosition")
+// readEditorFrame is the last closed editor window's frame: its normal
+// size, its place (outer position) and whether it was left maximized or
+// full screen.
+func (a *App) readEditorFrame() *keptFrame {
+	w, h, ok := a.editorWindowSize()
+	if !ok {
+		return nil
+	}
+	frame := keptFrame{Size: [2]float64{w, h}, Mode: modeNormal}
+	if x, y, ok := a.keptPair("editorWindowPosition"); ok {
+		frame.Position = &[2]float64{x, y}
+	}
+	if raw, ok := a.stores.uiState.get("editorWindowMode"); ok {
+		var mode windowMode
+		if json.Unmarshal(raw, &mode) == nil {
+			frame.Mode = mode
+		}
+		frame.Mode = frame.mode()
+	}
+	return &frame
 }
 
-// rememberEditorWindow keeps a closing editor window's size and place for
-// the next one, unless it is maximized, full screen or minimized.
-func (a *App) rememberEditorWindow(w *appWindow) {
-	win := w.win
-	if a.stores == nil || win.IsMaximized() || win.IsFullScreen() || win.IsMinimized() {
+// rememberEditorWindow keeps a closing window's frame (closingFrame) for
+// the next window a launch opens.
+func (a *App) rememberEditorWindow(frame *keptFrame) {
+	if a.stores == nil || frame == nil {
 		return
 	}
-	width, height := win.ContentSize()
-	patch := jsonObject{"editorWindowSize": mustJSON([]int{width, height})}
-	if !isWayland() {
-		x, y := win.Position()
-		patch["editorWindowPosition"] = mustJSON([]int{x, y})
+	patch := jsonObject{
+		"editorWindowSize": mustJSON(frame.Size),
+		"editorWindowMode": mustJSON(frame.mode()),
+	}
+	if frame.Position != nil {
+		patch["editorWindowPosition"] = mustJSON(*frame.Position)
 	}
 	a.stores.uiState.patch(patch)
+}
+
+// rememberOpenWindows keeps, as the app quits before any window closes, the
+// window last in use for the next launch, and each window's frame with its
+// documents.
+func (a *App) rememberOpenWindows() {
+	if w := a.lastEditor(); w != nil {
+		a.rememberEditorWindow(a.closingFrame(w))
+	}
+	a.keepOpenFrames()
 }
 
 // noteArgvPaths keeps the documents a command line named, which MyGo hands

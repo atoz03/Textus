@@ -70,10 +70,125 @@ func itself(path string) (string, error) {
 	return me, nil
 }
 
+// entriesChanged is what a window did to the folder, for the other
+// windows: their trees read the folders again and their tabs follow a
+// move. Its TypeScript side is `EntriesChanged` in
+// src/app/useEntriesFromOtherWindows.ts.
 type entriesChanged struct {
 	From    string     `json:"from"`
 	Moved   *[2]string `json:"moved"`
 	Trashed *string    `json:"trashed"`
+	// Made: put back from the Trash, or copied.
+	Made *string `json:"made"`
+}
+
+// moveTarget is where path lands when moved into into (named name, else
+// its own name), or why it can't: where it already is, or into itself or
+// below.
+func moveTarget(path, into string, name *string) (string, error) {
+	to := filepath.Join(into, filepath.Base(path))
+	if name != nil {
+		n, err := typedName(*name)
+		if err != nil {
+			return "", err
+		}
+		to = filepath.Join(into, n)
+	}
+	if to == path || (name == nil && filepath.Dir(path) == into) {
+		return "", codeError("alreadyThere")
+	}
+	if _, under := pathUnder(into, path); under {
+		return "", codeError("moveIntoItself")
+	}
+	return to, nil
+}
+
+// moveInto moves the file or folder path into the folder into, under its
+// own name or name exactly as given (an undo putting it back as it was).
+// With keepBoth, a name taken there is numbered ("plan 2.md"), as a file
+// manager keeps both; else it is refused. Its new path is in the spelling
+// of into as given, not the real one, so the window's tabs still match.
+func moveInto(path, into string, name *string, keepBoth bool) (string, error) {
+	from, err := itself(path)
+	if err != nil {
+		return "", err
+	}
+	if _, err := existingDir(into); err != nil {
+		return "", err
+	}
+	real, err := filepath.EvalSymlinks(into)
+	if err != nil {
+		return "", err
+	}
+	if real, err = filepath.Abs(real); err != nil {
+		return "", err
+	}
+	to, err := moveTarget(from, real, name)
+	if err != nil {
+		return "", err
+	}
+	// A change of case only is the same file where case is not told apart.
+	caseOnly := false
+	if strings.EqualFold(to, from) {
+		fromInfo, ferr := os.Lstat(from)
+		toInfo, terr := os.Lstat(to)
+		caseOnly = ferr == nil && terr == nil && os.SameFile(fromInfo, toInfo)
+	}
+	if _, err := os.Lstat(to); !caseOnly && !errors.Is(err, fs.ErrNotExist) {
+		if !keepBoth {
+			return "", codeError("exists")
+		}
+		info, err := os.Stat(from)
+		isDir := err == nil && info.IsDir()
+		to = filepath.Join(real, freeName(real, filepath.Base(to), numberedFor(isDir)))
+	}
+	if err := moveEntry(from, to); err != nil {
+		return "", err
+	}
+	return filepath.Join(into, filepath.Base(to)), nil
+}
+
+// trashing is what tree_trash_entries did: where the Trash keeps each entry
+// that went (nil where the system doesn't say), and why the next one didn't
+// go. Its TypeScript side is `Trashing` in src/platform/bindings/files.ts.
+type trashing struct {
+	Places []*string `json:"places"`
+	Error  *string   `json:"error"`
+}
+
+// trashEntries sends paths to the Trash in turn, up to the first that isn't
+// there or can't go, never the folder root the tree is showing or one
+// holding it.
+func trashEntries(paths []string, root string) trashing {
+	targets := make([]string, 0, len(paths))
+	var missing error
+	for _, p := range paths {
+		target, err := itself(p)
+		if err != nil {
+			missing = err
+			break
+		}
+		targets = append(targets, target)
+	}
+	shown, _ := filepath.EvalSymlinks(root)
+	places, err := trashKeepingPlaces(targets, func(target string) error {
+		if _, under := pathUnder(shown, target); shown != "" && under {
+			return codeError("trashShownFolder")
+		}
+		return nil
+	})
+	out := trashing{Places: places}
+	if err == nil {
+		err = missing
+	}
+	if err != nil {
+		text := err.Error()
+		out.Error = &text
+	}
+	if out.Places == nil {
+		out.Places = []*string{}
+	}
+	return out
 }
 
 func existsError(err error) error {
@@ -120,78 +235,19 @@ func moveEntry(from, to string) error {
 	return nil
 }
 
-// newEntry is a document or folder to make in Dir under the name the user
-// typed.
-type newEntry struct {
-	Dir  string `json:"dir"`
-	Name string `json:"name"`
-}
-
-// create makes the entry with make, at the name named gives the typed one;
-// one already there is an error the page names.
-func (e newEntry) create(named func(string) string, make func(path string) error) (string, error) {
-	dir, err := existingDir(e.Dir)
-	if err != nil {
-		return "", err
-	}
-	name, err := typedName(e.Name)
-	if err != nil {
-		return "", err
-	}
-	path := filepath.Join(dir, named(name))
-	if err := make(path); err != nil {
-		return "", existsError(err)
-	}
-	return path, nil
-}
-
 func init() {
-	command("tree_create_document", func(c *Call, a newEntry) (string, error) {
-		return a.create(documentName, func(path string) error {
-			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-			if err != nil {
-				return err
-			}
-			return f.Close()
-		})
-	})
-	command("tree_create_folder", func(c *Call, a newEntry) (string, error) {
-		return a.create(func(name string) string { return name }, func(path string) error {
-			return os.Mkdir(path, 0o755)
-		})
-	})
 	command("tree_move_entry", func(c *Call, a struct {
-		Path string `json:"path"`
-		Into string `json:"into"`
+		Path     string  `json:"path"`
+		Into     string  `json:"into"`
+		Name     *string `json:"name"`
+		KeepBoth bool    `json:"keepBoth"`
 	}) (string, error) {
-		from, err := itself(a.Path)
+		to, err := moveInto(a.Path, a.Into, a.Name, a.KeepBoth)
 		if err != nil {
 			return "", err
 		}
-		if _, err := existingDir(a.Into); err != nil {
-			return "", err
-		}
-		into, err := filepath.EvalSymlinks(a.Into)
-		if err != nil {
-			return "", err
-		}
-		if filepath.Dir(from) == into {
-			return "", codeError("alreadyThere")
-		}
-		if _, under := pathUnder(into, from); under {
-			return "", codeError("moveIntoItself")
-		}
-		to := filepath.Join(into, filepath.Base(from))
-		if _, err := os.Lstat(to); !errors.Is(err, fs.ErrNotExist) {
-			return "", codeError("exists")
-		}
-		if err := moveEntry(from, to); err != nil {
-			return "", err
-		}
-		// In the window's spelling of the folder, so its tabs still match.
-		moved := filepath.Join(a.Into, filepath.Base(from))
-		c.app.emitAll("entries-changed", entriesChanged{From: c.Label(), Moved: &[2]string{a.Path, moved}})
-		return moved, nil
+		c.app.emitAll("entries-changed", entriesChanged{From: c.Label(), Moved: &[2]string{a.Path, to}})
+		return to, nil
 	})
 	command("tree_rename_entry", func(c *Call, a struct {
 		Path string `json:"path"`
@@ -229,23 +285,29 @@ func init() {
 		c.app.emitAll("entries-changed", entriesChanged{From: c.Label(), Moved: &[2]string{a.Path, to}})
 		return to, nil
 	})
-	command("tree_trash_entry", func(c *Call, a struct {
-		Path string `json:"path"`
-		Root string `json:"root"`
+	// To the system's Trash (Recycle Bin) in turn, up to one that can't
+	// go, never deleted: where the Trash keeps each, for tree_put_back,
+	// where the system says.
+	command("tree_trash_entries", func(c *Call, a struct {
+		Paths []string `json:"paths"`
+		Root  string   `json:"root"`
+	}) (trashing, error) {
+		done := trashEntries(a.Paths, a.Root)
+		for _, path := range a.Paths[:len(done.Places)] {
+			c.app.emitAll("entries-changed", entriesChanged{From: c.Label(), Trashed: &path})
+		}
+		return done, nil
+	})
+	// What tree_trash_entries sent to the Trash (kept at place) put back at
+	// path, never over anything there.
+	command("tree_put_back", func(c *Call, a struct {
+		Place string `json:"place"`
+		Path  string `json:"path"`
 	}) (nothing, error) {
-		target, err := itself(a.Path)
-		if err != nil {
+		if err := putBack(a.Place, a.Path); err != nil {
 			return nil, err
 		}
-		if root, err := filepath.EvalSymlinks(a.Root); err == nil {
-			if _, under := pathUnder(root, target); under {
-				return nil, codeError("trashShownFolder")
-			}
-		}
-		if err := mygo.Shell.TrashItem(target); err != nil {
-			return nil, err
-		}
-		c.app.emitAll("entries-changed", entriesChanged{From: c.Label(), Trashed: &a.Path})
+		c.app.emitAll("entries-changed", entriesChanged{From: c.Label(), Made: &a.Path})
 		return nil, nil
 	})
 	command("move_picture_to_trash", func(c *Call, a struct {

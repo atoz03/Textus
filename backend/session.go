@@ -4,14 +4,12 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"log"
-	"net/url"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"slices"
 	"sort"
-	"strings"
 )
 
 // WindowSession is what one editor window holds, kept to reopen it at the
@@ -23,6 +21,10 @@ type WindowSession struct {
 	// Opened are documents handed over as it opens (a file manager, a second
 	// launch), put in front; never written to the session file.
 	Opened []string `json:"opened,omitempty"`
+	// Frame is where the window was and how it was left: the backend's
+	// alone, kept as the window closes (keepFrame), never taken from the
+	// page.
+	Frame *keptFrame `json:"frame,omitzero"`
 }
 
 func (s WindowSession) kept() bool { return len(s.Paths) > 0 || s.Folder != nil }
@@ -142,6 +144,69 @@ func (a *App) forgetWindowSession(label string) {
 	}
 }
 
+// withKeptFrame is session as the page sent it, with the frame the backend
+// kept for the window.
+func withKeptFrame(sessions map[string]WindowSession, label string, session WindowSession) WindowSession {
+	session.Frame = sessions[label].Frame
+	return session
+}
+
+// setFrame keeps frame as the window label's; whether that changed
+// anything.
+func setFrame(sessions map[string]WindowSession, label string, frame *keptFrame) bool {
+	w, ok := sessions[label]
+	if !ok || reflect.DeepEqual(w.Frame, frame) {
+		return false
+	}
+	w.Frame = frame
+	sessions[label] = w
+	return true
+}
+
+// keepFrame keeps a closing window's frame with its documents: the session
+// file then has it if this is the last window, which the next launch
+// brings back.
+func (a *App) keepFrame(label string, frame *keptFrame) {
+	a.mu.Lock()
+	if !setFrame(a.sessions, label, frame) {
+		a.mu.Unlock()
+		return
+	}
+	merged := mergeWindows(a.sessions)
+	a.mu.Unlock()
+	a.writeSession(merged)
+}
+
+// keepOpenFrames keeps every open window's frame, read now, with its
+// documents: as the app quits, before any window closes. The windows are
+// read with the lock let go, as reading one waits for the main thread.
+func (a *App) keepOpenFrames() {
+	a.mu.Lock()
+	labels := slices.Collect(maps.Keys(a.sessions))
+	a.mu.Unlock()
+	frames := map[string]*keptFrame{}
+	for _, label := range labels {
+		if w := a.window(label); w != nil {
+			if frame := a.closingFrame(w); frame != nil {
+				frames[label] = frame
+			}
+		}
+	}
+	a.mu.Lock()
+	changed := false
+	for label, frame := range frames {
+		changed = setFrame(a.sessions, label, frame) || changed
+	}
+	var merged []WindowSession
+	if changed {
+		merged = mergeWindows(a.sessions)
+	}
+	a.mu.Unlock()
+	if changed {
+		a.writeSession(merged)
+	}
+}
+
 // beginQuit keeps every window's documents before closing them one by one
 // shrinks the session.
 func (a *App) beginQuit() {
@@ -161,6 +226,7 @@ func (a *App) beginQuit() {
 // quit asks every window to close, so each unsaved document gets its
 // prompt; the app exits once the last one is gone.
 func (a *App) quit() {
+	a.rememberOpenWindows()
 	a.beginQuit()
 	windows := a.allWindows()
 	if len(windows) == 0 {
@@ -172,228 +238,7 @@ func (a *App) quit() {
 	}
 }
 
-// launchOpens decides what the launch opens: the documents it was given,
-// else the last session's windows.
-func (a *App) launchOpens(args []string, cwd string) (paths []string, windows []WindowSession) {
-	paths = pathsFromArgv(args, cwd)
-	a.noteArgvPaths(paths)
-	a.mu.Lock()
-	paths = append(paths, a.launchOpened...)
-	a.launchOpened = nil
-	a.launchDone = true
-	a.mu.Unlock()
-	if len(paths) == 0 && a.readFlag("restoreSessionOnStartup") {
-		windows = a.readSessionWindows()
-	}
-	a.openingAtLaunch.Store(len(paths) > 0 || len(windows) > 0)
-	return paths, windows
-}
-
-// pathsFromArgv is the documents a command line names, as absolute paths.
-func pathsFromArgv(args []string, cwd string) []string {
-	var out []string
-	for i, arg := range args {
-		if i == 0 || strings.HasPrefix(arg, "-") || strings.HasPrefix(strings.ToLower(arg), "textus://") {
-			continue
-		}
-		// Linux launchers may pass a file URL.
-		if u, err := url.Parse(arg); err == nil && u.Scheme == "file" {
-			arg = filepath.FromSlash(u.Path)
-			if runtime.GOOS == "windows" {
-				arg = strings.TrimPrefix(arg, `\`)
-			}
-		}
-		out = append(out, resolveAgainst(cwd, arg))
-	}
-	return out
-}
-
-// windowRestores says whether a window opens with something to restore,
-// whose first frame is then held back (startup-restore.ts).
-func (a *App) windowRestores(label string) bool {
-	a.mu.Lock()
-	queued := len(a.pending) > 0
-	help := a.pendingShowHelp != nil
-	a.mu.Unlock()
-	launching := a.openingAtLaunch.Load() && !a.uiReady.Load()
-	drafts := label == "main" && a.draftsWaiting()
-	return queued || launching || help || drafts
-}
-
-func (a *App) queuePending(paths []string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for _, p := range paths {
-		a.pending = append(a.pending, sessionOfPaths([]string{p}))
-	}
-}
-
-// queueWindowsToOpen opens a window for each session: the one opening at
-// launch takes the first.
-func (a *App) queueWindowsToOpen(windows []WindowSession) {
-	if len(windows) == 0 {
-		return
-	}
-	a.mu.Lock()
-	a.pending = append(a.pending, windows...)
-	a.mu.Unlock()
-	extra := len(windows)
-	if !a.uiReady.Load() {
-		extra--
-	}
-	for range extra {
-		if err := a.openNewWindow(); err != nil {
-			log.Printf("textus: cannot open a window: %v", err)
-		}
-	}
-}
-
-// queuePathsToOpen opens documents and folders handed to the app: folders
-// each in a window, documents as tabs of the focused window, or, still
-// launching, of the window that mounts first.
-func (a *App) queuePathsToOpen(paths []string) {
-	var files, folders []string
-	for _, p := range paths {
-		if info, err := os.Stat(p); err == nil && info.IsDir() {
-			folders = append(folders, p)
-		} else {
-			files = append(files, p)
-		}
-	}
-	ready := a.uiReady.Load()
-	if len(folders) > 0 {
-		if ready {
-			for _, f := range folders {
-				a.openFolderWindow(f)
-			}
-		} else {
-			windows := make([]WindowSession, len(folders))
-			for i, f := range folders {
-				windows[i] = WindowSession{Folder: &f}
-			}
-			windows[0].Paths = files
-			a.queueWindowsToOpen(windows)
-			return
-		}
-	}
-	if len(files) == 0 {
-		return
-	}
-	if ready {
-		if label := a.focusedEditorWindow(""); label != "" {
-			_ = a.emitTo(label, "open-paths-as-tabs", files)
-			if w := a.window(label); w != nil {
-				w.win.Restore()
-				w.win.Focus()
-			}
-			return
-		}
-	}
-	a.mu.Lock()
-	pendingEmpty := len(a.pending) == 0
-	a.mu.Unlock()
-	if pendingEmpty && (!ready || a.lastEditor() == nil) && a.readFlag("restoreSessionOnStartup") {
-		if saved := a.readSessionWindows(); len(saved) > 0 {
-			a.queueWindowsToOpen(withDocuments(saved, files))
-			return
-		}
-	}
-	a.mu.Lock()
-	a.pending = append(a.pending, sessionOfPaths(files))
-	a.mu.Unlock()
-	if ready {
-		if err := a.openNewWindow(); err != nil {
-			log.Printf("textus: cannot open a window: %v", err)
-		}
-	}
-}
-
-// openFolderWindow opens a window whose sidebar shows path.
-func (a *App) openFolderWindow(path string) {
-	label := a.nextWindowLabel()
-	a.mu.Lock()
-	a.pendingFolders = append(a.pendingFolders, [2]string{label, path})
-	a.mu.Unlock()
-	if err := a.buildEditorWindow(label, nil, false); err != nil {
-		a.takeFolderFor(label)
-	}
-}
-
-func (a *App) takeFolderFor(label string) *string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for i, pair := range a.pendingFolders {
-		if pair[0] == label {
-			a.pendingFolders = slices.Delete(a.pendingFolders, i, i+1)
-			return &pair[1]
-		}
-	}
-	return nil
-}
-
-// openedFromSystem takes documents the system opens with the app (Finder,
-// a second launch): kept for the launch while it is under way.
-func (a *App) openedFromSystem(paths []string) {
-	a.mu.Lock()
-	if !a.launchDone {
-		a.launchOpened = append(a.launchOpened, paths...)
-		a.mu.Unlock()
-		return
-	}
-	a.mu.Unlock()
-	a.queuePathsToOpen(paths)
-}
-
 func init() {
-	command("take_pending_window", func(c *Call, _ none) (*WindowSession, error) {
-		c.app.uiReady.Store(true)
-		c.app.mu.Lock()
-		defer c.app.mu.Unlock()
-		if len(c.app.pending) == 0 {
-			return nil, nil
-		}
-		w := c.app.pending[0]
-		c.app.pending = c.app.pending[1:]
-		if w.Paths == nil {
-			w.Paths = []string{}
-		}
-		return &w, nil
-	})
-	command("take_pending_show_help", func(c *Call, _ none) (*string, error) {
-		c.app.mu.Lock()
-		defer c.app.mu.Unlock()
-		help := c.app.pendingShowHelp
-		c.app.pendingShowHelp = nil
-		return help, nil
-	})
-	command("take_pending_menu_event", func(c *Call, _ none) (*string, error) {
-		c.app.mu.Lock()
-		defer c.app.mu.Unlock()
-		ev := c.app.pendingMenuEvent
-		c.app.pendingMenuEvent = nil
-		return ev, nil
-	})
-	command("take_pending_open_folder", func(c *Call, _ none) (*string, error) {
-		return c.app.takeFolderFor(c.Label()), nil
-	})
-	command("open_paths", func(c *Call, a struct {
-		Paths []string `json:"paths"`
-	}) (nothing, error) {
-		c.app.queuePathsToOpen(a.Paths)
-		return nil, nil
-	})
-	command("open_path_in_new_window", func(c *Call, a struct {
-		Path string `json:"path"`
-	}) (nothing, error) {
-		c.app.queuePending([]string{a.Path})
-		return nil, c.app.openNewWindow()
-	})
-	command("open_folder_in_new_window", func(c *Call, a struct {
-		Path string `json:"path"`
-	}) (nothing, error) {
-		c.app.openFolderWindow(a.Path)
-		return nil, nil
-	})
 	command("window_session_current", func(c *Call, _ none) (*WindowSession, error) {
 		c.app.mu.Lock()
 		defer c.app.mu.Unlock()
@@ -410,11 +255,12 @@ func init() {
 	}) (nothing, error) {
 		app := c.app
 		app.mu.Lock()
-		if old, ok := app.sessions[c.Label()]; ok && reflect.DeepEqual(old, a.Session) {
+		session := withKeptFrame(app.sessions, c.Label(), a.Session)
+		if old, ok := app.sessions[c.Label()]; ok && reflect.DeepEqual(old, session) {
 			app.mu.Unlock()
 			return nil, nil
 		}
-		app.sessions[c.Label()] = a.Session
+		app.sessions[c.Label()] = session
 		merged := mergeWindows(app.sessions)
 		app.mu.Unlock()
 		app.writeSession(merged)

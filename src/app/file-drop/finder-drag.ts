@@ -1,6 +1,7 @@
 import { listenToThisWindow, unlistenAll } from "../../platform/events";
 import { windowIpc } from "../../platform/ipc";
 import type { DraggedFile } from "../../engine/controls/document-drop";
+import { isDraggingOut } from "../../files/drag-out";
 
 type Point = { x: number; y: number };
 
@@ -13,7 +14,7 @@ interface DragPayload {
   shift?: boolean;
 }
 
-export interface SystemDrag {
+interface SystemDrag {
   over(files: readonly DraggedFile[], at: Point, shift: boolean): void;
   leave(): void;
   drop(files: readonly DraggedFile[], at: Point, shift: boolean): void;
@@ -36,12 +37,15 @@ export function watchSystemDrags(
   let frame = 0;
   let at: Point = { x: 0, y: 0 };
   let held: boolean | undefined;
+  // The tree's own rows, dragged out and back, are no file manager's:
+  // told as the drag comes in, before its drop ends the drag out.
+  let own = false;
   const filesOf = (paths: string[]) =>
     Promise.all(
       paths.filter(Boolean).map(async (path) => ({
         path,
         isDir: await isFolder(path),
-        fromSystem: true,
+        fromSystem: !own,
       })),
     );
   const shift = () =>
@@ -67,6 +71,7 @@ export function watchSystemDrags(
   const listeners = [
     listenToThisWindow<DragPayload>("native://drag-enter", (e) => {
       drag++;
+      own = isDraggingOut();
       held = undefined;
       told(e.payload);
       files = filesOf(e.payload.paths ?? []);

@@ -69,6 +69,15 @@ const (
 	numberedSpaceWhole
 )
 
+// numberedFor is how a file manager numbers a copy of a file ("plan
+// 2.md"), or of a folder after its whole name ("my.photos 2").
+func numberedFor(isDir bool) numberedStyle {
+	if isDir {
+		return numberedSpaceWhole
+	}
+	return numberedSpace
+}
+
 // numbered is name with n in it, as a copy is named: "a-2.png", "a (2).md",
 // "a 2.md", or "Folder 2" for a whole name.
 func numbered(name string, n int, style numberedStyle) string {

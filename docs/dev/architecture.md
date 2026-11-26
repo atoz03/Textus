@@ -241,27 +241,27 @@ configuration (name, identifier, version, icons, file associations, the
 frontend's dev server and build). The backend is the Go package
 `backend/`, with the packages `backend/ai` and `backend/extract` beside it:
 
-| Path                                                                                     | Holds                                                                                                                                             |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `app.go`, `host.go`, `errors.go`                                                         | App setup and the `Host` service: the command registry (`command(name, fn)`), streams, and errors as `"<English> [code]"` (src/i18n/errors.json). |
-| `events.go`, `windows.go`, `session.go`                                                  | Events to windows (`emitTo`), editor windows (built, numbered, reopened, closed with the page's say), and the window session.                     |
-| `boot.go`, `boot.js`, `settings.go`, `store.go`, `stores.go`                             | The boot script every window gets, the settings, UI state and other files ([storage.md](storage.md)).                                             |
-| `drafts.go`, `docdata.go`, `chathistory.go`                                              | Drafts, a document's data beside it, the chat history folder.                                                                                     |
-| `files.go`, `pictures.go`, `tree.go`, `folder.go`, `walk.go`, `atomic.go`, `hidden_*.go` | Files and folders: reading, atomic writes, pictures beside a document, the sidebar's tree and its operations, the folder walk and watching.       |
-| `conventions.go`, `jsonc.go`, `links.go`                                                 | What a folder says about how it is written (`folder_conventions`), and links between documents.                                                   |
-| `background.go`, `tray.go`, `icons/tray/`                                                | Background mode: whether closing the last window quits, and its tray icon and menu ([lifecycle.md](lifecycle.md#background-mode)).                |
-| `menu.go`, `menu_bar.go`, `menu_dispatch.go`, `menu_recents.go`                          | The menu table (src/registry/menu/menu.json), the macOS bar, the id → `menu-<id>` dispatch, Open Recent.                                          |
-| `dialogs.go`, `shell.go`, `system.go`, `web.go`                                          | File dialogs, opening and revealing, system facts, clipboard, the window commands, and what is fetched from the web for the page.                 |
-| `export.go`, `themes.go`, `schemes.go`                                                   | Export through pandoc, imported themes, and the `asset:` / `font:` schemes that serve files to the page.                                          |
-| `export_pdf.go`, `pdfread.go`, `pdffile.go`, `pdfnumbers.go`                             | PDF export: the page's document printed by the webview (MyGo's PrintToPDF), with page numbers stamped onto the file.                              |
-| `updater.go`, `net.go`                                                                   | The update check and install (`textus-latest.json`, never `latest.json`), and the proxy the app's requests go through.                            |
-| `keys.go`, `imagehost.go`                                                                | The services' keys (`provider_keys.json`, owner-only), and pasted pictures uploaded to an image host.                                             |
-| `themegallery.go`, `extstats.go`, `word.go`                                              | The theme gallery, the extensions' download counts, and Word (.docx) import.                                                                      |
-| `ai_endpoints.go`, `ai_state.go`, `ai_suggest.go`                                        | Textus AI: custom endpoints, model lists, kept proposals, revision choices, completions, titles, next messages.                                   |
-| `ai/`                                                                                    | Package `ai`: the provider catalog, how each server takes a key, routes, one request in each dialect, completions.                                |
-| `extract/`                                                                               | Package `extract`: PDF, Word, PowerPoint, spreadsheets, EPUB, RTF and HTML as Markdown, for Word import, the AI and `textus read`.                |
-| `cli_*.go`, `cli/`                                                                       | The `textus` terminal command: run before the app (`RunCLI`), answered by the running app, and installed ([cli.md](cli.md)).                      |
-| `stubs.go`                                                                               | The iOS build's own commands, which fail on the desktop: no desktop command waits there any more.                                                 |
+| Path                                                                                                         | Holds                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.go`, `host.go`, `errors.go`                                                                             | App setup and the `Host` service: the command registry (`command(name, fn)`), streams, and errors as `"<English> [code]"` (src/i18n/errors.json).                          |
+| `events.go`, `windows.go`, `window_frame.go`, `session.go`                                                   | Events to windows (`emitTo`), editor windows (built, numbered, reopened as they were left, closed with the page's say), and the window session.                            |
+| `boot.go`, `boot.js`, `settings.go`, `store.go`, `stores.go`                                                 | The boot script every window gets, the settings, UI state and other files ([storage.md](storage.md)).                                                                      |
+| `drafts.go`, `docdata.go`, `chathistory.go`                                                                  | Drafts, a document's data beside it, the chat history folder.                                                                                                              |
+| `files.go`, `pictures.go`, `tree*.go`, `trash_place*.go`, `folder.go`, `walk.go`, `atomic.go`, `hidden_*.go` | Files and folders: reading, atomic writes, pictures beside a document, the sidebar's tree and its operations (its Trash with a way back, its disk watch), the folder walk. |
+| `conventions.go`, `jsonc.go`, `links.go`                                                                     | What a folder says about how it is written (`folder_conventions`), and links between documents.                                                                            |
+| `background.go`, `tray.go`, `icons/tray/`                                                                    | Background mode: whether closing the last window quits, and its tray icon and menu ([lifecycle.md](lifecycle.md#background-mode)).                                         |
+| `menu.go`, `menu_bar.go`, `menu_dispatch.go`, `menu_recents.go`                                              | The menu table (src/registry/menu/menu.json), the macOS bar, the id → `menu-<id>` dispatch, Open Recent.                                                                   |
+| `dialogs.go`, `shell.go`, `system.go`, `web.go`                                                              | File dialogs, opening and revealing, system facts, clipboard, the window commands, and what is fetched from the web for the page.                                          |
+| `export.go`, `themes.go`, `schemes.go`                                                                       | Export through pandoc, imported themes, and the `asset:` / `font:` schemes that serve files to the page.                                                                   |
+| `export_pdf.go`, `pdfread.go`, `pdffile.go`, `pdfnumbers.go`                                                 | PDF export: the page's document printed by the webview (MyGo's PrintToPDF), with page numbers stamped onto the file.                                                       |
+| `updater.go`, `net.go`                                                                                       | The update check and install (`textus-latest.json`, never `latest.json`), and the proxy the app's requests go through.                                                     |
+| `keys.go`, `imagehost.go`                                                                                    | The services' keys (`provider_keys.json`, owner-only), and pasted pictures uploaded to an image host.                                                                      |
+| `themegallery.go`, `extstats.go`, `word.go`                                                                  | The theme gallery, the extensions' download counts, and Word (.docx) import.                                                                                               |
+| `ai_endpoints.go`, `ai_state.go`, `ai_suggest.go`                                                            | Textus AI: custom endpoints, model lists, kept proposals, revision choices, completions, titles, next messages.                                                            |
+| `ai/`                                                                                                        | Package `ai`: the provider catalog, how each server takes a key, routes, one request in each dialect, completions.                                                         |
+| `extract/`                                                                                                   | Package `extract`: PDF, Word, PowerPoint, spreadsheets, EPUB, RTF and HTML as Markdown, for Word import, the AI and `textus read`.                                         |
+| `cli_*.go`, `cli/`                                                                                           | The `textus` terminal command: run before the app (`RunCLI`), answered by the running app, and installed ([cli.md](cli.md)).                                               |
+| `stubs.go`                                                                                                   | The iOS build's own commands, which fail on the desktop: no desktop command waits there any more.                                                                          |
 
 Not in the Go backend yet (the Rust sources are at
 `git show 8da2d2f0:src-tauri/...`): the platform
@@ -269,8 +269,10 @@ touches `system.go` answers without acting on them (the Roman input
 source for a plugin's key mode, the Edit menu's native actions, drag
 modifiers), the AI's live evals ([ai-eval.md](../design/ai-eval.md)),
 the chat's `edit_chapters` tool (a helper per chapter for a change through
-a long document), the portable Windows build (`distribution.go`), and the
-iOS and Android builds. Web page tabs are native pages on macOS and
+a long document), dragging the file tree's rows out to a file manager
+(MyGo starts a system drag only from its own UI, not from a page:
+`start_file_drag_out` answers that nothing took them), the portable
+Windows build (`distribution.go`), and the iOS and Android builds. Web page tabs are native pages on macOS and
 Windows only, and tabs drag between windows there
 only: Linux, Wayland above all, gives no window positions.
 `src/platform/capabilities.ts` turns the frontend's side of what is

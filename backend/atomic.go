@@ -29,9 +29,11 @@ func writeAtomic(path string, data []byte) error {
 			_ = os.Remove(name)
 		}
 	}()
-	// A document keeps the permissions it had.
+	// A document keeps the permissions it had. A file written over (a save)
+	// is not news to the file tree; a new one is.
 	if info, err := os.Stat(path); err == nil {
 		_ = tmp.Chmod(info.Mode().Perm())
+		noteOwnWrite(path)
 	}
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()

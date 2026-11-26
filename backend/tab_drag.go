@@ -283,7 +283,7 @@ func (a *App) openTabWindow(tab jsontext.Value, at *[2]float64) error {
 	}
 	a.detachedTabs[label] = tab
 	a.mu.Unlock()
-	err := a.buildEditorWindow(label, at, true)
+	err := a.buildEditorWindow(label, at, true, nil)
 	if err != nil {
 		a.mu.Lock()
 		delete(a.detachedTabs, label)

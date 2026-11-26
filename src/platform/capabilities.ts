@@ -1,3 +1,4 @@
+import { isMyGo } from "mygo-runtime";
 import {
   isAndroidPlatform,
   isDesktop,
@@ -40,8 +41,15 @@ export const canUseWindows = isDesktopApp;
 /** A menu bar and everything that arrives through it. */
 export const hasAppMenu = isDesktopApp;
 
-/** The menu bar is the OS's own (macOS), so it gets UI-language labels sent. */
-export const hasNativeMenuBar = isDesktopApp && isMacPlatform();
+/** The page runs in a real MyGo window, which the dev shim
+ *  (dev/host-shim.ts) only stands in for in a plain browser: that has no
+ *  menu bar of its own. */
+const inNativeWindow = isMyGo();
+
+/** The menu bar is the OS's own (macOS), so it gets UI-language labels sent
+ *  and takes its keys (⌘Z) before the page. */
+export const hasNativeMenuBar =
+  isDesktopApp && isMacPlatform() && inNativeWindow;
 
 /** Tabs dragged out of one window into another, or into a new one, with
  *  the window following the pointer: macOS and Windows give the global
@@ -49,6 +57,13 @@ export const hasNativeMenuBar = isDesktopApp && isMacPlatform();
  *  Wayland above all, doesn't. */
 export const canDragTabsBetweenWindows =
   isDesktopApp && (isMacPlatform() || isWindowsPlatform());
+
+/** Rows of the file tree dragged out of the window as real files, to a
+ *  file manager or any other app: the system's own drag. MyGo starts a
+ *  system drag only from its own UI, not from a page, so the Go backend
+ *  can't start one yet (start_file_drag_out answers that nothing took
+ *  it). */
+export const canDragFilesOut = false;
 
 /** Web page tabs as a native page over the tab: a child window of the
  *  editor window kept over it (backend/web_pages.go). Linux keeps the

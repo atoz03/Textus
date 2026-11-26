@@ -15,11 +15,13 @@ export interface UiState {
   sidebarOpen: boolean;
   /** The sidebar tab last shown: files, outline or clipboard. */
   sidebarTab: string;
-  /** Rust's (commands/prefs.rs, recents.rs): the last editor window's
-   *  inner size and place, in logical pixels, and the recent files and
-   *  folders of File › Open Recent, newest first. */
+  /** The backend's (backend/window_frame.go, menu_recents.go): the last
+   *  editor window's inner size and place, in logical pixels, whether it
+   *  was left maximized or full screen, and the recent files and folders
+   *  of File › Open Recent, newest first. */
   editorWindowSize: [number, number];
   editorWindowPosition: [number, number];
+  editorWindowMode: "normal" | "maximized" | "fullscreen";
   recentFiles: string[];
   recentFolders: string[];
   /** iOS: recently opened documents, newest first. */
