@@ -53,10 +53,11 @@ jobs:
       - name: Tag matches the app version
         run: node scripts/check-versions.mjs --root tagged --tag "$RELEASE_TAG"
 
-      # The tagged app reads textus-latest.json and its workflow keeps
-      # tauri-action from uploading latest.json - the manifest every Levis
-      # install reads (scripts/updater-manifest.mjs). This also refuses a
-      # rebuild of an old Levis tag from this workflow.
+      # The tagged app reads textus-latest.json, its workflow refuses a
+      # release that carries latest.json - the manifest every Levis install
+      # reads - and mygo.json has the key its updates are signed for
+      # (scripts/updater-manifest.mjs). This also refuses a rebuild of an
+      # old Levis tag from this workflow.
       - name: Updater never serves Levis's manifest
         run: node scripts/updater-manifest.mjs check --root tagged
 
@@ -94,10 +95,16 @@ jobs:
     with:
       full: true
 
+  # `mygo build` on two runners: MyGo needs no cgo, so Ubuntu makes the
+  # Linux apps and packages of both architectures and the Windows apps with
+  # their NSIS installers; macOS needs a Mac for signing, notarization and
+  # the disk images. Each uploads its installers and its signed updates
+  # (update-<target>.json and the archives and deltas it names) to the
+  # tag's draft.
   build:
     needs: [preflight, ci]
     if: ${{ !cancelled() && needs.preflight.result == 'success' && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
-    name: build (${{ matrix.target || matrix.platform }})
+    name: build (${{ matrix.name }})
     timeout-minutes: 90
     # The signing keys live in the release environment, which only
     # runs from a release tag (v*); only admins can push those.
@@ -108,102 +115,27 @@ jobs:
         include:
           # macos-26 is what macos-latest points at today (same arm64
           # pool); pinned so the next image switch is a deliberate change.
-          - platform: macos-26
-            target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin
-          # Intel Macs: cross-compiled on the same Apple silicon runner (the
-          # Intel runner pool is being retired). Its DMG and updater tarball
-          # are named _x64, beside the _aarch64 ones.
-          - platform: macos-26
-            target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin
-          - platform: ubuntu-22.04
-            args: ""
-          # Windows ships the NSIS .exe and nothing else; the target list
-          # itself lives in src-tauri/tauri.windows.conf.json, so a local
-          # `tauri build` produces the same one artifact this does.
-          #
-          # It used to bundle MSI as well on stable tags, and that is what
-          # made Windows upgrades ask to uninstall first: the two installers
-          # register in different places, so neither recognises the other's
-          # copy - take the .msi once and the next .exe cannot replace it.
-          # MSI also cannot build a pre-release at all ("optional pre-release
-          # identifier in app version must be numeric-only ... for msi
-          # target"), so rc tags were NSIS-only regardless, and the updater
-          # has always shipped NSIS. One installer, one upgrade path.
-          - platform: windows-2025
-            args: ""
-          # ARM64 Windows and Linux (from 1.1.0), each on GitHub's native
-          # arm64 runner, so the frontend tooling, the Rust build and the
-          # bundlers (NSIS, linuxdeploy) all run as they do on x64. The
-          # explicit --target is what tauri-action reads the architecture
-          # from when it looks for the installers; without it, it would trust
-          # the arch of whichever Node the runner picked. Tauri names their
-          # installers apart from the x64 ones: _arm64-setup.exe, _arm64.deb,
-          # .aarch64.rpm and _aarch64.AppImage (docs/dev/releasing.md).
-          - platform: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            args: --target aarch64-pc-windows-msvc
-          - platform: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
-            args: --target aarch64-unknown-linux-gnu
+          # Intel Macs' app is cross-compiled on it.
+          - name: macOS
+            os: macos-26
+            platform: darwin/arm64,darwin/amd64
+          - name: Linux
+            os: ubuntu-24.04
+            platform: linux/amd64,linux/arm64
+          # Windows ships the NSIS installer (docs/dev/windows-installer.md).
+          - name: Windows
+            os: ubuntu-24.04
+            platform: windows/amd64,windows/arm64
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
     steps:
-      # Older tags predate .gitattributes. Match the source blobs on Windows
-      # too, so a rebuild does not fail Prettier after an automatic CRLF checkout.
-      - name: Preserve source line endings
-        run: git config --global core.autocrlf false
-
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v7
         with:
-          targets: ${{ matrix.target || '' }}
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "./src-tauri -> target"
-          # The two macOS builds share a runner image; one cache each.
-          key: ${{ matrix.target || 'host' }}
-          # Saved from a tag no later tag can read: it only crowds out main's.
-          save-if: false
-
-      # The Linux bundlers (linuxdeploy, the AppImage plugin and runtime)
-      # Tauri downloads on every build otherwise; kept per architecture.
-      - name: Linux bundler cache
-        if: startsWith(matrix.platform, 'ubuntu')
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/tauri
-          key: tauri-bundlers-${{ matrix.platform }}-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: tauri-bundlers-${{ matrix.platform }}-
-
-      # ring (rustls, under reqwest) assembles its ARM64 Windows code with
-      # clang, which must be on PATH. The windows-11-arm image ships LLVM;
-      # this makes sure the build finds it, or says why it can't.
-      - name: Put clang on PATH
-        if: matrix.target == 'aarch64-pc-windows-msvc'
-        shell: pwsh
-        run: |
-          if (Get-Command clang -ErrorAction SilentlyContinue) { clang --version; exit 0 }
-          $llvm = "C:\Program Files\LLVM\bin"
-          if (-not (Test-Path "$llvm\clang.exe")) {
-            Write-Output "::error::clang is neither on PATH nor in $llvm; ring cannot build for ARM64 Windows."
-            exit 1
-          }
-          Add-Content -Path $env:GITHUB_PATH -Value $llvm
-          & "$llvm\clang.exe" --version
-
-      - name: Install Linux dependencies
-        if: startsWith(matrix.platform, 'ubuntu-')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          go-version-file: go.mod
 
       - name: Install Node.js
         uses: actions/setup-node@v7
@@ -213,116 +145,131 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # With the signing secrets missing, Tauri builds an unsigned DMG and
-      # says nothing.
-      - name: Require the macOS signing secrets
-        if: startsWith(matrix.platform, 'macos-')
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for name in APPLE_CERTIFICATE APPLE_SIGNING_IDENTITY APPLE_ID APPLE_TEAM_ID; do
-            if [ -z "${!name}" ]; then
-              echo "::error::$name is not set: the DMG would ship unsigned."
-              exit 1
-            fi
-          done
+      # MyGo makes the Windows installer with NSIS, which Ubuntu packages.
+      - name: Install NSIS
+        if: matrix.name == 'Windows'
+        run: sudo apt-get update && sudo apt-get install -y nsis
 
-      - name: Build and release
-        # Pinned to the commit of v1.0.0: a moving major tag could change how
-        # the release is built between two tags. 1.0 renamed
-        # includeUpdaterJson to uploadUpdaterJson; updater-manifest.mjs
-        # checks the name that matches the version in the comment below.
-        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+      # Without it the apps can't update themselves: each update archive is
+      # signed with it, and the apps check that signature against
+      # updates.publicKey in mygo.json (preflight checked that one).
+      - name: Require the update signing key
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signs the updater artifacts (the .sig files) so installed apps
-          # can verify downloads against the pubkey baked into
-          # tauri.conf.json. It is Levis's key, reused: that is why Textus
-          # must never publish a latest.json (see uploadUpdaterJson below).
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS code signing + notarization (Gatekeeper). tauri-action
-          # imports the base64 .p12 into a temp keychain; the bundler then
-          # signs the .app with hardened runtime, notarizes the DMG with
-          # notarytool, and staples the ticket. All six secrets must be set
-          # together - a partially-configured set fails the macOS build
-          # rather than shipping an unsigned DMG.
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: |
+          if [ -z "$MYGO_UPDATER_PRIVATE_KEY" ]; then
+            echo "::error::MYGO_UPDATER_PRIVATE_KEY is not set: the release would ship no signed updates."
+            exit 1
+          fi
+
+      # With the signing secrets missing, the app would be signed ad hoc,
+      # which Gatekeeper blocks on every other Mac.
+      - name: Require the macOS signing secrets
+        if: matrix.name == 'macOS'
+        env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          tagName: ${{ env.RELEASE_TAG }}
-          releaseName: "${{ env.PRODUCT_NAME }} ${{ env.RELEASE_TAG }}"
-          # Keep partial matrix builds away from the updater. The publish
-          # job exposes the release only after every build succeeds.
-          releaseDraft: true
-          # A semver pre-release suffix (v0.9.0-rc.1, -beta.2, -alpha) marks
-          # the GitHub release as a pre-release. That is what keeps it away
-          # from everyone else: the updater endpoint in tauri.conf.json points
-          # at `releases/latest/...`, and GitHub's "latest" excludes
-          # pre-releases - so a stable install never even sees this build's
-          # manifest. Without this the tag pattern below (v*.*.*) matches
-          # an rc tag too and would ship it to every user as the new stable.
-          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
-          # Never upload latest.json: Levis 0.9.x installs read that name
-          # from this repository (the old CatVinci-Studio/Levis URL
-          # redirects here) and trust the same signing key, so they would
-          # install Textus over themselves. The publish job writes
-          # textus-latest.json from the uploaded .sig files instead.
-          # scripts/updater-manifest.mjs check fails if this line goes.
-          # (tauri-action before 1.0 called this input includeUpdaterJson.)
-          uploadUpdaterJson: false
-          # RPM versions may not contain '-', so a pre-release (1.0.4-rc.1)
-          # cannot be an .rpm; rc tags ship the .deb and AppImage only, on
-          # x64 and ARM64 alike.
-          args: ${{ matrix.args }}${{ startsWith(matrix.platform, 'ubuntu-') && contains(env.RELEASE_TAG, '-') && ' --bundles deb,appimage' || '' }}
+        run: |
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not set: the app would ship unsigned."
+              exit 1
+            fi
+          done
+
+      # The Developer ID certificate and the notary service's credentials,
+      # in a keychain of their own that lives as long as the job. `mygo
+      # build` signs the app with the identity (-sign) and, with
+      # macos.notarize, notarizes the app and the disk image and staples
+      # them; that setting is added here only, so builds on a developer's
+      # Mac stay ad hoc and skip the notary service.
+      - name: Import the certificate and the notary credentials
+        if: matrix.name == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -base64 24)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain
+          xcrun notarytool store-credentials notary --keychain "$keychain" \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD"
+          jq --arg keychain "$keychain" \
+            '.macos.notarize = {keychainProfile: "notary", keychain: $keychain}' \
+            mygo.json > "$RUNNER_TEMP/mygo.json"
+          mv "$RUNNER_TEMP/mygo.json" mygo.json
+
+      # Each target's app and installers in dist-app/<os>-<arch>/, with its
+      # signed update: textus-<version>-<os>-<arch>.tar.gz, the deltas from
+      # the last versions published (updates.deltas) and update-<target>.json.
+      # A pre-release builds an .rpm too: MyGo writes its version as
+      # 1.0.4~rc.1, which RPM sorts before 1.0.4.
+      - name: Build
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          sign=()
+          if [ "$RUNNER_OS" = macOS ]; then sign=(-sign "$APPLE_SIGNING_IDENTITY"); fi
+          npx mygo build -platform "$PLATFORM" "${sign[@]}"
+
+      # Only what users install and what updates read: not the bare
+      # executables, icons and desktop entry beside them. install.sh, which
+      # installs the Linux archive for the user, is the same for both
+      # architectures.
+      - name: Upload to the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob
+          files=(
+            dist-app/*/*.dmg
+            dist-app/*/textus-setup-*.exe
+            dist-app/*/*.deb
+            dist-app/*/*.rpm
+            dist-app/*/textus-*.tar.gz
+            dist-app/*/*.delta
+            dist-app/*/update-*.json
+          )
+          if [ "$RUNNER_OS" = Linux ] && [ -f dist-app/linux-amd64/install.sh ]; then
+            files+=(dist-app/linux-amd64/install.sh)
+          fi
+          printf '%s\n' "${files[@]}"
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
 
       # textus-bin (packaging/arch/PKGBUILD) installs this tarball. Its
-      # binary is a second build with TEXTUS_DISTRIBUTION=aur: it reports new
-      # versions but does not install them, because pacman owns /usr/bin.
-      # --no-bundle recompiles only the textus crate and skips the installers.
-      # x86_64 only: the package is built and tested in the x86_64-only
-      # archlinux container, and [catvinci] serves no aarch64 repository.
+      # binary is a second build, linked as the AUR's
+      # (backend/distribution.go): it reports new versions but does not
+      # install them, because pacman owns /usr/bin. It reuses the frontend
+      # the first build made. x86_64 only: the package is built and tested
+      # in the x86_64-only archlinux container, and [catvinci] serves no
+      # aarch64 repository.
       - name: Build and upload AUR tarball
-        if: matrix.platform == 'ubuntu-22.04'
-        shell: bash
+        if: matrix.name == 'Linux'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TEXTUS_DISTRIBUTION: aur
+          MYGO_LDFLAGS: -X textus/backend.distribution=aur
         run: |
-          npx tauri build --no-bundle
+          npx mygo build -platform linux/amd64 -skip-build-command -o "$RUNNER_TEMP/aur"
           scripts/package-linux-tarball.sh "${RELEASE_TAG#v}" \
-            src-tauri/target/release/textus dist-aur
+            "$RUNNER_TEMP/aur/linux-amd64/textus" dist-aur
           gh release upload "$RELEASE_TAG" dist-aur/* --clobber
-
-      # The portable zip (Windows): a second build with
-      # TEXTUS_DISTRIBUTION=portable, which keeps its settings, data and the
-      # webview's in the TextusData folder beside it and reports new versions
-      # without installing them. --no-bundle recompiles only the textus crate.
-      - name: Build and upload the portable zip
-        if: startsWith(matrix.platform, 'windows-')
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TEXTUS_DISTRIBUTION: portable
-        run: |
-          npx tauri build --no-bundle ${{ matrix.args }}
-          $version = $env:RELEASE_TAG.TrimStart("v")
-          $arch = if ("${{ matrix.target }}") { "arm64" } else { "x64" }
-          $exe = if ("${{ matrix.target }}") { "src-tauri/target/${{ matrix.target }}/release/textus.exe" } else { "src-tauri/target/release/textus.exe" }
-          $dir = Join-Path $env:RUNNER_TEMP "Textus"
-          New-Item -ItemType Directory -Force (Join-Path $dir "TextusData") | Out-Null
-          Copy-Item $exe (Join-Path $dir "Textus.exe")
-          Set-Content (Join-Path $dir "TextusData/README.txt") "Textus keeps its settings and data in this folder. Keep it beside Textus.exe; to update, unzip the new version over this folder."
-          $zip = Join-Path $env:RUNNER_TEMP "Textus_${version}_${arch}-portable.zip"
-          Compress-Archive -Path (Join-Path $dir "*") -DestinationPath $zip
-          gh release upload $env:RELEASE_TAG $zip --clobber
 
   # Builds and tests textus-bin and attaches it to the draft (see
   # arch-package.yml). Before publish, so a broken package keeps the whole
@@ -335,22 +282,12 @@ jobs:
       tag: ${{ inputs.tag || github.ref_name }}
     secrets: inherit
 
-  # The signed Android APK (see android-release.yml), also on the draft
-  # before publish.
-  android:
-    needs: build
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
-    uses: ./.github/workflows/android-release.yml
-    with:
-      tag: ${{ inputs.tag || github.ref_name }}
-    secrets: inherit
-
   # The jobs after the builds say when they run: without that, a rebuild
   # (workflow_dispatch, its CI skipped) skipped them all, as a skipped job
   # passes its skip on to every job that needs it.
   publish:
-    needs: [build, arch-package, android]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.arch-package.result == 'success' && needs.android.result == 'success' }}
+    needs: [build, arch-package]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.arch-package.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     outputs:
@@ -368,21 +305,22 @@ jobs:
 
       # The updater reads textus-latest.json from the newest release the
       # moment it is published. It is written here, once every platform's
-      # signed artifacts are on the draft, from their .sig files: each
-      # artifact's URL is the release's download URL plus its asset name.
-      # A platform whose build silently failed to upload (a race, an upload
-      # error) has no .sig, and the build step fails rather than leave every
-      # user of that platform without the update.
+      # signed update is on the draft, from the update-<target>.json files
+      # `mygo build` wrote: each target's archive, size, signature and
+      # deltas, at the release's download URL. A platform whose build
+      # silently failed to upload (a race, an upload error) has no manifest,
+      # and the build step fails rather than leave every user of that
+      # platform without the update.
       - name: Write the updater manifest (textus-latest.json)
         run: |
-          sigs="$RUNNER_TEMP/sigs"
-          mkdir -p "$sigs"
-          gh release download "$RELEASE_TAG" --pattern '*.sig' --dir "$sigs" --clobber
+          updates="$RUNNER_TEMP/updates"
+          mkdir -p "$updates"
+          gh release download "$RELEASE_TAG" --pattern 'update-*.json' --dir "$updates" --clobber
           notes="docs/releases/${RELEASE_TAG#v}.md"
           node scripts/updater-manifest.mjs build \
             --version "${RELEASE_TAG#v}" \
             --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}" \
-            --sig-dir "$sigs" \
+            --update-dir "$updates" \
             $([ -f "$notes" ] && printf -- '--notes-file %s' "$notes") \
             --out "$RUNNER_TEMP/textus-latest.json"
           jq '{version, platforms: (.platforms | keys)}' "$RUNNER_TEMP/textus-latest.json"

@@ -105,6 +105,52 @@ describe("download mirror keys", () => {
     ]);
   });
 
+  // What gh release download fetches for a Go release (`mygo build`), plus
+  // files it must leave out: the update archives of macOS and Windows, a
+  // delta and the update manifests.
+  const go = [
+    "textus-1.5.0-arm64.dmg",
+    "textus-1.5.0-amd64.dmg",
+    "textus-setup-1.5.0-amd64.exe",
+    "textus-setup-1.5.0-arm64.exe",
+    "textus_1.5.0_amd64.deb",
+    "textus_1.5.0_arm64.deb",
+    "textus-1.5.0-1.x86_64.rpm",
+    "textus-1.5.0-1.aarch64.rpm",
+    "textus-1.5.0-linux-amd64.tar.gz",
+    "textus-1.5.0-linux-arm64.tar.gz",
+    "textus-1.5.0-darwin-arm64.tar.gz",
+    "textus-1.5.0-windows-amd64.tar.gz",
+    "textus-1.4.9-to-1.5.0-linux-amd64.delta",
+    "update-linux-amd64.json",
+    "install.sh",
+  ];
+
+  it("serves a Go release's installers under the keys the site reads", () => {
+    const { files } = mirrorManifest("v1.5.0", go);
+    expect(files).toEqual({
+      mac: "releases/v1.5.0/textus-1.5.0-arm64.dmg",
+      "mac-intel": "releases/v1.5.0/textus-1.5.0-amd64.dmg",
+      windows: "releases/v1.5.0/textus-setup-1.5.0-amd64.exe",
+      deb: "releases/v1.5.0/textus_1.5.0_amd64.deb",
+      rpm: "releases/v1.5.0/textus-1.5.0-1.x86_64.rpm",
+      "windows-arm64": "releases/v1.5.0/textus-setup-1.5.0-arm64.exe",
+      "deb-arm64": "releases/v1.5.0/textus_1.5.0_arm64.deb",
+      "rpm-arm64": "releases/v1.5.0/textus-1.5.0-1.aarch64.rpm",
+      "linux-archive": "releases/v1.5.0/textus-1.5.0-linux-amd64.tar.gz",
+      "linux-arm64-archive": "releases/v1.5.0/textus-1.5.0-linux-arm64.tar.gz",
+    });
+  });
+
+  it("names a release candidate's Linux packages as MyGo does", () => {
+    const { files } = mirrorManifest("v1.5.0-rc.1", [
+      "textus_1.5.0~rc.1_amd64.deb",
+      "textus-1.5.0~rc.1-1.x86_64.rpm",
+      "textus-setup-1.5.0-rc.1-amd64.exe",
+    ]);
+    expect(Object.keys(files)).toEqual(["windows", "deb", "rpm"]);
+  });
+
   it("ignores everything that is not an installer", () => {
     expect(mirrorKey("Textus_1.1.0_linux_x86_64.tar.gz")).toBeNull();
     expect(mirrorKey("Textus_1.1.0_arm64.deb.sig")).toBeNull();

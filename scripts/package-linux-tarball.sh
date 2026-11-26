@@ -9,14 +9,16 @@
 #       └── licenses/textus/LICENSE
 #
 # Usage: scripts/package-linux-tarball.sh <version> <binary> <out-dir>
-# Build the binary with TEXTUS_DISTRIBUTION=aur so it does not update itself.
+# Build the binary as the AUR's, so it reports updates and leaves them to
+# pacman (backend/distribution.go):
+#   MYGO_LDFLAGS="-X textus/backend.distribution=aur" npx mygo build -platform linux/amd64
 set -euo pipefail
 
 version="$1"
 binary="$2"
 out_dir="$3"
 root="$(cd "$(dirname "$0")/.." && pwd)"
-icons="$root/src-tauri/icons"
+icons="$root/packaging/icons"
 
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
@@ -26,8 +28,8 @@ install -Dm755 "$binary" "$app/bin/textus"
 install -Dm644 "$root/packaging/linux/textus.desktop" \
   "$app/share/applications/textus.desktop"
 install -Dm644 "$root/LICENSE" "$app/share/licenses/textus/LICENSE"
-for pair in 32x32:32x32.png 64x64:64x64.png 128x128:128x128.png \
-  256x256:128x128@2x.png 512x512:icon.png; do
+for pair in 32x32:32x32.png 128x128:128x128.png 256x256:128x128@2x.png \
+  512x512:icon.png; do
   size="${pair%%:*}"
   file="${pair#*:}"
   install -Dm644 "$icons/$file" "$app/share/icons/hicolor/$size/apps/textus.png"

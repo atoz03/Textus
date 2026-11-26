@@ -2,9 +2,9 @@
 Type=Application
 Name=Textus
 Comment=Integrated Writing Environment, designed for professional writing
-Exec=textus %F
+Exec=textus %U
 Icon=textus
 StartupWMClass=textus
 Terminal=false
 Categories=Utility;TextEditor;
-MimeType=text/markdown;text/x-markdown;
+MimeType=text/markdown;text/x-markdown;text/mdx;x-scheme-handler/textus;

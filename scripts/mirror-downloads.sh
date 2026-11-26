@@ -24,8 +24,10 @@ export CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-49abb4d436c552f6e4497b178
 
 work="$(mktemp -d)"
 trap 'echo "downloaded files left in $work"' EXIT
+# The Go builds' names (`mygo build`), then the Tauri builds' up to 1.4.6.
 gh release download "$tag" --repo "$repo" --dir "$work" \
-  --pattern '*_aarch64.dmg' --pattern '*_x64.dmg' --pattern '*-setup.exe' --pattern '*.AppImage' \
+  --pattern '*.dmg' --pattern 'textus-setup-*.exe' --pattern '*-linux-*.tar.gz' \
+  --pattern '*-setup.exe' --pattern '*.AppImage' \
   --pattern '*.deb' --pattern '*.rpm' --pattern '*.apk' --pattern '*-portable.zip'
 
 # One object up, retried: a large upload now and then drops its connection.

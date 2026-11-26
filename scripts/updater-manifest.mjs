@@ -2,6 +2,13 @@
 // The in-app updater's manifest, and the guard that keeps Textus releases
 // away from Levis installs: Levis polls `latest.json` through the renamed
 // repository and trusts the same key, so a Textus release never carries one.
+//
+// textus-latest.json has an entry per platform. A Go build's is MyGo's
+// update of its target, under `mygo-<GOOS>-<GOARCH>`: the url, size,
+// signature and deltas of the update-<target>.json that `mygo build` writes
+// beside the signed archive (backend/updater.go reads them). The Tauri
+// builds' entries (darwin-aarch64, linux-x86_64-deb, ...) came from the
+// minisign .sig files tauri-action uploaded.
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,15 +20,54 @@ export const LEVIS_MANIFEST_NAME = "latest.json";
 /** What the beta channel reads: the newest release of any kind, kept on the
  *  download bucket since GitHub's releases/latest skips pre-releases. */
 export const BETA_MANIFEST_NAME = "textus-beta.json";
-/** Where the app finds the beta manifest's URL. */
+/** Where the Go app names both manifests' URLs. */
+const GO_UPDATER = "backend/updater.go";
+/** Where the Tauri builds named the beta manifest's URL. */
 const BETA_ENDPOINT_SOURCE = "src-tauri/src/commands/update.rs";
 
 const ownRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Problems with the updater wiring in a checkout, one line each. */
+function readOrNull(readFile, file) {
+  try {
+    return readFile(file);
+  } catch {
+    return null;
+  }
+}
+
+/** Problems with the updater wiring in a checkout, one line each: the
+ *  manifests the app reads, and what the release workflow uploads. A tag
+ *  from the Tauri builds (src-tauri/) is checked as those were. */
 export function configProblems(readFile) {
+  const tauriConf = readOrNull(readFile, "src-tauri/tauri.conf.json");
+  return [
+    ...(tauriConf === null
+      ? goEndpointProblems(readFile)
+      : tauriEndpointProblems(readFile, tauriConf)),
+    ...workflowProblems(readFile(".github/workflows/release.yml")),
+  ];
+}
+
+/** The Go app's manifest URLs (backend/updater.go). */
+function goEndpointProblems(readFile) {
+  const source = readFile(GO_UPDATER);
   const problems = [];
-  const conf = JSON.parse(readFile("src-tauri/tauri.conf.json"));
+  for (const [name, file] of [
+    ["stableManifestURL", MANIFEST_NAME],
+    ["betaManifestURL", BETA_MANIFEST_NAME],
+  ]) {
+    const url = new RegExp(`\\b${name}\\s*=\\s*"([^"]+)"`).exec(source)?.[1];
+    if (!url?.endsWith(`/${file}`))
+      problems.push(`${GO_UPDATER}: ${name} must end in /${file}`);
+  }
+  return problems;
+}
+
+/** A Tauri tag's endpoints: tauri.conf.json's, and the beta manifest's in
+ *  update.rs. */
+function tauriEndpointProblems(readFile, tauriConf) {
+  const problems = [];
+  const conf = JSON.parse(tauriConf);
   const endpoints = conf.plugins?.updater?.endpoints ?? [];
   if (endpoints.length === 0)
     problems.push("tauri.conf.json: no updater endpoints");
@@ -33,12 +79,7 @@ export function configProblems(readFile) {
       );
   }
   // Tags from before the update channel have no beta endpoint to check.
-  let updateRs = null;
-  try {
-    updateRs = readFile(BETA_ENDPOINT_SOURCE);
-  } catch {
-    // Not there: nothing to check.
-  }
+  const updateRs = readOrNull(readFile, BETA_ENDPOINT_SOURCE);
   if (updateRs !== null) {
     const url = /BETA_MANIFEST_URL: &str =\s*"([^"]+)"/.exec(updateRs)?.[1];
     if (!url?.endsWith(`/${BETA_MANIFEST_NAME}`))
@@ -46,7 +87,21 @@ export function configProblems(readFile) {
         `${BETA_ENDPOINT_SOURCE}: BETA_MANIFEST_URL must end in /${BETA_MANIFEST_NAME}`,
       );
   }
-  const workflow = readFile(".github/workflows/release.yml");
+  return problems;
+}
+
+/** The release workflow: one that builds with tauri-action must keep it
+ *  from uploading latest.json; any must refuse a draft that carries one
+ *  (`guard`) before publishing it. */
+function workflowProblems(workflow) {
+  if (!/tauri-apps\/tauri-action@/.test(workflow)) {
+    return /updater-manifest\.mjs guard\b/.test(workflow)
+      ? []
+      : [
+          `release.yml: run \`node scripts/updater-manifest.mjs guard\` on the draft's assets before publishing (it refuses ${LEVIS_MANIFEST_NAME})`,
+        ];
+  }
+  const problems = [];
   // tauri-action 1.0 renamed the input and silently ignores the old one,
   // which would then upload latest.json; older tags pin v0.
   const major = Number(
@@ -62,6 +117,27 @@ export function configProblems(readFile) {
       `release.yml: tauri-action v${major} must run with ${input}: false (it uploads ${LEVIS_MANIFEST_NAME} otherwise)`,
     );
   return problems;
+}
+
+/** Why a release built from this checkout couldn't update itself: MyGo
+ *  builds its updater in only with `updates` in mygo.json, whose public
+ *  key every later update must be signed with (`mygo keygen`; the private
+ *  key is the release's MYGO_UPDATER_PRIVATE_KEY). */
+export function signingProblems(readFile) {
+  const updates = JSON.parse(readFile("mygo.json")).updates;
+  if (!updates?.publicKey)
+    return [
+      "mygo.json: no updates.publicKey (mygo keygen): a release built without it can never update itself",
+    ];
+  if (Buffer.from(String(updates.publicKey), "base64").length !== 32)
+    return [
+      "mygo.json: updates.publicKey is not an Ed25519 public key (mygo keygen)",
+    ];
+  if (!updates.github && !updates.url)
+    return [
+      "mygo.json: updates needs github (owner/name), where the release's update archives are",
+    ];
+  return [];
 }
 
 /** The updater's `{arch}` (x86_64 or aarch64) for an artifact's name, which
@@ -88,40 +164,74 @@ export function platformKeys(name) {
   return [];
 }
 
-/** The manifest for `artifacts` ({ name, signature }), in the format
- *  tauri-plugin-updater reads. */
-export function buildManifest({ version, notes, pubDate, baseUrl, artifacts }) {
+/** The manifest for the Go builds' `updates` ({ target, manifest }, each
+ *  an update-<target>.json of `mygo build`) and a Tauri release's signed
+ *  `artifacts` ({ name, signature }). Every file it names is the release's,
+ *  at `baseUrl`, where the workflow uploaded it. */
+export function buildManifest({
+  version,
+  notes,
+  pubDate,
+  baseUrl,
+  updates = [],
+  artifacts = [],
+}) {
+  const base = baseUrl.replace(/\/$/, "");
+  const onRelease = (name) => `${base}/${encodeURIComponent(name)}`;
+  const fileOf = (url) =>
+    decodeURIComponent(new URL(url).pathname).split("/").pop();
   const platforms = {};
+  const add = (key, entry) => {
+    if (platforms[key]) throw new Error(`two artifacts serve ${key}`);
+    platforms[key] = entry;
+  };
+  for (const { target, manifest } of updates) {
+    if (manifest.version !== version)
+      throw new Error(
+        `update-${target}.json is version ${manifest.version}, not ${version}`,
+      );
+    const entry = {
+      url: onRelease(fileOf(manifest.url)),
+      size: manifest.size,
+      signature: manifest.signature,
+    };
+    if (manifest.deltas?.length)
+      entry.deltas = manifest.deltas.map((delta) => ({
+        ...delta,
+        url: onRelease(fileOf(delta.url)),
+      }));
+    add(`mygo-${target}`, entry);
+  }
   for (const { name, signature } of artifacts) {
-    for (const key of platformKeys(name)) {
-      if (platforms[key]) throw new Error(`two artifacts serve ${key}`);
-      platforms[key] = {
-        signature: signature.trim(),
-        url: `${baseUrl.replace(/\/$/, "")}/${encodeURIComponent(name)}`,
-      };
-    }
+    for (const key of platformKeys(name))
+      add(key, { signature: signature.trim(), url: onRelease(name) });
   }
   return { version, notes, pub_date: pubDate, platforms };
 }
 
-/** Platforms every release must serve; `beta` refuses a manifest lacking
- *  any. */
+/** The targets every release must serve, as MyGo names them; `build` and
+ *  `beta` refuse a manifest lacking any. A universal macOS build serves
+ *  both Macs (backend/updater.go `updateKeys`). */
 export const REQUIRED_PLATFORMS = [
-  "darwin-aarch64",
-  "darwin-x86_64",
-  "linux-aarch64",
-  "linux-x86_64",
-  "windows-aarch64",
-  "windows-x86_64",
+  "mygo-darwin-arm64",
+  "mygo-darwin-amd64",
+  "mygo-linux-amd64",
+  "mygo-linux-arm64",
+  "mygo-windows-amd64",
+  "mygo-windows-arm64",
 ];
 
 export function manifestProblems(manifest, version) {
   const problems = [];
   if (manifest.version !== version)
     problems.push(`manifest says ${manifest.version}, expected ${version}`);
+  const signed = (entry) =>
+    Boolean(entry?.url && entry?.signature && entry?.size > 0);
   for (const key of REQUIRED_PLATFORMS) {
-    const entry = manifest.platforms[key];
-    if (!entry?.url || !entry?.signature)
+    const universal = key.startsWith("mygo-darwin-")
+      ? manifest.platforms["mygo-darwin-universal"]
+      : undefined;
+    if (!signed(manifest.platforms[key]) && !signed(universal))
       problems.push(`no signed ${key} entry`);
   }
   return problems;
@@ -191,25 +301,41 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
   if (command === "check") {
     const root = option("--root") ?? ownRoot;
-    const problems = configProblems((file) =>
-      readFileSync(join(root, file), "utf8"),
-    );
+    const read = (file) => readFileSync(join(root, file), "utf8");
+    const problems = configProblems(read);
+    // A Tauri tag signed its updates with tauri-action's key instead.
+    if (readOrNull(read, "src-tauri/tauri.conf.json") === null)
+      problems.push(...signingProblems(read));
     if (problems.length > 0) fail(problems);
   } else if (command === "build") {
     const version = required("--version");
-    const sigDir = required("--sig-dir");
+    const updateDir = option("--update-dir");
+    const sigDir = option("--sig-dir");
+    if (!updateDir && !sigDir) fail(["--update-dir or --sig-dir is required"]);
     const notesFile = option("--notes-file");
-    const artifacts = readdirSync(sigDir)
-      .filter((file) => file.endsWith(".sig"))
-      .map((file) => ({
-        name: file.slice(0, -".sig".length),
-        signature: readFileSync(join(sigDir, file), "utf8"),
-      }));
+    const updates = updateDir
+      ? readdirSync(updateDir)
+          .map((file) => /^update-(.+)\.json$/.exec(file))
+          .filter(Boolean)
+          .map(([file, target]) => ({
+            target,
+            manifest: JSON.parse(readFileSync(join(updateDir, file), "utf8")),
+          }))
+      : [];
+    const artifacts = sigDir
+      ? readdirSync(sigDir)
+          .filter((file) => file.endsWith(".sig"))
+          .map((file) => ({
+            name: file.slice(0, -".sig".length),
+            signature: readFileSync(join(sigDir, file), "utf8"),
+          }))
+      : [];
     const manifest = buildManifest({
       version,
       notes: notesFile ? readFileSync(notesFile, "utf8") : "",
       pubDate: new Date().toISOString(),
       baseUrl: required("--base-url"),
+      updates,
       artifacts,
     });
     const problems = manifestProblems(manifest, version);
