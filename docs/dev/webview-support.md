@@ -6,13 +6,17 @@ engine a user may have is the oldest one the frontend has to work in.
 | Platform                             | Engine              | Oldest supported                             |
 | ------------------------------------ | ------------------- | -------------------------------------------- |
 | Windows 10 and 11                    | WebView2 (Chromium) | Chromium 105                                 |
-| macOS 12 and later                   | WKWebView           | the installed Safari's; the build assumes 16 |
+| macOS 13 and later                   | WKWebView           | the installed Safari's; the build assumes 16 |
 | iPhone and iPad (iOS 16.4 and later) | WKWebView           | Safari 16.4                                  |
 | Linux                                | WebKitGTK           | what the distribution ships                  |
 
-macOS 12 is the Go backend's floor, not the engine's: Go programs run on
-nothing older since Go 1.25, and MyGo writes it as `LSMinimumSystemVersion`.
-The Tauri builds ran on macOS 11 up to 1.4.6.
+macOS 13 is the Go backend's floor, not the engine's: Go 1.27, which builds
+the app, runs on nothing older (Go 1.25 and 1.26 ran on macOS 12), and links
+the app for 13.0 whatever the bundle says. `macos.minimumSystemVersion` in
+`mygo.json` gives the same floor to the bundle's `LSMinimumSystemVersion`
+(MyGo's default is 12.0), so macOS 12 refuses to open the app instead of
+starting a program that can't run. The Tauri builds ran on macOS 11 up to
+1.4.6.
 
 ## Why Chromium 105 on Windows
 

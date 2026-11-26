@@ -29,7 +29,8 @@
     }
   ],
   "macos": {
-    "icon": "packaging/icons/icon.icns"
+    "icon": "packaging/icons/icon.icns",
+    "minimumSystemVersion": "13.0"
   },
   "windows": {
     "installerInclude": "packaging/windows/installer.nsh"
