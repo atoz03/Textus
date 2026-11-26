@@ -47,7 +47,7 @@ func TestSavesAndRemovalsAtOnceKeepEveryChange(t *testing.T) {
 			t.Errorf("%+v", e)
 		}
 	}
-	if info, err := os.Stat(a.endpointsPath()); err != nil || info.Mode().Perm() != 0o600 {
+	if info, err := os.Stat(a.endpointsPath()); err != nil || !ownerOnly(info) {
 		t.Errorf("%v %v", info.Mode(), err)
 	}
 	// The last one removed takes the file with it.

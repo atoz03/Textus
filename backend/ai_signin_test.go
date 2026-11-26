@@ -62,7 +62,7 @@ func TestASignInTakesTheCodeTheBrowserComesBackWith(t *testing.T) {
 	if err != nil || !ok || cred.Access != "a1" {
 		t.Fatal(cred, ok, err)
 	}
-	if info, _ := os.Stat(a.signInPath(p)); info.Mode().Perm() != 0o600 {
+	if info, _ := os.Stat(a.signInPath(p)); !ownerOnly(info) {
 		t.Fatal("the credential is readable by others:", info.Mode())
 	}
 	// Someone else's redirect, carrying another state, is refused.

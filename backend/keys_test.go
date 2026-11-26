@@ -3,8 +3,16 @@ package backend
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+// ownerOnly says whether only its owner can read the file. Windows keeps no
+// Unix permission bits (Go reads any file that isn't read-only as 0666);
+// there the user's profile folder, which holds the app's, keeps others out.
+func ownerOnly(info os.FileInfo) bool {
+	return runtime.GOOS == "windows" || info.Mode().Perm() == 0o600
+}
 
 func TestKeysAreKeptForTheirOwnerOnly(t *testing.T) {
 	a := &App{dirs: Dirs{Config: t.TempDir()}}
@@ -23,7 +31,7 @@ func TestKeysAreKeptForTheirOwnerOnly(t *testing.T) {
 		t.Errorf("openai: %q", key)
 	}
 	info, err := os.Stat(a.keysPath())
-	if err != nil || info.Mode().Perm() != 0o600 {
+	if err != nil || !ownerOnly(info) {
 		t.Fatalf("%v %v", info.Mode(), err)
 	}
 	// Clearing one keeps the other.

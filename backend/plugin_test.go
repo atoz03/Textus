@@ -260,7 +260,7 @@ func TestAPluginIsInstalledOffAndUninstalledWithWhatItKept(t *testing.T) {
 	if v, _ := run(a, "plugin_secret_get", `{"id":"a.b","key":"token"}`); v != `"s3"` {
 		t.Errorf("secret: %s", v)
 	}
-	if info, err := os.Stat(a.secretsPath()); err != nil || info.Mode().Perm() != 0o600 {
+	if info, err := os.Stat(a.secretsPath()); err != nil || !ownerOnly(info) {
 		t.Errorf("the secrets file: %v %v", info, err)
 	}
 	if _, err := run(a, "plugin_uninstall", `{"id":"a.b"}`); err != nil {
