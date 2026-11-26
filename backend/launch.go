@@ -109,8 +109,9 @@ func (a *App) takeSessionFor(label string) (WindowSession, bool) {
 }
 
 // queuePathsToOpen opens documents and folders handed to the app: folders
-// each in a window, documents as tabs of the focused window, or, still
-// launching, of the window that mounts first.
+// each in a window, documents as tabs of the window that has them open or
+// whose folder holds them, else of the focused one, or, still launching,
+// of the window that mounts first.
 func (a *App) queuePathsToOpen(paths []string) {
 	var files, folders []string
 	for _, p := range paths {
@@ -139,8 +140,16 @@ func (a *App) queuePathsToOpen(paths []string) {
 	if len(files) == 0 {
 		return
 	}
+	// Already running: the whole batch goes to the window that has it or
+	// whose folder holds it (open_route.go), else the focused one. Nothing
+	// is queued then, or the next window to mount would open it again.
 	if ready {
-		if label := a.focusedEditorWindow(""); label != "" {
+		focused := a.focusedEditorWindow("")
+		label := windowFor(a.liveEditorSessions(), files, focused)
+		if label == "" {
+			label = focused
+		}
+		if label != "" {
 			_ = a.emitTo(label, "open-paths-as-tabs", files)
 			if w := a.window(label); w != nil {
 				w.win.Restore()

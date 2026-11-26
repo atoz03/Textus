@@ -3,8 +3,9 @@
 How a Textus process starts, what keeps it running, and how it ends:
 background mode and its tray icon, plugins' scheduled jobs, and updates.
 The code is `backend/app.go` (`Run`: setup and MyGo's app events),
-`backend/session.go` (what a launch opens, and `quit`),
-`backend/windows.go` (the windows), `backend/background.go` and
+`backend/launch.go` (what a launch opens) and `backend/open_route.go`
+(which window documents handed over go to), `backend/session.go`
+(`quit`), `backend/windows.go` (the windows), `backend/background.go` and
 `backend/tray.go`, and `backend/schedule_jobs.go`. The desktop app only;
 iOS has one window that the system manages.
 
@@ -23,7 +24,10 @@ otherwise. On macOS, Finder and `open` reach the running app themselves; the
 Dock icon clicked with no window open restores the session the same way
 (`reopenWithoutWindows` in `windows.go`). Paths that arrive before a window
 is ready wait in the app's queue (`queuePathsToOpen`) until the window asks
-for them.
+for them. Once running, documents handed over (a file manager, a second
+launch, **Open Recent**) go to the window that has them open, else the one
+whose folder holds them all (the innermost), else the focused one, as VS
+Code picks (`windowFor`).
 
 ## Closing the last window
 
