@@ -13,17 +13,12 @@ import {
   bumpsVersion,
   classify,
   docsOnly,
+  goReads,
+  readByGo,
   reachesSaving,
-  rustIncludes,
 } from "./ci-changes.mjs";
 
-const VERSION_FILES = [
-  "package.json",
-  "package-lock.json",
-  "src-tauri/Cargo.toml",
-  "src-tauri/Cargo.lock",
-  "src-tauri/tauri.conf.json",
-];
+const VERSION_FILES = ["package.json", "package-lock.json", "mygo.json"];
 const version = JSON.parse(readFileSync("package.json", "utf8")).version;
 const current = Object.fromEntries(
   VERSION_FILES.map((file) => [file, readFileSync(file, "utf8")]),
@@ -40,21 +35,13 @@ const bumped = {
     '"version": "9.9.9"',
   ),
   "package-lock.json": `${JSON.stringify(bumpedLock, null, 2)}\n`,
-  "src-tauri/Cargo.toml": current["src-tauri/Cargo.toml"].replace(
-    `version = "${version}"`,
-    'version = "9.9.9"',
-  ),
-  "src-tauri/Cargo.lock": current["src-tauri/Cargo.lock"].replace(
-    `name = "textus"\nversion = "${version}"`,
-    'name = "textus"\nversion = "9.9.9"',
-  ),
-  "src-tauri/tauri.conf.json": current["src-tauri/tauri.conf.json"].replace(
+  "mygo.json": current["mygo.json"].replace(
     `"version": "${version}"`,
     '"version": "9.9.9"',
   ),
 };
 
-const rustReads = rustIncludes();
+const reads = goReads();
 
 /** The jobs for a change from `before` to `after` (maps of file to text;
  *  files missing from either side don't exist there). */
@@ -64,7 +51,7 @@ function change(before, after, { push = false } = {}) {
     files,
     push,
     read: (file) => [before[file] ?? null, after[file] ?? null],
-    rustReads,
+    goReads: reads,
   });
 }
 
@@ -113,16 +100,17 @@ describe("which CI jobs a pull request needs", () => {
       files: ["NOTES.md"],
       push: false,
       read: () => ["a\n", "b\n"],
-      rustReads: ["NOTES.md"],
+      goReads: ["NOTES.md"],
     });
     expect(embedded).toEqual(NATIVE);
   });
 
-  it("runs native for the Markdown skills Rust embeds", () => {
+  it("runs native for the Markdown the Go backend embeds", () => {
     expect(
       edit([
-        "src-tauri/src/ai/skills/de-ai.md",
-        "src-tauri/src/ai/skills/packs/README.md",
+        "backend/ai/skills/proofread.md",
+        "backend/ai/skills/packs/craft.md",
+        "backend/plugins/template/README.md",
       ]),
     ).toEqual(NATIVE);
   });
@@ -130,27 +118,29 @@ describe("which CI jobs a pull request needs", () => {
   it("runs check alone for the Markdown the frontend imports", () => {
     expect(
       edit([
-        "src/help/markdown-guide.en.md",
         "src/playground/samples/zh.md",
         "src/theme/fixtures/theme-skill-reply.md",
       ]),
     ).toEqual(NONE);
   });
 
-  it("runs native for Markdown outside src-tauri/ that Rust embeds", () => {
+  it("runs native for the help pages a Go test sweeps", () => {
+    expect(edit(["src/help/markdown-guide.en.md"])).toEqual(NATIVE);
+    expect(edit(["src/help/agent-guide.zh.md"])).toEqual(NATIVE);
+  });
+
+  it("runs native for Markdown outside backend/ that Go reads", () => {
     const change = classify({
       files: ["notes/prompt.md"],
       push: false,
       read: () => ["a\n", "b\n"],
-      rustReads: ["notes/prompt.md"],
+      goReads: ["notes/prompt.md"],
     });
     expect(change.native).toBe(true);
   });
 
   it("runs check alone for a version bump", () => {
-    expect(bumped["src-tauri/Cargo.lock"]).not.toBe(
-      current["src-tauri/Cargo.lock"],
-    );
+    expect(bumped["mygo.json"]).not.toBe(current["mygo.json"]);
     expect(change(current, bumped)).toEqual(NONE);
   });
 
@@ -160,41 +150,47 @@ describe("which CI jobs a pull request needs", () => {
     ).toEqual(NONE);
   });
 
-  it("runs native alone for a Rust change", () => {
+  it("runs native alone for a Go change", () => {
     expect(
       edit([
-        "src-tauri/src/lib.rs",
-        "src-tauri/crates/aicompat/src/lib.rs",
-        "src-tauri/rust-toolchain.toml",
-        "scripts/ios-prepare.sh",
-        "scripts/smoke-ios-sim.sh",
+        "backend/app.go",
+        "backend/ai/aicompat/capabilities.go",
+        "main.go",
+        "go.mod",
+        "go.sum",
+        "scripts/check-native.mjs",
+        "scripts/smoke-linux.sh",
       ]),
     ).toEqual(NATIVE);
   });
 
-  it("runs native for the generated bindings, which a Rust test compares", () => {
+  it("runs native for the generated bindings, which a Go test compares", () => {
     expect(edit(["src/platform/bindings/app.ts"])).toEqual(NATIVE);
   });
 
-  it("runs native for a frontend file the Rust tests embed", () => {
-    expect(rustReads).toContain("index.html");
-    expect(rustReads).toContain("src/registry/menu/menu.json");
+  it("runs native for a frontend file the Go code embeds or its tests read", () => {
+    expect(reads).toContain("package.json");
+    expect(reads).toContain("src/registry/menu/menu.json");
     expect(edit(["src/registry/menu/menu.json"])).toEqual(NATIVE);
+    expect(edit(["src/theme/content-themes.css"])).toEqual(NATIVE);
+    expect(edit(["src/i18n/locales/fr.ts"])).toEqual(NATIVE);
   });
 
-  it("runs native for the src-tauri files the browser sees", () => {
+  it("runs native for what the app ships beside the Go code", () => {
     for (const file of [
-      "src-tauri/icons/128x128.png",
-      "src-tauri/src/boot.js",
-      "src-tauri/tauri.conf.json",
-      "src-tauri/tauri.ios.conf.json",
+      "backend/boot.js",
+      "backend/icons/tray/tray-64.png",
+      "mygo.json",
+      "packaging/icons/icon.png",
+      "packaging/windows/installer.nsh",
+      "resources/windows/doc.ico",
     ]) {
       expect(edit([file]), file).toEqual(NATIVE);
     }
   });
 
   it("runs native for a change to both sides", () => {
-    expect(edit(["src/main.tsx", "src-tauri/src/lib.rs"])).toEqual(NATIVE);
+    expect(edit(["src/main.tsx", "backend/app.go"])).toEqual(NATIVE);
   });
 
   it("runs native for a workflow or Node version change", () => {
@@ -226,26 +222,21 @@ describe("which CI jobs a pull request needs", () => {
     ).toEqual(NATIVE);
   });
 
-  it("runs native when a bump also adds a Rust dependency", () => {
-    const toml = bumped["src-tauri/Cargo.toml"].replace(
-      "[dependencies]\n",
-      '[dependencies]\nleft-pad = "1"\n',
-    );
-    expect(toml).not.toBe(bumped["src-tauri/Cargo.toml"]);
-    const after = { ...bumped, "src-tauri/Cargo.toml": toml };
+  it("runs native when a bump also changes MyGo's configuration", () => {
+    const config = JSON.parse(bumped["mygo.json"]);
+    config.urlSchemes = [...config.urlSchemes, "textus-dev"];
+    const after = { ...bumped, "mygo.json": JSON.stringify(config, null, 2) };
     expect(change(current, after)).toEqual(NATIVE);
   });
 
-  it("runs native when Cargo.lock moves another package's version", () => {
-    const file = "src-tauri/Cargo.lock";
-    const other = current[file].match(/name = "serde"\nversion = "[^"]+"/)[0];
-    const after = current[file].replace(
-      other,
-      'name = "serde"\nversion = "0.0.1"',
-    );
-    expect(change({ [file]: current[file] }, { [file]: after })).toEqual(
-      NATIVE,
-    );
+  it("runs native when the Go module moves a dependency", () => {
+    const file = "go.sum";
+    expect(
+      change(
+        { [file]: "example.com/a v1.0.0 h1:x=\n" },
+        { [file]: "example.com/a v1.0.1 h1:y=\n" },
+      ),
+    ).toEqual(NATIVE);
   });
 
   it("runs native when a version file is added or removed", () => {
@@ -259,8 +250,8 @@ describe("which CI jobs a push needs", () => {
     expect(change(current, bumped, { push: true })).toEqual(NONE);
   });
 
-  it("runs native otherwise, documentation and Rust alone included", () => {
-    for (const file of ["docs/dev/testing.md", "src-tauri/src/lib.rs"]) {
+  it("runs native otherwise, documentation and Go alone included", () => {
+    for (const file of ["docs/dev/testing.md", "backend/app.go"]) {
       expect(edit([file], { push: true }), file).toEqual(NATIVE);
     }
   });
@@ -277,9 +268,32 @@ describe("documentation alone and the version bump", () => {
       false,
     );
     expect(docsOnly({ files: ["src/help/markdown-guide.en.md"] })).toBe(false);
-    expect(docsOnly({ files: ["docs/x.md"], rustReads: ["docs/x.md"] })).toBe(
+    expect(docsOnly({ files: ["docs/x.md"], goReads: ["docs/x.md"] })).toBe(
       false,
     );
+    expect(
+      docsOnly({ files: ["docs/x/guide.en.md"], goReads: ["docs/x/guide."] }),
+    ).toBe(false);
+  });
+
+  it("matches what Go reads by file, by folder and by a name's start", () => {
+    const list = ["mygo.json", "src/help/", "src/help/agent-guide."];
+    expect(readByGo("mygo.json", list)).toBe(true);
+    expect(readByGo("src/help/markdown-guide.en.md", list)).toBe(true);
+    expect(readByGo("src/helpers.ts", list)).toBe(false);
+    expect(readByGo("mygo.json.bak", list)).toBe(false);
+  });
+
+  it("finds what the Go code embeds and its tests read outside backend/", () => {
+    expect(reads).toEqual(
+      expect.arrayContaining([
+        "package.json", // main.go embeds it
+        "src/platform/bindings/", // a test globs the bindings
+        "src/help/agent-guide.", // a test names each language's guide
+        "mygo.json", // a test reads the app's name from it
+      ]),
+    );
+    expect(reads.filter((path) => path.startsWith("backend/"))).toEqual([]);
   });
 
   it("finds a bump in package.json's version alone", () => {
@@ -348,7 +362,7 @@ describe("the save round trip in CI", () => {
   });
 
   it("skips a change that can't reach saving", () => {
-    expect(runs("src-tauri/src/main.rs")).toBe(false);
+    expect(runs("backend/app.go")).toBe(false);
     expect(runs("src/sidebar/Sidebar.tsx", "README.md")).toBe(false);
   });
 

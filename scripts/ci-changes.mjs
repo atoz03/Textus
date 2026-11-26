@@ -2,7 +2,7 @@
 // What a change needs in CI's quick suite, printed for $GITHUB_OUTPUT:
 // `light` (GitHub's settings, the license or root Markdown alone: only their
 // format and the READMEs' structure), `docs` (documentation alone: format,
-// links and the tests that read the docs, no e2e), `native` (the Rust checks
+// links and the tests that read the docs, no e2e), `native` (the Go checks
 // on Linux), `roundtrip`, and `full` for a pull request that bumps the
 // version, which gets the whole suite. A push runs native for everything but
 // a bump or a light change; without a usable base everything runs.
@@ -18,21 +18,18 @@ const DOCS = /(\.md$|^docs\/|^\.github\/ISSUE_TEMPLATE\/|^LICENSE$)/;
 
 /** Markdown in these trees is the app's own content or test input, not
  *  documentation. */
-const CODE_TREES = /^(src|e2e|src-tauri)\//;
+const CODE_TREES = /^(src|e2e|backend)\//;
 
 /** Changes that run everything: CI itself, the Node version, and the npm
  *  manifest and lockfile beyond a bump's version lines. */
 const EVERYTHING =
   /^(\.github\/workflows\/|\.nvmrc$|package\.json$|package-lock\.json$)/;
 
-/** What the native jobs build and test: the Rust crates and their toolchain,
- *  the native check script and the iOS project's preparation. */
+/** What the native jobs build and test: the Go backend, its module and
+ *  MyGo's configuration with what the app ships beside it, and the native
+ *  check and smoke scripts. */
 const NATIVE =
-  /(^src-tauri\/|(^|\/)Cargo\.(toml|lock)$|(^|\/)\.cargo\/|(^|\/)rust-toolchain(\.toml)?$|^scripts\/check-native\.mjs$|^scripts\/(ios-|smoke-ios-))/;
-
-/** Frontend files a Rust test reads from disk, so not embedded: the
- *  generated bindings it compares against its own. */
-const RUST_TESTED = /^src\/platform\/bindings\//;
+  /(^backend\/|^[^/]+\.go$|^go\.(mod|sum)$|^mygo\.json$|^resources\/|^packaging\/(windows|icons)\/|^scripts\/check-native\.mjs$|^scripts\/smoke-linux\.sh$)/;
 
 /** Files no build, test or check reads beyond prettier and the README
  *  check: GitHub's settings and templates (not its workflows or actions),
@@ -46,16 +43,26 @@ const LIGHT =
 const ROUNDTRIP =
   /^(src\/editor\/|src\/document[^/]*\/|src\/utils\/markdown|src\/help\/|docs\/|package\.json$|package-lock\.json$|\.github\/workflows\/)/;
 
-/** Whether every file is documentation Markdown: no code, nothing Rust
- *  embeds, and not light (which needs even less). */
-export function docsOnly({ files, rustReads = [] }) {
+/** Whether the Go code reads `file`: one of `goReads` (goReads()), or in a
+ *  folder ("x/") or under a name's start ("x/guide.") among them. */
+export function readByGo(file, goReads = []) {
+  return goReads.some(
+    (read) =>
+      read === file ||
+      ((read.endsWith("/") || read.endsWith(".")) && file.startsWith(read)),
+  );
+}
+
+/** Whether every file is documentation Markdown: no code, nothing Go
+ *  reads, and not light (which needs even less). */
+export function docsOnly({ files, goReads = [] }) {
   return (
     files.length > 0 &&
     files.every(
       (file) =>
         file.endsWith(".md") &&
         !CODE_TREES.test(file) &&
-        !rustReads.includes(file),
+        !readByGo(file, goReads),
     ) &&
     !files.every((file) => LIGHT.test(file))
   );
@@ -92,24 +99,12 @@ function jsonVersions(...paths) {
   };
 }
 
-/** A TOML file whose only change may be the `version = "..."` line right
- *  after `header` (a regex source for the lines that open the table). */
-function tomlVersion(header) {
-  const line = new RegExp(`(${header}\\nversion = ")[^"\\n]*(")`);
-  return (before, after) => {
-    const version = after.match(line)?.[0];
-    return version !== undefined && before.replace(line, version) === after;
-  };
-}
-
 /** The files a version bump touches, each with the test that its change is
  *  the version alone. */
 const VERSION_FILES = {
   "package.json": jsonVersions(["version"]),
   "package-lock.json": jsonVersions(["version"], ["packages", "", "version"]),
-  "src-tauri/tauri.conf.json": jsonVersions(["version"]),
-  "src-tauri/Cargo.toml": tomlVersion('\\[package\\]\\nname = "textus"'),
-  "src-tauri/Cargo.lock": tomlVersion('\\[\\[package\\]\\]\\nname = "textus"'),
+  "mygo.json": jsonVersions(["version"]),
 };
 
 function versionOnly(file, before, after) {
@@ -124,17 +119,17 @@ function versionOnly(file, before, after) {
 }
 
 /** `read(file)` gives a file's text `before` and `after` the change (null
- *  where missing); `rustReads` are files outside src-tauri/ Rust embeds. */
-export function classify({ files, push, read, rustReads = [] }) {
+ *  where missing); `goReads` are what the Go code reads outside backend/. */
+export function classify({ files, push, read, goReads = [] }) {
   if (
     files.length > 0 &&
-    files.every((file) => LIGHT.test(file) && !rustReads.includes(file))
+    files.every((file) => LIGHT.test(file) && !readByGo(file, goReads))
   )
     return { light: true, native: false };
   const none = { light: false, native: false };
   const code = files.filter(
     (file) =>
-      !DOCS.test(file) || CODE_TREES.test(file) || rustReads.includes(file),
+      !DOCS.test(file) || CODE_TREES.test(file) || readByGo(file, goReads),
   );
   if (code.length === 0) return { ...none, native: push };
   const rest = code.filter((file) => !versionOnly(file, ...read(file)));
@@ -143,37 +138,48 @@ export function classify({ files, push, read, rustReads = [] }) {
     return { ...none, native: true };
   return {
     ...none,
-    native: rest.some(
-      (file) =>
-        NATIVE.test(file) || RUST_TESTED.test(file) || rustReads.includes(file),
-    ),
+    native: rest.some((file) => NATIVE.test(file) || readByGo(file, goReads)),
   };
 }
 
-/** The files outside src-tauri/ that its Rust code embeds with
- *  include_str!/include_bytes!, as paths from the repository root. */
-export function rustIncludes(root = ownRoot) {
+/** What the Go code reads outside backend/, as paths from the repository
+ *  root: the files it embeds (`//go:embed`, the shared tables main.go
+ *  embeds among them) and the ones its tests read from the frontend. A
+ *  folder ends in "/" (a glob's folder stands for its files), and a test
+ *  that names a file by its start ("src/help/agent-guide.") gives that. */
+export function goReads(root = ownRoot) {
   const found = new Set();
-  const walk = (dir) => {
+  const add = (from, target) => {
+    const path = posix.normalize(
+      posix.join(from, target.replace(/[^/]*\*.*$/, "")),
+    );
+    if (!path.startsWith("backend/") && !path.startsWith("../"))
+      found.add(path);
+  };
+  const scan = (dir, recurse) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (!["target", "gen", "node_modules"].includes(entry.name)) {
-          walk(path);
-        }
-      } else if (entry.name.endsWith(".rs")) {
-        const from = relative(root, dir).split("\\").join("/");
-        const text = readFileSync(path, "utf8");
-        for (const [, target] of text.matchAll(
-          /include_(?:str|bytes)!\(\s*"([^"]+)"/g,
-        )) {
-          const file = posix.normalize(posix.join(from, target));
-          if (!file.startsWith("src-tauri/")) found.add(file);
-        }
+        if (recurse && entry.name !== "testdata") scan(path, true);
+        continue;
       }
+      if (!entry.name.endsWith(".go")) continue;
+      const from = relative(root, dir).split("\\").join("/") || ".";
+      const text = readFileSync(path, "utf8");
+      for (const [, list] of text.matchAll(/^\s*\/\/go:embed (.+)$/gm))
+        for (const target of list.trim().split(/\s+/)) add(from, target);
+      if (!entry.name.endsWith("_test.go")) continue;
+      for (const [, target] of text.matchAll(
+        /"((?:\.\.\/)+(?:src|e2e|docs)\/[^"]*)"/g,
+      ))
+        add(from, target);
+      // backend/ai's tests name repository files from its root.
+      for (const [, target] of text.matchAll(/readRepo\("([^"]+)"/g))
+        found.add(target);
     }
   };
-  walk(join(root, "src-tauri"));
+  scan(root, false);
+  scan(join(root, "backend"), true);
   return [...found].sort();
 }
 
@@ -210,17 +216,17 @@ function main(argv) {
         .filter(Boolean);
       const push = argv.includes("--push");
       const read = (file) => [show(base, file), show("HEAD", file)];
-      const rustReads = rustIncludes();
-      const jobs = classify({ files, push, read, rustReads });
+      const reads = goReads();
+      const jobs = classify({ files, push, read, goReads: reads });
       const full =
         !push &&
         files.includes("package.json") &&
         bumpsVersion(...read("package.json"));
       result = {
         ...jobs,
-        // The full suite builds Rust on every platform, as the tag will.
+        // The full suite builds Go on every platform, as the tag will.
         native: jobs.native || full,
-        docs: !push && docsOnly({ files, rustReads }),
+        docs: !push && docsOnly({ files, goReads: reads }),
         roundtrip: !jobs.light && reachesSaving({ files, push }),
         full,
       };
