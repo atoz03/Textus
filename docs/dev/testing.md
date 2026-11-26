@@ -388,12 +388,14 @@ makes the failure rarer. A fix is done when 100 repeats under throttling
 pass.
 
 Vitest starts one worker per core. On a machine with very many (191
-workers on a 192-core server), the workers' start makes a few editor tests
-miss their 5-second limit while their editor loads:
+workers on a 192-core server), the workers' start makes a few tests miss
+their limit while what they test loads: the editor in
 `src/editor/html/html-align.test.ts`, `src/editor/modes/SplitView.test.tsx`
-and `src/editor/embeds/note-embed-render.test.ts`. They pass alone, and the
-whole suite passes with `npx vitest run --maxWorkers=32`; a test that fails
-that way too is a real failure.
+and `src/editor/embeds/note-embed-render.test.ts` (5 seconds), and the
+report dialog in `src/app/report/AppErrorBoundary.test.tsx` (1 second).
+They pass alone, and the whole suite passes with
+`npx vitest run --maxWorkers=32`; a test that fails that way too is a real
+failure.
 
 ## What is covered, by kind
 
