@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"maps"
+	"os"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -275,15 +276,22 @@ func isTempName(p string) bool {
 
 // asWritten reports whether a path of an event of op can be one the app
 // wrote: made or written over, never taken away. Of a rename's two paths,
-// the second is where it went.
-func asWritten(op mygo.FileOp, index int) bool {
+// the second is where it went. A system may report the file a save renamed
+// over as removed, or renamed away (Windows does): a path still there was
+// written over, not taken away.
+func asWritten(op mygo.FileOp, index int, path string) bool {
 	switch op {
 	case mygo.FileCreate, mygo.FileWrite:
 		return true
 	case mygo.FileRename:
-		return index == 1
+		if index == 1 {
+			return true
+		}
+	case mygo.FileHint:
+		return false
 	}
-	return false
+	_, err := os.Lstat(path)
+	return err == nil
 }
 
 // touched is the open folders a batch of the watch of root changed, as the
@@ -307,7 +315,7 @@ func touched(root string, events []mygo.FileEvent, known map[string]string, own 
 		}
 		for i, rel := range paths {
 			p := filepath.Join(root, filepath.FromSlash(rel))
-			if isTempName(p) || (asWritten(e.Op, i) && own(p)) {
+			if isTempName(p) || (asWritten(e.Op, i, p) && own(p)) {
 				continue
 			}
 			for _, dir := range []string{filepath.Dir(p), p} {

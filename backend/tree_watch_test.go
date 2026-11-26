@@ -80,6 +80,37 @@ func TestOnlyWhatMakesOrWritesAFileCanBeTheAppsOwn(t *testing.T) {
 	}
 }
 
+// A system that reports the file a save renamed over as removed (Windows):
+// while the file is still there, it was the app's own write; once gone, it
+// is news.
+func TestAnOwnFileReportedRemovedButStillThereWasWrittenOver(t *testing.T) {
+	dir := t.TempDir()
+	known := map[string]string{dir: "/link/notes"}
+	file := filepath.Join(dir, "own.md")
+	write := func() {
+		if err := os.WriteFile(file, []byte("# Own"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write()
+	own := func(string) bool { return true }
+	for _, e := range []mygo.FileEvent{
+		{Op: mygo.FileRemove, Path: "own.md"},
+		{Op: mygo.FileRename, OldPath: "own.md", Path: "away.md"},
+	} {
+		if dirs, _ := touched(dir, []mygo.FileEvent{e}, known, own); len(dirs) != 0 {
+			t.Errorf("%s while there: %v", e.Op, dirs)
+		}
+		if err := os.Remove(file); err != nil {
+			t.Fatal(err)
+		}
+		if dirs, _ := touched(dir, []mygo.FileEvent{e}, known, own); !slices.Equal(dirs, []string{"/link/notes"}) {
+			t.Errorf("%s once gone: %v", e.Op, dirs)
+		}
+		write()
+	}
+}
+
 func TestWatchedWholeOnlyTheTopmostOpenFoldersAreWatched(t *testing.T) {
 	at := filepath.FromSlash
 	dirs := []string{at("/n"), at("/n/a"), at("/n/a/b"), at("/other"), at("/nb")}
