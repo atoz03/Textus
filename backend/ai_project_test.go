@@ -220,6 +220,17 @@ func TestDocumentsAreListedReadAndSearchedAsTheirText(t *testing.T) {
 	}
 }
 
+func TestEveryDocumentExtensionHasAnArm(t *testing.T) {
+	dir := t.TempDir()
+	for _, ext := range documentExtensions {
+		path := filepath.Join(dir, "empty."+ext)
+		writeText(t, path, "")
+		if _, err := extractDocument(path); err != nil && err.Error() == codeError("notDocument").Error() {
+			t.Errorf("no arm for .%s", ext)
+		}
+	}
+}
+
 func TestSearchStopsWhenTheTimeIsUp(t *testing.T) {
 	dir := project(t, map[string]string{"a.md": "beta"})
 	if found := searchInOrder(dir, []string{"a.md"}, "beta", time.Now()); found.read != 0 || len(found.hits) != 0 {

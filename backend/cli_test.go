@@ -1,6 +1,8 @@
 package backend
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -252,6 +254,33 @@ func TestFilesAreCreatedMovedListedSearchedAndRead(t *testing.T) {
 	}
 }
 
+// helloPDF is a one-page PDF that reads "Hello", its cross-reference
+// table worked out as it is written.
+func helloPDF() []byte {
+	content := "BT /F1 10 Tf 72 700 Td (Hello) Tj ET"
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+		fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content), content),
+	}
+	var b bytes.Buffer
+	b.WriteString("%PDF-1.4\n")
+	at := make([]int, len(objects))
+	for i, o := range objects {
+		at[i] = b.Len()
+		fmt.Fprintf(&b, "%d 0 obj\n%s\nendobj\n", i+1, o)
+	}
+	xref := b.Len()
+	fmt.Fprintf(&b, "xref\n0 %d\n0000000000 65535 f \n", len(objects)+1)
+	for _, n := range at {
+		fmt.Fprintf(&b, "%010d 00000 n \n", n)
+	}
+	fmt.Fprintf(&b, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, xref)
+	return b.Bytes()
+}
+
 func TestReadPrintsDocumentsAsMarkdownOrWhyNot(t *testing.T) {
 	dir := t.TempDir()
 	sheetTable := "## Counts\n\n| Words |\n| --- |\n| 120 |\n"
@@ -279,6 +308,7 @@ func TestReadPrintsDocumentsAsMarkdownOrWhyNot(t *testing.T) {
 			{"OEBPS/one.xhtml", `<html><body><h1>One</h1><p>It began.</p></body></html>`},
 		}), "**Title:** A Book\n\n# One\n\nIt began.\n"},
 		"letter.rtf": {[]byte(`{\rtf1\ansi {\b Dear} reader,\par}`), "**Dear** reader,\n"},
+		"paper.pdf":  {helloPDF(), "Hello\n"},
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), file.data, 0o644); err != nil {
 			t.Fatal(err)
@@ -290,6 +320,7 @@ func TestReadPrintsDocumentsAsMarkdownOrWhyNot(t *testing.T) {
 	// Without the error table, a coded error reads as its code.
 	for name, file := range map[string]struct{ data, why string }{
 		"broken.rtf": {"plain text", "unreadable"},
+		"broken.pdf": {"%PDF-1.4 not really", "This PDF can't be read."},
 		"empty.xlsx": {"", "This spreadsheet can't be read."},
 		"blank.rtf":  {`{\rtf1 {\fonttbl\f0 Arial;}}`, "noText"},
 	} {
