@@ -13,11 +13,8 @@ import (
 // xlsxBook is what reading a worksheet needs from the rest of the
 // workbook.
 type xlsxBook struct {
+	excelStyles
 	strings []string
-	// dates is, by cell format (a cell's s), whether its number format
-	// shows a date.
-	dates    []bool
-	date1904 bool
 }
 
 func xlsxSheets(z *zip.Reader) ([]*sheet, error) {
@@ -125,11 +122,11 @@ func xlsxUnescape(s string) string {
 }
 
 // xlsxDates is, for each cell format (cellXfs) in order, whether its
-// number format - a custom one (numFmts) or one of Excel's own - shows a
-// date.
+// number format - one the workbook writes out (numFmts) or one of
+// Excel's own - shows a date.
 func xlsxDates(data []byte) []bool {
-	custom := map[string]string{}
-	var dates []bool
+	formats := map[int]string{}
+	var xfs []int
 	x := newPull(data)
 	for n := x.next(); n.kind != nodeEnd; n = x.next() {
 		if n.kind != nodeOpen {
@@ -138,8 +135,8 @@ func xlsxDates(data []byte) []bool {
 		switch n.tag.name {
 		case "numFmts":
 			x.walk(func(t tag) bool {
-				if t.name == "numFmt" {
-					custom[t.val("numFmtId")] = t.val("formatCode")
+				if id, err := strconv.Atoi(t.val("numFmtId")); t.name == "numFmt" && err == nil {
+					formats[id] = t.val("formatCode")
 				}
 				x.skip()
 				return true
@@ -147,17 +144,15 @@ func xlsxDates(data []byte) []bool {
 		case "cellXfs":
 			x.walk(func(t tag) bool {
 				if t.name == "xf" {
-					id := t.val("numFmtId")
-					code, ok := custom[id]
-					builtin, _ := strconv.Atoi(id)
-					dates = append(dates, ok && excelDateFormat(code) || !ok && excelBuiltinDate(builtin))
+					id, _ := strconv.Atoi(t.val("numFmtId"))
+					xfs = append(xfs, id)
 				}
 				x.skip()
 				return true
 			})
 		}
 	}
-	return dates
+	return excelCellDates(xfs, formats)
 }
 
 // read reads a worksheet's rows into s.
@@ -227,10 +222,6 @@ func (b *xlsxBook) cell(x *pull, c tag) string {
 	if err != nil {
 		return v
 	}
-	if style, _ := strconv.Atoi(c.val("s")); style >= 0 && style < len(b.dates) && b.dates[style] {
-		if date, ok := excelDate(f, b.date1904); ok {
-			return date
-		}
-	}
-	return sheetNumber(f)
+	style, _ := strconv.Atoi(c.val("s"))
+	return b.number(f, style)
 }
