@@ -259,7 +259,7 @@ frontend's dev server and build). The backend is the Go package
 | `themegallery.go`, `extstats.go`, `word.go`                                              | The theme gallery, the extensions' download counts, and Word (.docx) import.                                                                      |
 | `ai_endpoints.go`, `ai_state.go`, `ai_suggest.go`                                        | Textus AI: custom endpoints, model lists, kept proposals, revision choices, completions, titles, next messages.                                   |
 | `ai/`                                                                                    | Package `ai`: the provider catalog, how each server takes a key, routes, one request in each dialect, completions.                                |
-| `extract/`                                                                               | Package `extract`: a .docx read as Markdown, for import and for the AI.                                                                           |
+| `extract/`                                                                               | Package `extract`: PDF, Word, PowerPoint, spreadsheets, EPUB, RTF and HTML as Markdown, for Word import, the AI and `textus read`.                |
 | `cli_*.go`, `cli/`                                                                       | The `textus` terminal command: run before the app (`RunCLI`), answered by the running app, and installed ([cli.md](cli.md)).                      |
 | `stubs.go`                                                                               | The iOS build's own commands, which fail on the desktop: no desktop command waits there any more.                                                 |
 
@@ -269,10 +269,9 @@ touches `system.go` answers without acting on them (the Roman input
 source for a plugin's key mode, the Edit menu's native actions, drag
 modifiers), the AI's live evals ([ai-eval.md](../design/ai-eval.md)),
 the chat's `edit_chapters` tool (a helper per chapter for a change through
-a long document), reading PDF, PowerPoint, spreadsheet, EPUB and RTF files
-for the AI and `textus read` (`extractDocument` reads Word and HTML), the
-portable Windows build (`distribution.go`), and the iOS and Android builds. Web page tabs are native
-pages on macOS and Windows only, and tabs drag between windows there
+a long document), the portable Windows build (`distribution.go`), and the
+iOS and Android builds. Web page tabs are native pages on macOS and
+Windows only, and tabs drag between windows there
 only: Linux, Wayland above all, gives no window positions.
 `src/platform/capabilities.ts` turns the frontend's side of what is
 missing off.

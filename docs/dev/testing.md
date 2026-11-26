@@ -534,9 +534,10 @@ doesn't have the live evals yet ([architecture.md](architecture.md#the-backend))
   that it looks the same.
 - **macOS and Windows native behaviour**: drag-to-merge, the file dialogs,
   the updater, PDF export, notarized bundles. CI proves they compile.
-- **Attachment extraction of real files.** The .docx reader is tested on
-  hand-written XML. The Go backend reads only Word and HTML documents for
-  now ([architecture.md](architecture.md#the-backend)).
+- **Attachment extraction of real files.** The document readers
+  (`backend/extract/`) are tested on files the tests build: XML parts,
+  Excel's binary records, compound files and PDFs, not files that Word,
+  Excel, LibreOffice or a PDF printer saved.
 
 Changes to window management, drafts, or anything that can lose unsaved
 work must still be exercised by hand, and the PR should say what was.

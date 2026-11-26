@@ -55,8 +55,7 @@ there, and the project's own settings live in its `.textus/` folder.**
   and RTF files (`find_files`, which lists them all without a name,
   `read_file`, `search_files`;
   `backend/extract/` turns them into Markdown - headings, lists,
-  tables, slides and their notes, footnotes - as for chat attachments; the
-  Go backend reads only Word and HTML so far,
+  tables, slides and their notes, footnotes - as for chat attachments,
   [architecture.md](../dev/architecture.md#the-backend)),
   and look at its images with `read_file` when the provider takes images;
   `@` in the composer attaches a text file. They walk it as the sidebar's
