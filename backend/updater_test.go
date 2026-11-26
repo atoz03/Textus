@@ -36,6 +36,16 @@ func TestNoChannelNamesTheOldAppsManifest(t *testing.T) {
 	}
 }
 
+func TestBothChannelsReadThisRepositorysReleases(t *testing.T) {
+	// Signed with the key in mygo.json: another repository's would be
+	// refused at install.
+	for _, url := range []string{stableManifestURL, betaManifestURL} {
+		if !strings.HasPrefix(url, "https://github.com/atoz03/Textus/releases/latest/download/textus-") {
+			t.Errorf("%s is not this repository's", url)
+		}
+	}
+}
+
 func TestVersionsCompareAsSemverDoes(t *testing.T) {
 	for _, c := range []struct {
 		a, b string
@@ -141,8 +151,38 @@ func TestTheFirstManifestThatAnswersDecides(t *testing.T) {
 	if err != nil || found == nil || found.Version != "1.2.0" {
 		t.Fatalf("%+v, %v", found, err)
 	}
-	// Every manifest failing is an error.
-	if _, err := checkForUpdate(context.Background(), "1.1.0", []string{srv.URL + "/none.json"}, false); err == nil {
-		t.Error("no error for a missing manifest")
+}
+
+func TestAChannelWithNothingPublishedHasNoUpdate(t *testing.T) {
+	// GitHub's releases/latest while a repository has only pre-releases.
+	srv := manifestServer(t, nil)
+	for _, back := range []bool{false, true} {
+		found, err := checkForUpdate(context.Background(), "1.4.7-rc.4", []string{srv.URL + "/textus-beta.json", srv.URL + "/textus-latest.json"}, back)
+		if found != nil || err != nil {
+			t.Errorf("back to stable %v: %+v, %v", back, found, err)
+		}
+	}
+	gone := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusGone)
+	}))
+	t.Cleanup(gone.Close)
+	if found, err := checkForUpdate(context.Background(), "1.4.7", []string{gone.URL + "/textus-latest.json"}, false); found != nil || err != nil {
+		t.Errorf("410: %+v, %v", found, err)
+	}
+}
+
+func TestAManifestThatCantBeReadIsAnError(t *testing.T) {
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "down", http.StatusBadGateway)
+	}))
+	t.Cleanup(broken.Close)
+	missing := manifestServer(t, nil)
+	_, err := checkForUpdate(context.Background(), "1.1.0", []string{broken.URL + "/textus-beta.json", missing.URL + "/textus-latest.json"}, false)
+	if err == nil || !strings.Contains(err.Error(), "502") {
+		t.Errorf("a server error and a missing manifest: %v", err)
+	}
+	bad := manifestServer(t, map[string]string{"/textus-latest.json": "<html>not a manifest</html>"})
+	if _, err := checkForUpdate(context.Background(), "1.1.0", []string{bad.URL + "/textus-latest.json"}, false); err == nil {
+		t.Error("no error for a manifest that isn't one")
 	}
 }

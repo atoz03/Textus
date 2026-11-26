@@ -31,7 +31,8 @@ import (
 // signed with another, which this build would refuse. No workflow writes
 // this repository's textus-beta.json yet (update-beta-manifest.yml writes
 // CatVinci-Studio's download bucket), so beta finds none there and reads
-// stable.
+// stable. While the repository has only pre-releases, releases/latest has
+// neither file (GitHub answers 404): the check then finds no update.
 //
 // A Go build's entry in the manifest is MyGo's update of its target,
 // "mygo-<GOOS>-<GOARCH>": the archive's URL, size and Ed25519 signature
@@ -136,6 +137,12 @@ var updates struct {
 // once every window has closed.
 var relaunchAfterQuit atomic.Bool
 
+// errNoManifest: the channel's manifest isn't published. GitHub answers
+// 404 for releases/latest/download/... until a release that isn't a
+// pre-release carries the file, so a repository with only pre-releases has
+// none: no update on that channel yet, not a failed check.
+var errNoManifest = errors.New("no update manifest is published")
+
 func fetchManifest(ctx context.Context, url string) (updateManifest, jsontext.Value, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -146,7 +153,11 @@ func fetchManifest(ctx context.Context, url string) (updateManifest, jsontext.Va
 		return updateManifest{}, nil, errors.New(netErrorText(err))
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound, http.StatusGone:
+		return updateManifest{}, nil, errNoManifest
+	default:
 		return updateManifest{}, nil, fmt.Errorf("the update server answered %s", resp.Status)
 	}
 	body, err := readLimited(resp, maxManifestBytes)
@@ -161,11 +172,15 @@ func fetchManifest(ctx context.Context, url string) (updateManifest, jsontext.Va
 }
 
 // checkForUpdate asks the manifests at urls in order; the first that
-// answers decides, as the Tauri updater did.
+// answers decides, as the Tauri updater did. With none published there is
+// no update; one that couldn't be read is an error.
 func checkForUpdate(ctx context.Context, current string, urls []string, backToStable bool) (*UpdateMetadata, error) {
 	var lastErr error
 	for _, url := range urls {
 		m, raw, err := fetchManifest(ctx, url)
+		if errors.Is(err, errNoManifest) {
+			continue
+		}
 		if err != nil {
 			lastErr = err
 			continue

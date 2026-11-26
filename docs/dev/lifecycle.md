@@ -119,7 +119,9 @@ window open, it opens the hidden `background-host` window to run it
 The update check runs in an editor window's frontend
 (`app/app-update.ts`): at the window's start and every 4 hours while it is
 open. A windowless process checks nothing, and the next window checks at
-once.
+once. A channel whose manifest isn't published has no update rather than
+a failed check: GitHub answers 404 for `releases/latest/download/` until a
+release that isn't a pre-release carries `textus-latest.json`.
 
 The backend's `download_and_install_update` (`updater.go`) has MyGo's
 updater download the update, check its signature and replace the app's
