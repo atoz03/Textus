@@ -386,6 +386,14 @@ with `expect(...)` or `expect.poll(...)`. A longer `waitForTimeout` only
 makes the failure rarer. A fix is done when 100 repeats under throttling
 pass.
 
+Vitest starts one worker per core. On a machine with very many (191
+workers on a 192-core server), the workers' start makes a few editor tests
+miss their 5-second limit while their editor loads:
+`src/editor/html/html-align.test.ts`, `src/editor/modes/SplitView.test.tsx`
+and `src/editor/embeds/note-embed-render.test.ts`. They pass alone, and the
+whole suite passes with `npx vitest run --maxWorkers=32`; a test that fails
+that way too is a real failure.
+
 ## What is covered, by kind
 
 The suites divide by _what kind of mistake they catch_, which is more useful
