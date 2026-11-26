@@ -5,9 +5,6 @@ const { set, updated } = vi.hoisted(() => ({
   updated: [] as unknown[],
 }));
 vi.mock("../platform/ipc", () => ({ plugins: { set } }));
-vi.mock("./store/ask-permissions", () => ({
-  askPermissions: async () => null,
-}));
 vi.mock("./manager", () => ({
   apply: () => {},
   loadPlugins: async () => {},
@@ -17,19 +14,26 @@ vi.mock("./running-hosts", () => ({ hosts: new Map(), stopHost: () => {} }));
 vi.mock("./store/plugin-records", () => ({
   pluginRecord: () => ({
     id: "p",
-    status: "on",
-    granted: ["files.read"],
-    manifest: { permissions: ["files.read", "network"] },
+    status: "off",
+    granted: [],
+    manifest: { permissions: ["files.read", "network:api.example.com"] },
   }),
+  pluginMayRun: () => false,
   pluginsSnapshot: () => ({ allOn: true }),
   publish: () => {},
   update: (_id: string, patch: unknown) => updated.push(patch),
 }));
+const confirm = vi.hoisted(() => vi.fn());
+vi.mock("../engine/controls/app-dialog", () => ({ showConfirm: confirm }));
 
 import { setPluginEnabled } from "./plugin-switches";
 
-it("turns off a plugin on whose update's new permission is refused", async () => {
+it("switches a plugin on with everything its manifest lists, asking nothing", async () => {
   await setPluginEnabled("p", true);
-  expect(set).toHaveBeenCalledWith("p", false, ["files.read"]);
-  expect(updated).toEqual([expect.objectContaining({ status: "off" })]);
+  const all = ["files.read", "network:api.example.com"];
+  expect(set).toHaveBeenCalledWith("p", true, all);
+  expect(updated).toEqual([
+    expect.objectContaining({ status: "on", granted: all }),
+  ]);
+  expect(confirm).not.toHaveBeenCalled();
 });

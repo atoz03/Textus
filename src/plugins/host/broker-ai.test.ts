@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 const ipc = vi.hoisted(() => ({
-  aiStatus: vi.fn(async () => ({
-    on: true,
-    allowed: false,
-    used: 0,
-    limit: 100000,
-  })),
-  aiAllow: vi.fn(async () => null),
+  aiStatus: vi.fn(async () => ({ on: true, used: 0 })),
   aiComplete: vi.fn(),
   aiStream: vi.fn(),
 }));
@@ -39,28 +33,27 @@ describe("a plugin asking the user's AI model", () => {
     expect(() => promptOf([{ role: "system", content: "x" }])).toThrow();
   });
 
-  it("asks the user on the first call, then asks the model", async () => {
-    ipc.aiComplete
-      .mockRejectedValueOnce("plugin-ai-not-allowed")
-      .mockResolvedValueOnce("Bonjour");
-    confirm.mockResolvedValueOnce(true);
+  it("asks the model straight away, the user never asked", async () => {
+    ipc.aiComplete.mockResolvedValueOnce("Bonjour");
     const complete = aiModelHandlers(scope)["ai.complete"];
     await expect(
       complete({ system: "Translate to French.", messages: "Hello" }),
     ).resolves.toBe("Bonjour");
-    expect(confirm.mock.calls[0][0]).toContain("Translate wants to use");
-    expect(ipc.aiAllow).toHaveBeenCalledWith("a.translate", false);
+    expect(ipc.aiComplete).toHaveBeenCalledWith(
+      "a.translate",
+      "Translate to French.",
+      "Hello",
+      null,
+    );
+    expect(confirm).not.toHaveBeenCalled();
   });
 
-  it("streams the answer to the plugin piece by piece, asked as complete is", async () => {
-    ipc.aiStream
-      .mockRejectedValueOnce("plugin-ai-not-allowed")
-      .mockImplementationOnce(async (_p, _s, _m, onText) => {
-        onText("Bon");
-        onText("jour");
-        return "Bonjour";
-      });
-    confirm.mockResolvedValueOnce(true);
+  it("streams the answer to the plugin piece by piece", async () => {
+    ipc.aiStream.mockImplementationOnce(async (_p, _s, _m, onText) => {
+      onText("Bon");
+      onText("jour");
+      return "Bonjour";
+    });
     const request = vi.fn(async () => null);
     const stream = aiModelHandlers({ ...scope, request } as PluginScope)[
       "ai.stream"
@@ -74,14 +67,11 @@ describe("a plugin asking the user's AI model", () => {
     ]);
   });
 
-  it("stops when the user says no, and asks for more at the limit", async () => {
-    ipc.aiComplete.mockRejectedValueOnce("plugin-ai-limit");
-    confirm.mockResolvedValueOnce(false);
+  it("passes on what the model's call failed with", async () => {
+    ipc.aiComplete.mockRejectedValueOnce(new Error("offline"));
     const complete = aiModelHandlers(scope)["ai.complete"];
-    await expect(complete({ messages: "Hello" })).rejects.toThrow(
-      "didn't allow",
-    );
-    expect(confirm.mock.calls.at(-1)?.[0]).toContain("Allow 100,000 more?");
+    await expect(complete({ messages: "Hello" })).rejects.toThrow("offline");
+    expect(confirm).not.toHaveBeenCalled();
   });
 });
 

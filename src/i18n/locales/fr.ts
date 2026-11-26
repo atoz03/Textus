@@ -2063,11 +2063,6 @@ utiliser une.
   pluginStatusAllOff: "Les extensions sont désactivées.",
   pluginDevTag: "développement",
   pluginEnableLabel: "Activer {name}",
-  pluginPermissionsLabel: "Autorisations",
-  pluginNoPermissions: "N’en demande aucune.",
-  pluginGranted: "Accordée",
-  pluginNotGranted: "Non accordée",
-  pluginRevoke: "Retirer",
   pluginErrorsGroup: "Erreurs récentes",
   pluginErrorsCopy: "Copier",
   pluginErrorsClear: "Effacer",
@@ -2090,7 +2085,6 @@ utiliser une.
   pluginUninstallAsk:
     "Désinstaller {name} ? Ses fichiers et ses données seront supprimés.",
   pluginOk: "OK",
-  pluginAllow: "Autoriser",
   pluginPermissionsAsk: "{name} demande à :",
   pluginFailedNotice: "{name} a été désactivée : {reason}",
   pluginStoppedAnswering: "elle ne répondait plus",
@@ -2121,8 +2115,6 @@ utiliser une.
     "Récupérer, pousser et tirer le dépôt Git du dossier ouvert avec votre Git",
   pluginPermSsh:
     "Se connecter à des serveurs avec vos réglages SSH (seulement ceux que vous autorisez)",
-  pluginSshAsk:
-    "{plugin} veut se connecter à {host} avec vos réglages SSH, pour y lire et écrire des fichiers.",
   pluginSshUnknownHost:
     "{host} n'est pas encore un hôte connu. Connectez-vous-y une fois dans un terminal (ssh {host}) pour vérifier et accepter sa clé, puis réessayez.",
   pluginSshNeedsLogin:
@@ -2131,12 +2123,6 @@ utiliser une.
     "Lire et laisser des notes dans la marge de vos documents",
   pluginPermAiModel:
     "Utiliser votre modèle d'IA (compte dans l'usage de votre service d'IA)",
-  pluginAiAsk:
-    "{plugin} veut utiliser votre modèle d'IA. Ce qu'il envoie compte dans l'usage de votre service d'IA, jusqu'à {limit} jetons par mois pour ce plugin.",
-  pluginAiLimit:
-    "{plugin} a utilisé ses {limit} jetons d'IA ce mois-ci. En autoriser {limit} de plus ?",
-  pluginAiAllow: "Autoriser",
-  pluginAiUsage: "IA ce mois-ci : {used} sur {limit} jetons",
   pluginPermAgents:
     "Lancer un agent IA installé sur cet ordinateur (il peut lire et modifier des fichiers)",
   pluginPermBackground:

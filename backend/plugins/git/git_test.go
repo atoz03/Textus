@@ -200,32 +200,24 @@ func TestARepositoryWhoseSettingsRunAProgramRunsNothingUntilTrusted(t *testing.T
 	}
 }
 
-func TestACommitAsksAboutTheHooksItWouldRun(t *testing.T) {
+func TestACommitRunsTheHooksAsTheWritersGitDoes(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("a shell script")
 	}
 	top, root := repo(t)
+	ran := filepath.Join(t.TempDir(), "ran")
 	hook := filepath.Join(top, ".git", "hooks", "pre-commit")
-	write(t, hook, "#!/bin/sh\nexit 0\n")
+	write(t, hook, "#!/bin/sh\ntouch '"+ran+"'\n")
 	if err := os.Chmod(hook, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	s := state(t, "files.read", "git.commit")
-	store := filepath.Join(top, "trusted.json")
-	files := []string{root + "/c.md"}
-	// Reading runs no hook: nothing to ask.
-	if _, err := GetStatus(s, store, "a.b", root); err != nil {
+	// Nothing to trust first: the repository's settings start no program.
+	if _, err := MakeCommit(s, nowhere, "a.b", root, "Add c", []string{root + "/c.md"}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := MakeCommit(s, store, "a.b", root, "Add c", files)
-	if err == nil || err.Error() != Untrusted+"hook: pre-commit" {
-		t.Fatalf("commit = %v", err)
-	}
-	if err := trust(store, top, []string{"hook: pre-commit"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := MakeCommit(s, store, "a.b", root, "Add c", files); err != nil {
-		t.Fatal(err)
+	if _, err := os.Stat(ran); err != nil {
+		t.Error("the hook didn't run")
 	}
 }
 

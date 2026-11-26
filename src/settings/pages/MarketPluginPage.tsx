@@ -4,18 +4,12 @@ import { Byline } from "./CatalogRow";
 import { PluginIcon, PluginReadme } from "./PluginArt";
 import type { ReactNode } from "react";
 import { installsText } from "./installs-text";
-import { SettingsGroup } from "./SettingsGroup";
-import { SettingRow } from "../sections/controls";
 import type { Strings } from "../../i18n/strings";
 import { pluginName, pluginText } from "../../plugins/store/plugin-records";
-import {
-  permissionLabel,
-  shownPermissions,
-} from "../../plugins/store/permissions";
 import type { CatalogItem } from "../../plugins/store/catalog";
 
 /** A catalog plugin's page in Get more, before it is installed: what it
- *  is, its pictures, its README and the permissions it will ask for. */
+ *  is, its pictures and its README. */
 export function MarketPluginPage({
   item,
   t,
@@ -84,15 +78,6 @@ export function MarketPluginPage({
           label={fill(t.pluginReadmeLabel, { name })}
         />
       )}
-      <SettingsGroup title={t.pluginPermissionsLabel}>
-        {shownPermissions(item.manifest.permissions).length ? (
-          shownPermissions(item.manifest.permissions).map((p) => (
-            <SettingRow key={p} label={permissionLabel(p, t)} />
-          ))
-        ) : (
-          <SettingRow label={t.pluginNoPermissions} />
-        )}
-      </SettingsGroup>
     </MarketPage>
   );
 }

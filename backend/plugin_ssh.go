@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 
@@ -15,12 +14,8 @@ import (
 )
 
 // textus.ssh's commands (backend/plugins/ssh): the hosts the user's ssh
-// config names, the user's yes to a plugin reaching one, and a link's
-// files over SFTP.
-
-// sshNotAllowed refuses a link until the user says yes to the plugin
-// reaching the host (NOT_ALLOWED in src/plugins/host/broker-ssh.ts).
-const sshNotAllowed = "plugin-ssh-not-allowed"
+// config names, a link to one for a plugin that is on with ssh, and the
+// link's files over SFTP.
 
 // maxSSHRead is the most a read hands over at once.
 const maxSSHRead = 64 * 1024 * 1024
@@ -30,24 +25,6 @@ type sshLinks struct {
 	mu    sync.Mutex
 	next  uint32
 	links map[uint32]*ssh.Link
-	// allowMu makes each read-change-write of ssh.json one step.
-	allowMu sync.Mutex
-}
-
-// sshAllowed are the hosts each plugin may reach, as the user allowed
-// (plugins/ssh.json).
-type sshAllowed struct {
-	Plugins map[string][]string `json:"plugins"`
-}
-
-func (a *App) sshAllowedFile() string { return filepath.Join(a.pluginsRoot(), "ssh.json") }
-
-func (a *App) sshAllowed() sshAllowed {
-	all, err := readJSONStore[sshAllowed](a.sshAllowedFile())
-	if err != nil || all.Plugins == nil {
-		return sshAllowed{Plugins: map[string][]string{}}
-	}
-	return all
 }
 
 // sshGranted is nil when plugin id is on and holds ssh.
@@ -153,37 +130,13 @@ func init() {
 		dir := filepath.Join(home, ".ssh")
 		return ssh.HostsIn(filepath.Join(dir, "config"), dir), nil
 	})
-	// The user's yes to id reaching host.
-	command("plugin_ssh_allow", func(c *Call, a struct {
-		ID   string `json:"id"`
-		Host string `json:"host"`
-	}) (nothing, error) {
-		if err := c.app.sshGranted(a.ID); err != nil {
-			return nil, err
-		}
-		if !ssh.ValidHost(a.Host) {
-			return nil, fmt.Errorf("%s isn't a host name.", a.Host)
-		}
-		c.app.plug.ssh.allowMu.Lock()
-		defer c.app.plug.ssh.allowMu.Unlock()
-		all := c.app.sshAllowed()
-		if hosts := all.Plugins[a.ID]; !slices.Contains(hosts, a.Host) {
-			hosts = append(hosts, a.Host)
-			slices.Sort(hosts)
-			all.Plugins[a.ID] = hosts
-		}
-		return nil, writePrettyJSON(c.app.sshAllowedFile(), all)
-	})
-	// A link to host; refused with sshNotAllowed until the user said yes.
+	// A link to host, through the user's own ssh and its config.
 	command("plugin_ssh_connect", func(c *Call, a struct {
 		ID   string `json:"id"`
 		Host string `json:"host"`
 	}) (uint32, error) {
 		if err := c.app.sshGranted(a.ID); err != nil {
 			return 0, err
-		}
-		if !slices.Contains(c.app.sshAllowed().Plugins[a.ID], a.Host) {
-			return 0, errors.New(sshNotAllowed)
 		}
 		return c.app.connectSSH(a.ID, a.Host, "")
 	})

@@ -14,17 +14,12 @@ export const commands = {
 	plugin_export: (id: string, publisher: string, folder: string) => __INVOKE<string>("plugin_export", { id, publisher, folder }),
 	/**  Settings › Plugins › Plugins, the switch for all of them. */
 	plugins_set_all: (on: boolean) => __INVOKE<null>("plugins_set_all", { on }),
-	/**  Whether Textus AI is on, and the plugin's yes and tokens this month. */
+	/**  Whether Textus AI is on, and the plugin's tokens this month. */
 	plugin_ai_status: (plugin: string) => __INVOKE<PluginAiStatus>("plugin_ai_status", { plugin }),
 	/**
-	 *  The user's yes to a plugin's first call; `more` also allows another
-	 *  month's allowance, for this month.
-	 */
-	plugin_ai_allow: (plugin: string, more: boolean) => __INVOKE<null>("plugin_ai_allow", { plugin, more }),
-	/**
-	 *  The writing model's answer to `prompt`, for a plugin with `ai.model`
-	 *  that the user allowed and that has tokens left this month. Cancelled
-	 *  by `cancel_id` (plugin_http_cancel), only the question is counted.
+	 *  The writing model's answer to `prompt`, for a plugin that is on with
+	 *  `ai.model`. Cancelled by `cancel_id` (plugin_http_cancel), only the
+	 *  question is counted.
 	 */
 	plugin_ai_complete: (plugin: string, system: string, prompt: string, cancelId: string | null) => __INVOKE<string>("plugin_ai_complete", { plugin, system, prompt, cancelId }),
 	/**
@@ -357,9 +352,7 @@ export type McpTool = {
 export type PluginAiStatus = {
 	/**  Textus AI is on. */
 	on: boolean,
-	allowed: boolean,
 	used: number,
-	limit: number,
 };
 
 /**  One tool, as the window describes it from the plugin's manifest. */

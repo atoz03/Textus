@@ -4,8 +4,6 @@ import { callBytes, command } from "./ipc-call";
 /** A plugin's links to servers through the user's own ssh (desktop). */
 export const ssh = {
   hosts: (id: string) => command("plugin_ssh_hosts", id),
-  /** The user's yes to `id` reaching `host`, kept. */
-  allow: (id: string, host: string) => command("plugin_ssh_allow", id, host),
   connect: (id: string, host: string) =>
     command("plugin_ssh_connect", id, host),
   home: (id: string, session: number) =>

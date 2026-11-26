@@ -1,12 +1,8 @@
-import { showConfirm } from "../../engine/controls/app-dialog";
 import { fill } from "../../i18n/fill";
 import { isDesktopApp } from "../../platform/capabilities";
 import { ssh } from "../../platform/ipc-ssh";
 import { toBase64 } from "../store/files";
 import { str, type Params, type PluginScope } from "./broker-scope";
-
-/** What Rust refuses a link with until the user answers. */
-const NOT_ALLOWED = "plugin-ssh-not-allowed";
 
 /** Takes a stopped plugin's links down. */
 export function stopPluginSsh(plugin: string): void {
@@ -19,8 +15,7 @@ const sessionOf = (value: unknown): number => {
   return value;
 };
 
-/** `textus.ssh`: a folder on a server through the user's own ssh; each host
- *  asked of the user once per plugin. */
+/** `textus.ssh`: a folder on a server through the user's own ssh. */
 export function sshHandlers(p: PluginScope) {
   const desktop = () => {
     if (!isDesktopApp) throw new Error("SSH is on the desktop only.");
@@ -43,18 +38,6 @@ export function sshHandlers(p: PluginScope) {
     "ssh.connect": async ({ host }: Params) => {
       desktop();
       const name = str(host, "host");
-      try {
-        return await ssh.connect(p.id, name);
-      } catch (error) {
-        if (String(error) !== NOT_ALLOWED) throw said(error, name);
-      }
-      const t = p.t();
-      const ok = await showConfirm(
-        fill(t.pluginSshAsk, { plugin: p.name(), host: name }),
-        { title: p.name(), okLabel: t.pluginAiAllow, cancelLabel: t.cancel },
-      );
-      if (!ok) throw new Error("The user didn't allow it.");
-      await ssh.allow(p.id, name);
       return ssh.connect(p.id, name).catch((error) => {
         throw said(error, name);
       });

@@ -1948,11 +1948,6 @@ type /name in a conversation to use one.
   pluginStatusAllOff: "Plugins are off.",
   pluginDevTag: "development",
   pluginEnableLabel: "Turn on {name}",
-  pluginPermissionsLabel: "Permissions",
-  pluginNoPermissions: "Asks for none.",
-  pluginGranted: "Granted",
-  pluginNotGranted: "Not granted",
-  pluginRevoke: "Revoke",
   pluginErrorsGroup: "Recent errors",
   pluginErrorsCopy: "Copy",
   pluginErrorsClear: "Clear",
@@ -1975,7 +1970,6 @@ type /name in a conversation to use one.
   pluginUninstallAsk:
     "Uninstall {name}? Its files and what it kept are removed.",
   pluginOk: "OK",
-  pluginAllow: "Allow",
   pluginPermissionsAsk: "{name} asks to:",
   pluginFailedNotice: "{name} was turned off: {reason}",
   pluginStoppedAnswering: "it stopped answering",
@@ -2006,8 +2000,6 @@ type /name in a conversation to use one.
     "Fetch, push and pull the open folder's Git repository with your Git",
   pluginPermSsh:
     "Connect to servers with your SSH settings (only ones you allow)",
-  pluginSshAsk:
-    "{plugin} wants to connect to {host} with your SSH settings, to read and write files there.",
   pluginSshUnknownHost:
     "{host} isn't a known host yet. Connect to it once in a terminal (ssh {host}) to check and accept its key, then try again.",
   pluginSshNeedsLogin:
@@ -2015,12 +2007,6 @@ type /name in a conversation to use one.
   pluginPermComments: "Read and leave notes in your documents' margins",
   pluginPermAiModel:
     "Use your AI model (it counts toward your AI service's usage)",
-  pluginAiAsk:
-    "{plugin} wants to use your AI model. What it sends counts toward your AI service's usage, up to {limit} tokens a month for this plugin.",
-  pluginAiLimit:
-    "{plugin} has used its {limit} AI tokens for this month. Allow {limit} more?",
-  pluginAiAllow: "Allow",
-  pluginAiUsage: "AI this month: {used} of {limit} tokens",
   pluginPermAgents:
     "Run an AI agent installed on this computer (it can read and change files)",
   pluginPermBackground: "Run code on a schedule, even with every window closed",

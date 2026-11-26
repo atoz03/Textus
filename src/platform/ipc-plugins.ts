@@ -97,11 +97,9 @@ export const agentsIpc = {
 
 export const plugins = {
   state: () => command("plugins_state"),
-  /** A plugin's use of the user's AI model: Textus AI on, the user's yes,
-   *  tokens this month. */
+  /** A plugin's use of the user's AI model: Textus AI on, tokens this
+   *  month. */
   aiStatus: (plugin: string) => command("plugin_ai_status", plugin),
-  aiAllow: (plugin: string, more: boolean) =>
-    command("plugin_ai_allow", plugin, more),
   /** Stopped by httpCancel(plugin, cancelId). */
   aiComplete: (
     plugin: string,

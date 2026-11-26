@@ -86,9 +86,7 @@ export const commands = {
 	plugin_git_pull: (id: string, root: string) => __INVOKE<null>("plugin_git_pull", { id, root }),
 	/**  The hosts named in the user's `~/.ssh/config`. */
 	plugin_ssh_hosts: (id: string) => __INVOKE<string[]>("plugin_ssh_hosts", { id }),
-	/**  The user's yes to `id` reaching `host`. */
-	plugin_ssh_allow: (id: string, host: string) => __INVOKE<null>("plugin_ssh_allow", { id, host }),
-	/**  A link to `host`; refused with NOT_ALLOWED until the user said yes. */
+	/**  A link to `host`, through the user's own ssh and its config. */
 	plugin_ssh_connect: (id: string, host: string) => __INVOKE<number>("plugin_ssh_connect", { id, host }),
 	/**  The folder the link starts in: the user's home there. */
 	plugin_ssh_home: (id: string, session: number) => __INVOKE<string>("plugin_ssh_home", { id, session }),

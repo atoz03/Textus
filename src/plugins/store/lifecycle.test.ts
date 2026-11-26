@@ -29,8 +29,6 @@ describe("a plugin's lifecycle", () => {
       ["failed", "disable", "off"],
       ["on", "fail", "failed"],
       ["off", "fail", "off"],
-      ["on", "revoke", "off"],
-      ["failed", "revoke", "failed"],
     ];
     for (const [from, type, to] of cases)
       expect(nextStatus(from, { type } as PluginEvent), `${from} ${type}`).toBe(
@@ -40,7 +38,7 @@ describe("a plugin's lifecycle", () => {
 
   it("never switches a plugin whose manifest can't be used", () => {
     for (const from of ["broken", "incompatible"] as const)
-      for (const type of ["enable", "disable", "fail", "revoke"] as const) {
+      for (const type of ["enable", "disable", "fail"] as const) {
         expect(nextStatus(from, { type })).toBe(from);
         expect(canSwitch(from)).toBe(false);
       }

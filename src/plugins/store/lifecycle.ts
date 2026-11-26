@@ -23,14 +23,12 @@ export type PluginEvent =
       manifest: "ok" | "broken" | "incompatible";
       enabled: boolean;
     }
-  /** Switched on, its permissions granted. */
+  /** Switched on, with what its manifest lists. */
   | { type: "enable" }
   /** Switched off. */
   | { type: "disable" }
   /** Its host stopped answering, threw on activation or erred too often. */
-  | { type: "fail" }
-  /** A permission taken back: without it the plugin can't run. */
-  | { type: "revoke" };
+  | { type: "fail" };
 
 export function nextStatus(
   status: PluginStatus | null,
@@ -50,8 +48,6 @@ export function nextStatus(
       return "off";
     case "fail":
       return status === "on" ? "failed" : status;
-    case "revoke":
-      return status === "on" ? "off" : status;
   }
 }
 

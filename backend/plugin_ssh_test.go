@@ -27,7 +27,7 @@ func sshApp(t *testing.T) *App {
 	return a
 }
 
-func TestAPluginReachesAHostOnlyOnceTheUserSaidYes(t *testing.T) {
+func TestAPluginWithSSHReachesTheUsersHostsWithoutBeingAsked(t *testing.T) {
 	a := sshApp(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -38,22 +38,17 @@ func TestAPluginReachesAHostOnlyOnceTheUserSaidYes(t *testing.T) {
 	if _, err := run(a, "plugin_ssh_hosts", `{"id":"b.other"}`); err == nil {
 		t.Fatal("a plugin without ssh read the hosts")
 	}
-	if _, err := run(a, "plugin_ssh_connect", `{"id":"a.ssh","host":"box"}`); err == nil || err.Error() != sshNotAllowed {
-		t.Fatalf("connect before yes: %v", err)
-	}
-	if _, err := run(a, "plugin_ssh_allow", `{"id":"a.ssh","host":"-oProxyCommand=x"}`); err == nil {
-		t.Fatal("an option was allowed as a host")
-	}
-	for range 2 {
-		if _, err := run(a, "plugin_ssh_allow", `{"id":"a.ssh","host":"box"}`); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if got := a.sshAllowed().Plugins["a.ssh"]; len(got) != 1 || got[0] != "box" {
-		t.Fatalf("allowed: %v", got)
+	// Only the user's ssh decides now: an option passed as a host never
+	// reaches it, and a plugin without ssh never connects.
+	if _, err := run(a, "plugin_ssh_connect", `{"id":"a.ssh","host":"-oProxyCommand=x"}`); err == nil ||
+		!strings.Contains(err.Error(), "isn't a host name") {
+		t.Fatalf("an option as a host: %v", err)
 	}
 	if _, err := run(a, "plugin_ssh_connect", `{"id":"b.other","host":"box"}`); err == nil {
 		t.Fatal("another plugin connected")
+	}
+	if _, err := os.Stat(filepath.Join(a.pluginsRoot(), "ssh.json")); err == nil {
+		t.Error("a list of allowed hosts was kept")
 	}
 	if _, err := run(a, "plugin_ssh_list", `{"id":"a.ssh","session":1,"path":"/"}`); err == nil ||
 		!strings.Contains(err.Error(), "closed") {

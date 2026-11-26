@@ -2045,11 +2045,6 @@ para usar una.
   pluginStatusAllOff: "Los complementos están desactivados.",
   pluginDevTag: "desarrollo",
   pluginEnableLabel: "Activar {name}",
-  pluginPermissionsLabel: "Permisos",
-  pluginNoPermissions: "No pide ninguno.",
-  pluginGranted: "Concedido",
-  pluginNotGranted: "No concedido",
-  pluginRevoke: "Revocar",
   pluginErrorsGroup: "Errores recientes",
   pluginErrorsCopy: "Copiar",
   pluginErrorsClear: "Borrar",
@@ -2072,7 +2067,6 @@ para usar una.
   pluginUninstallAsk:
     "¿Desinstalar {name}? Se eliminarán sus archivos y lo que guardó.",
   pluginOk: "Aceptar",
-  pluginAllow: "Permitir",
   pluginPermissionsAsk: "{name} pide:",
   pluginFailedNotice: "Se desactivó {name}: {reason}",
   pluginStoppedAnswering: "dejó de responder",
@@ -2102,8 +2096,6 @@ para usar una.
     "Obtener, enviar y traer el repositorio Git de la carpeta abierta con tu Git",
   pluginPermSsh:
     "Conectarse a servidores con tu configuración SSH (solo los que permitas)",
-  pluginSshAsk:
-    "{plugin} quiere conectarse a {host} con tu configuración SSH para leer y escribir archivos allí.",
   pluginSshUnknownHost:
     "{host} aún no es un host conocido. Conéctate una vez en una terminal (ssh {host}) para comprobar y aceptar su clave, y vuelve a intentarlo.",
   pluginSshNeedsLogin:
@@ -2111,12 +2103,6 @@ para usar una.
   pluginPermComments: "Leer y dejar notas en el margen de tus documentos",
   pluginPermAiModel:
     "Usar tu modelo de IA (cuenta para el uso de tu servicio de IA)",
-  pluginAiAsk:
-    "{plugin} quiere usar tu modelo de IA. Lo que envía cuenta para el uso de tu servicio de IA, hasta {limit} tokens al mes para este plugin.",
-  pluginAiLimit:
-    "{plugin} ha usado sus {limit} tokens de IA de este mes. ¿Permitir {limit} más?",
-  pluginAiAllow: "Permitir",
-  pluginAiUsage: "IA este mes: {used} de {limit} tokens",
   pluginPermAgents:
     "Ejecutar un agente de IA instalado en este ordenador (puede leer y cambiar archivos)",
   pluginPermBackground:

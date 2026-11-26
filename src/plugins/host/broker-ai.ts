@@ -1,5 +1,3 @@
-import { showConfirm } from "../../engine/controls/app-dialog";
-import { fill } from "../../i18n/fill";
 import { hasTextusAi } from "../../platform/capabilities";
 import { addInlineSource } from "../../ai/writing/inline-sources";
 import { plugins as pluginsIpc } from "../../platform/ipc";
@@ -9,10 +7,6 @@ import {
   type Params,
   type PluginScope,
 } from "./broker-scope";
-
-/** What Rust refuses a call with until the user answers. */
-const NOT_ALLOWED = "plugin-ai-not-allowed";
-const OVER_LIMIT = "plugin-ai-limit";
 
 interface Message {
   role: "user" | "assistant";
@@ -55,44 +49,16 @@ export function stopPluginAi(plugin: string): void {
 }
 
 /** `textus.ai.complete`, `textus.ai.stream` and `textus.ai.available`:
- *  the user's writing model, asked once per plugin and within its monthly
- *  tokens. */
+ *  the user's writing model, for a plugin that is on with `ai.model`. */
 export function aiModelHandlers(p: PluginScope) {
-  const ask = async (more: boolean, limit: number) => {
-    const t = p.t();
-    const words = fill(more ? t.pluginAiLimit : t.pluginAiAsk, {
-      plugin: p.name(),
-      limit: limit.toLocaleString(),
-    });
-    const ok = await showConfirm(words, {
-      title: p.name(),
-      okLabel: t.pluginAiAllow,
-      cancelLabel: t.cancel,
-    });
-    if (ok) await pluginsIpc.aiAllow(p.id, more);
-    return ok;
-  };
-  /** `run` with the request's instructions and prompt, the user asked
-   *  first where Rust refuses until they answer. */
+  /** `run` with the request's instructions and prompt. */
   const gated = async (
     system: unknown,
     messages: unknown,
     run: (instructions: string, prompt: string) => Promise<string>,
   ): Promise<string> => {
     if (!hasTextusAi) throw new Error("Textus AI isn't available here.");
-    const prompt = str(promptOf(messages), "messages");
-    const instructions = optionalStr(system) ?? "";
-    let refusal: string;
-    try {
-      return await run(instructions, prompt);
-    } catch (error) {
-      refusal = String(error);
-      if (refusal !== NOT_ALLOWED && refusal !== OVER_LIMIT) throw error;
-    }
-    const { limit } = await pluginsIpc.aiStatus(p.id);
-    if (!(await ask(refusal === OVER_LIMIT, limit)))
-      throw new Error("The user didn't allow it.");
-    return run(instructions, prompt);
+    return run(optionalStr(system) ?? "", str(promptOf(messages), "messages"));
   };
   return {
     "ai.registerInlineCompletion": ({ id, label }: Params) => {

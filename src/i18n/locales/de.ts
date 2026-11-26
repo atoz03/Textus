@@ -1997,11 +1997,6 @@ Skills liegen im Ordner skills/ neben dieser Datei, je Skill eine
   pluginStatusAllOff: "Plugins sind aus.",
   pluginDevTag: "Entwicklung",
   pluginEnableLabel: "{name} einschalten",
-  pluginPermissionsLabel: "Berechtigungen",
-  pluginNoPermissions: "Braucht keine.",
-  pluginGranted: "Erteilt",
-  pluginNotGranted: "Nicht erteilt",
-  pluginRevoke: "Entziehen",
   pluginErrorsGroup: "Letzte Fehler",
   pluginErrorsCopy: "Kopieren",
   pluginErrorsClear: "Leeren",
@@ -2024,7 +2019,6 @@ Skills liegen im Ordner skills/ neben dieser Datei, je Skill eine
   pluginUninstallAsk:
     "{name} deinstallieren? Seine Dateien und gespeicherten Daten werden gelöscht.",
   pluginOk: "OK",
-  pluginAllow: "Erlauben",
   pluginPermissionsAsk: "{name} möchte:",
   pluginFailedNotice: "{name} wurde ausgeschaltet: {reason}",
   pluginStoppedAnswering: "es antwortete nicht mehr",
@@ -2053,8 +2047,6 @@ Skills liegen im Ordner skills/ neben dieser Datei, je Skill eine
   pluginPermGitSync:
     "Das Git-Repository des geöffneten Ordners mit Ihrem Git abrufen, pushen und pullen",
   pluginPermSsh: "Mit Ihren SSH-Einstellungen Server verbinden (nur erlaubte)",
-  pluginSshAsk:
-    "{plugin} möchte sich mit Ihren SSH-Einstellungen mit {host} verbinden, um dort Dateien zu lesen und zu schreiben.",
   pluginSshUnknownHost:
     "{host} ist noch kein bekannter Host. Verbinden Sie sich einmal im Terminal (ssh {host}), prüfen und akzeptieren Sie seinen Schlüssel und versuchen Sie es erneut.",
   pluginSshNeedsLogin:
@@ -2062,12 +2054,6 @@ Skills liegen im Ordner skills/ neben dieser Datei, je Skill eine
   pluginPermComments: "Notizen am Rand Ihrer Dokumente lesen und hinzufügen",
   pluginPermAiModel:
     "Ihr KI-Modell verwenden (zählt zur Nutzung Ihres KI-Dienstes)",
-  pluginAiAsk:
-    "{plugin} möchte Ihr KI-Modell verwenden. Was es sendet, zählt zur Nutzung Ihres KI-Dienstes, bis zu {limit} Tokens im Monat für dieses Plugin.",
-  pluginAiLimit:
-    "{plugin} hat seine {limit} KI-Tokens für diesen Monat verbraucht. Weitere {limit} erlauben?",
-  pluginAiAllow: "Erlauben",
-  pluginAiUsage: "KI diesen Monat: {used} von {limit} Tokens",
   pluginPermAgents:
     "Einen auf diesem Computer installierten KI-Agenten ausführen (er kann Dateien lesen und ändern)",
   pluginPermBackground:

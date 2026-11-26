@@ -14,11 +14,14 @@ import (
 
 // What stands between a folder's own Git settings and a program run on this
 // computer. A repository's .git/config can name programs Git starts by
-// itself (a filter on `git status`, a file-system monitor, a hook on
-// commit), and a folder that came from elsewhere - an archive, a shared or
+// itself (a filter on `git status`, a file-system monitor, a credential
+// helper), and a folder that came from elsewhere - an archive, a shared or
 // synced folder - brings its .git along. Two guards: the settings Git can
-// be told to ignore are switched off on every call, and a repository that
-// sets any of the rest runs no Git until the writer says they trust it.
+// be told to ignore are switched off on every call, and a repository whose
+// settings name any of the rest runs no Git until the writer says they
+// trust it. Its hooks run on a commit as with the writer's own git: hooks
+// are everyday tooling, and asking about them asked about most
+// repositories.
 
 // quiet are the settings switched off on every call: none of what Textus
 // asks of Git needs them.
@@ -112,17 +115,14 @@ func runsAProgram(section, key, value string) bool {
 	return false
 }
 
-// Sources are the repository's own files Git reads settings and hooks
-// from.
+// Sources are the repository's own files Git reads settings from.
 type Sources struct {
 	Configs []string
-	Hooks   string
 }
 
-// risks is what sources would make Git run, named for the writer: settings
-// as section.key, hooks as "hook: name". committing counts the hooks, which
-// only a commit runs. Empty for a repository that runs nothing.
-func risks(sources Sources, committing bool) []string {
+// risks is what sources would make Git run, named for the writer as
+// section.key. Empty for a repository that runs nothing.
+func risks(sources Sources) []string {
 	found := []string{}
 	for _, config := range sources.Configs {
 		text, err := os.ReadFile(config)
@@ -135,29 +135,8 @@ func risks(sources Sources, committing bool) []string {
 			}
 		}
 	}
-	if committing {
-		found = append(found, hooksIn(sources.Hooks)...)
-	}
 	slices.Sort(found)
 	return slices.Compact(found)
-}
-
-// hooksIn are the hooks a commit would run: the files there that aren't
-// Git's samples.
-func hooksIn(dir string) []string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var hooks []string
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !utf8.ValidString(name) || strings.HasSuffix(name, ".sample") || strings.HasPrefix(name, ".") {
-			continue
-		}
-		hooks = append(hooks, "hook: "+name)
-	}
-	return hooks
 }
 
 // trustMu keeps two answers from writing the list at once.
@@ -217,15 +196,15 @@ func trust(store, top string, risks []string) error {
 
 // guard lets Git work in the repository at top only while nothing there
 // starts a program the writer hasn't agreed to (store, the list they keep).
-func guard(store, top string, committing bool) error {
-	found := risks(sources(top), committing)
+func guard(store, top string) error {
+	found := risks(sources(top))
 	if len(found) == 0 || trusted(store, top, found) {
 		return nil
 	}
 	return errors.New(Untrusted + strings.Join(found, ", "))
 }
 
-// sources is where the repository at top keeps its settings and hooks.
+// sources is where the repository at top keeps its settings.
 func sources(top string) Sources {
 	dir := func(flag string) (string, bool) {
 		out, err := run(top, []string{"rev-parse", flag}, nil)
@@ -242,19 +221,16 @@ func sources(top string) Sources {
 	if !ok {
 		own = common
 	}
-	return Sources{
-		Configs: []string{filepath.Join(common, "config"), filepath.Join(own, "config.worktree")},
-		Hooks:   filepath.Join(common, "hooks"),
-	}
+	return Sources{Configs: []string{filepath.Join(common, "config"), filepath.Join(own, "config.worktree")}}
 }
 
 // Trust is the writer agreeing to Git running what the repository of root
-// sets up, hooks included: asked by the app itself, never on a plugin's
-// word. store is the list of trusted repositories.
+// sets up: asked by the app itself, never on a plugin's word. store is the
+// list of trusted repositories.
 func Trust(store, root string) error {
 	top := top(root)
 	if top == "" {
 		return errors.New("The folder isn't in a Git repository.")
 	}
-	return trust(store, top, risks(sources(top), true))
+	return trust(store, top, risks(sources(top)))
 }

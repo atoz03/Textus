@@ -1901,11 +1901,6 @@ ${AI_NAME}への執筆の指示です。すべての文書に適用されます�
   pluginStatusAllOff: "プラグインはオフです。",
   pluginDevTag: "開発中",
   pluginEnableLabel: "{name} をオンにする",
-  pluginPermissionsLabel: "権限",
-  pluginNoPermissions: "権限は必要ありません。",
-  pluginGranted: "許可済み",
-  pluginNotGranted: "未許可",
-  pluginRevoke: "取り消す",
   pluginErrorsGroup: "最近のエラー",
   pluginErrorsCopy: "コピー",
   pluginErrorsClear: "消去",
@@ -1929,7 +1924,6 @@ ${AI_NAME}への執筆の指示です。すべての文書に適用されます�
   pluginUninstallAsk:
     "{name} をアンインストールしますか？ファイルと保存したデータは削除されます。",
   pluginOk: "OK",
-  pluginAllow: "許可",
   pluginPermissionsAsk: "{name} は次の権限を求めています：",
   pluginFailedNotice: "{name} はオフになりました：{reason}",
   pluginStoppedAnswering: "応答しなくなりました",
@@ -1957,8 +1951,6 @@ ${AI_NAME}への執筆の指示です。すべての文書に適用されます�
   pluginPermGitSync:
     "開いているフォルダーの Git リポジトリを、あなたの Git でフェッチ・プッシュ・プルする",
   pluginPermSsh: "自分の SSH 設定でサーバーに接続する（許可したものだけ）",
-  pluginSshAsk:
-    "{plugin} があなたの SSH 設定で {host} に接続し、そこのファイルを読み書きしようとしています。",
   pluginSshUnknownHost:
     "{host} はまだ既知のホストではありません。一度ターミナルで接続し（ssh {host}）、鍵を確かめて受け入れてから、もう一度お試しください。",
   pluginSshNeedsLogin:
@@ -1966,12 +1958,6 @@ ${AI_NAME}への執筆の指示です。すべての文書に適用されます�
   pluginPermComments: "文書の余白のメモを読み、書き加える",
   pluginPermAiModel:
     "あなたの AI モデルを使う（AI サービスの使用量に含まれます）",
-  pluginAiAsk:
-    "{plugin} があなたの AI モデルを使おうとしています。送信する内容は AI サービスの使用量に含まれます。このプラグインは月に {limit} トークンまでです。",
-  pluginAiLimit:
-    "{plugin} は今月の AI トークン {limit} を使い切りました。さらに {limit} 許可しますか？",
-  pluginAiAllow: "許可",
-  pluginAiUsage: "今月の AI：{limit} トークン中 {used}",
   pluginPermAgents:
     "このコンピュータにインストールされた AI エージェントを実行する（ファイルの読み取りと変更ができます）",
   pluginPermBackground:

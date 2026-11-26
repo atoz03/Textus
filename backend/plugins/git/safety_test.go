@@ -9,11 +9,8 @@ import (
 
 func sourcesIn(t *testing.T, dir, config string) Sources {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(dir, "hooks"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	write(t, filepath.Join(dir, "config"), config)
-	return Sources{Configs: []string{filepath.Join(dir, "config")}, Hooks: filepath.Join(dir, "hooks")}
+	return Sources{Configs: []string{filepath.Join(dir, "config")}}
 }
 
 func TestAnEverydayRepositoryRunsNothing(t *testing.T) {
@@ -21,8 +18,7 @@ func TestAnEverydayRepositoryRunsNothing(t *testing.T) {
 		"[remote \"origin\"]\n\turl = git@example.com:a/b.git\n" +
 		"[branch \"main\"]\n\tremote = origin\n[user]\n\tname = A\n"
 	from := sourcesIn(t, t.TempDir(), config)
-	write(t, filepath.Join(from.Hooks, "pre-commit.sample"), "")
-	if got := risks(from, true); len(got) != 0 {
+	if got := risks(from); len(got) != 0 {
 		t.Fatalf("risks = %v", got)
 	}
 }
@@ -34,19 +30,20 @@ func TestSettingsThatStartAProgramAreNamed(t *testing.T) {
 		"[alias]\n  st = !sh -c id\n"
 	from := sourcesIn(t, t.TempDir(), config)
 	want := []string{"alias.st", "core.fsmonitor", "core.sshcommand", "filter.clean", "include.path"}
-	if got := risks(from, false); !slices.Equal(got, want) {
+	if got := risks(from); !slices.Equal(got, want) {
 		t.Fatalf("risks = %v, want %v", got, want)
 	}
 }
 
-func TestHooksCountForACommitOnly(t *testing.T) {
-	from := sourcesIn(t, t.TempDir(), "[core]\n\tbare = false\n")
-	write(t, filepath.Join(from.Hooks, "pre-commit"), "#!/bin/sh\n")
-	if got := risks(from, false); len(got) != 0 {
-		t.Fatalf("risks reading = %v", got)
+func TestHooksNeedNoTrust(t *testing.T) {
+	// A commit runs them, as the writer's own git does.
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "hooks"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if got := risks(from, true); !slices.Equal(got, []string{"hook: pre-commit"}) {
-		t.Fatalf("risks committing = %v", got)
+	write(t, filepath.Join(dir, "hooks", "pre-commit"), "#!/bin/sh\n")
+	if got := risks(sourcesIn(t, dir, "[core]\n\tbare = false\n")); len(got) != 0 {
+		t.Fatalf("risks = %v", got)
 	}
 }
 

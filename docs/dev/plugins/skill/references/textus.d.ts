@@ -1744,13 +1744,10 @@ declare global {
        *  (never on iOS or iPadOS). ai.model.
        *  From 1.4.4 (API 1.8, preview). */
       available(): Promise<boolean>;
-      /** The user's writing model's answer, as text (ai.model). The first
-       *  call asks the user; each plugin has 100,000 tokens a month (counted
-       *  roughly: a CJK character is one, other text one per four
-       *  characters), and the user is asked before more. Refused when the
-       *  user says no or Textus AI is off. From 1.4.4 (API 1.8, preview).
-       *  From 1.9 `signal` stops it (an AbortError), the answer unwritten
-       *  and uncounted. */
+      /** The user's writing model's answer, as text (ai.model), with
+       *  nothing asked of the user first. Refused when Textus AI is off.
+       *  From 1.4.4 (API 1.8, preview). From 1.9 `signal` stops it (an
+       *  AbortError), the answer unwritten. */
       complete(
         request: AiRequest,
         options?: { signal?: AbortSignal },

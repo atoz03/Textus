@@ -80,6 +80,23 @@ const BUILT_IN: SettingsPageDef[] = [
     available: () => canExportPdf || canExportWithPandoc,
     label: (t) => t.menuExport,
   },
+  // A phone's: there plugins, themes and skills are managed in Settings;
+  // the desktop and a tablet have the sidebar's plugins and these pages.
+  {
+    id: "extensions",
+    label: (t) => t.navExtensions,
+    Icon: lucide(Puzzle, NAV_ICON),
+    available: () => isPhoneLayout(),
+  },
+  {
+    id: "shortcuts",
+    label: (t) => t.navShortcuts,
+    Icon: lucide(Keyboard, NAV_ICON),
+    // A phone has no keyboard to bind shortcuts on; a tablet may.
+    available: () => !isPhoneLayout(),
+  },
+  // Textus is for writing first: the AI's pages come after the editor's,
+  // the extensions' and the shortcuts'.
   {
     id: "providers",
     group: "ai",
@@ -104,21 +121,6 @@ const BUILT_IN: SettingsPageDef[] = [
     group: "ai",
     available: () => hasTextusAi && !isMobileApp,
     label: (t) => t.navExternalTools,
-  },
-  // A phone's: there plugins, themes and skills are managed in Settings;
-  // the desktop and a tablet have the sidebar's plugins and these pages.
-  {
-    id: "extensions",
-    label: (t) => t.navExtensions,
-    Icon: lucide(Puzzle, NAV_ICON),
-    available: () => isPhoneLayout(),
-  },
-  {
-    id: "shortcuts",
-    label: (t) => t.navShortcuts,
-    Icon: lucide(Keyboard, NAV_ICON),
-    // A phone has no keyboard to bind shortcuts on; a tablet may.
-    available: () => !isPhoneLayout(),
   },
   {
     id: "privacy",

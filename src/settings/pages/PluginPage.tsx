@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Byline } from "./CatalogRow";
 import { fill } from "../../i18n/fill";
 import { SettingsGroup } from "./SettingsGroup";
@@ -8,7 +7,7 @@ import { PluginErrors } from "./PluginErrors";
 import { PluginWalkthroughs } from "./PluginWalkthroughs";
 import { PluginData } from "./PluginData";
 import { showConfirm } from "../../engine/controls/app-dialog";
-import { links, plugins as pluginsIpc } from "../../platform/ipc";
+import { links } from "../../platform/ipc";
 import { useSettings } from "../../prefs/SettingsContext";
 import type { Strings } from "../../i18n/strings";
 import {
@@ -16,11 +15,7 @@ import {
   pluginText,
   type PluginRecord,
 } from "../../plugins/store/plugin-records";
-import {
-  reloadPlugin,
-  revokePermission,
-  uninstallPlugin,
-} from "../../plugins/plugin-switches";
+import { reloadPlugin, uninstallPlugin } from "../../plugins/plugin-switches";
 import { runsHere } from "../../plugins/plugin-platform";
 import {
   requirementLabel,
@@ -28,10 +23,6 @@ import {
   requirementsHere,
   turnOnRequirement,
 } from "../../plugins/store/requirements";
-import {
-  permissionLabel,
-  shownPermissions,
-} from "../../plugins/store/permissions";
 import { canSwitch } from "../../plugins/store/lifecycle";
 import { PluginReadme } from "./PluginArt";
 import { PluginSettingsWebview } from "../../plugins/views/plugin-views";
@@ -250,7 +241,9 @@ export function PluginPage({
         label={fill(t.pluginReadmeLabel, { name })}
       />
       {manifest && (
-        <PluginPermissions record={record} t={t} attempt={attempt} />
+        <SettingsGroup>
+          <PluginData id={record.id} name={name} t={t} />
+        </SettingsGroup>
       )}
       <PluginErrors id={record.id} t={t} />
       <div className="plugin-detail-actions">
@@ -275,80 +268,5 @@ export function PluginPage({
         {!manifest && uninstall}
       </div>
     </div>
-  );
-}
-
-/** The permissions it has (each revocable), and the data it keeps. */
-function PluginPermissions({
-  record,
-  t,
-  attempt,
-}: {
-  record: PluginRecord;
-  t: Strings;
-  attempt: Attempt;
-}) {
-  const manifest = record.manifest!;
-  return (
-    <SettingsGroup title={t.pluginPermissionsLabel}>
-      {shownPermissions(manifest.permissions).length === 0 && (
-        <p className="tx-list-note">{t.pluginNoPermissions}</p>
-      )}
-      {shownPermissions(manifest.permissions).map((permission) => {
-        const granted = record.granted.includes(permission);
-        return (
-          <div className="plugin-permission" key={permission}>
-            <span>
-              {permissionLabel(permission, t)}
-              {" · "}
-              {granted ? t.pluginGranted : t.pluginNotGranted}
-              {granted && permission === "ai.model" && (
-                <AiUsage id={record.id} t={t} />
-              )}
-            </span>
-            {granted && (
-              <button
-                type="button"
-                className="tx-button text-button settings-inline-button"
-                onClick={() =>
-                  void attempt(() => revokePermission(record.id, permission))
-                }
-              >
-                {t.pluginRevoke}
-              </button>
-            )}
-          </div>
-        );
-      })}
-      <PluginData id={record.id} name={pluginName(record)} t={t} />
-    </SettingsGroup>
-  );
-}
-
-/** " · AI this month: 1,200 of 100,000 tokens", for a plugin that may ask
- *  the user's model. */
-function AiUsage({ id, t }: { id: string; t: Strings }) {
-  const [usage, setUsage] = useState<{ used: number; limit: number } | null>(
-    null,
-  );
-  useEffect(() => {
-    let live = true;
-    pluginsIpc.aiStatus(id).then(
-      (status) => live && setUsage(status),
-      () => {},
-    );
-    return () => {
-      live = false;
-    };
-  }, [id]);
-  if (!usage) return null;
-  return (
-    <>
-      {" · "}
-      {fill(t.pluginAiUsage, {
-        used: usage.used.toLocaleString(),
-        limit: usage.limit.toLocaleString(),
-      })}
-    </>
   );
 }

@@ -2051,11 +2051,6 @@ export default {
   pluginStatusAllOff: "Плагины выключены.",
   pluginDevTag: "разработка",
   pluginEnableLabel: "Включить {name}",
-  pluginPermissionsLabel: "Разрешения",
-  pluginNoPermissions: "Не требует разрешений.",
-  pluginGranted: "Предоставлено",
-  pluginNotGranted: "Не предоставлено",
-  pluginRevoke: "Отозвать",
   pluginErrorsGroup: "Недавние ошибки",
   pluginErrorsCopy: "Копировать",
   pluginErrorsClear: "Очистить",
@@ -2079,7 +2074,6 @@ export default {
   pluginUninstallAsk:
     "Удалить {name}? Его файлы и сохранённые данные будут удалены.",
   pluginOk: "ОК",
-  pluginAllow: "Разрешить",
   pluginPermissionsAsk: "{name} запрашивает:",
   pluginFailedNotice: "{name} выключен: {reason}",
   pluginStoppedAnswering: "он перестал отвечать",
@@ -2109,8 +2103,6 @@ export default {
     "Получать, отправлять и подтягивать изменения Git-репозитория открытой папки вашим Git",
   pluginPermSsh:
     "Подключаться к серверам с вашими настройками SSH (только к разрешённым)",
-  pluginSshAsk:
-    "{plugin} хочет подключиться к {host} с вашими настройками SSH, чтобы читать и записывать там файлы.",
   pluginSshUnknownHost:
     "{host} ещё не известный хост. Подключитесь к нему один раз в терминале (ssh {host}), проверьте и примите его ключ, затем попробуйте снова.",
   pluginSshNeedsLogin:
@@ -2118,12 +2110,6 @@ export default {
   pluginPermComments: "Читать и оставлять заметки на полях ваших документов",
   pluginPermAiModel:
     "Использовать вашу модель ИИ (учитывается в расходе вашего сервиса ИИ)",
-  pluginAiAsk:
-    "{plugin} хочет использовать вашу модель ИИ. Отправленное учитывается в расходе вашего сервиса ИИ, до {limit} токенов в месяц для этого плагина.",
-  pluginAiLimit:
-    "{plugin} израсходовал свои {limit} токенов ИИ за этот месяц. Разрешить ещё {limit}?",
-  pluginAiAllow: "Разрешить",
-  pluginAiUsage: "ИИ в этом месяце: {used} из {limit} токенов",
   pluginPermAgents:
     "Запускать ИИ-агента, установленного на этом компьютере (он может читать и менять файлы)",
   pluginPermBackground:

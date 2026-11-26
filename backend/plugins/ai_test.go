@@ -15,37 +15,27 @@ func TestTokensCountCJKByCharacterAndOtherTextByFour(t *testing.T) {
 	}
 }
 
-func TestANewMonthStartsCountingAgainAndKeepsTheYes(t *testing.T) {
+func TestANewMonthStartsCountingAgain(t *testing.T) {
 	usage := func() AIUsage {
-		return AIUsage{Month: "2026-10", Plugins: map[string]*PluginAIUsage{"a.b": {Allowed: true, Used: 90_000, Extra: MonthlyTokens}}}
+		return AIUsage{Month: "2026-10", Plugins: map[string]*PluginAIUsage{"a.b": {Used: 90_000}}}
 	}
 	if now := usage().Fresh("2026-10"); !reflect.DeepEqual(now, usage()) {
 		t.Errorf("the same month: %+v", now)
 	}
 	next := usage().Fresh("2026-11")
-	if e := next.Plugins["a.b"]; !e.Allowed || e.Used != 0 || e.Extra != 0 || next.Month != "2026-11" {
+	if e := next.Plugins["a.b"]; e.Used != 0 || next.Month != "2026-11" {
 		t.Errorf("a new month: %+v", e)
 	}
 }
 
-func TestACallWaitsForTheYesAndStopsAtTheAllowance(t *testing.T) {
-	if Refusal(nil) != NotAllowed {
-		t.Error("no yes yet")
+func TestTheStatusIsWhetherAIIsOnAndWhatThePluginUsed(t *testing.T) {
+	// No yes to wait for and no allowance to run out: a plugin that is on
+	// with ai.model just asks.
+	if got := StatusOf(nil, true); got != (AIStatus{On: true}) {
+		t.Errorf("none used: %+v", got)
 	}
-	e := &PluginAIUsage{Allowed: true, Used: MonthlyTokens - 1}
-	if Refusal(e) != "" {
-		t.Error("within the allowance")
-	}
-	e.Used = MonthlyTokens
-	if Refusal(e) != OverLimit {
-		t.Error("at the allowance")
-	}
-	e.Extra = MonthlyTokens
-	if Refusal(e) != "" {
-		t.Error("allowed more")
-	}
-	if got := StatusOf(e, true).Limit; got != 200_000 {
-		t.Errorf("limit %d", got)
+	if got := StatusOf(&PluginAIUsage{Used: 250_000}, false); got != (AIStatus{Used: 250_000}) {
+		t.Errorf("%+v", got)
 	}
 }
 

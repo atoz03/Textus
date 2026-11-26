@@ -1885,11 +1885,6 @@ ${AI_NAME}에게 주는 글쓰기 지침으로, 모든 문서에 적용됩니다
   pluginStatusAllOff: "플러그인이 꺼져 있습니다.",
   pluginDevTag: "개발 중",
   pluginEnableLabel: "{name} 켜기",
-  pluginPermissionsLabel: "권한",
-  pluginNoPermissions: "권한이 필요 없습니다.",
-  pluginGranted: "허용됨",
-  pluginNotGranted: "허용 안 됨",
-  pluginRevoke: "취소하기",
   pluginErrorsGroup: "최근 오류",
   pluginErrorsCopy: "복사",
   pluginErrorsClear: "지우기",
@@ -1912,7 +1907,6 @@ ${AI_NAME}에게 주는 글쓰기 지침으로, 모든 문서에 적용됩니다
   pluginUninstallAsk:
     "{name}을(를) 제거할까요? 파일과 저장한 데이터가 삭제됩니다.",
   pluginOk: "확인",
-  pluginAllow: "허용",
   pluginPermissionsAsk: "{name}이(가) 다음 권한을 요청합니다:",
   pluginFailedNotice: "{name}이(가) 꺼졌습니다: {reason}",
   pluginStoppedAnswering: "응답하지 않음",
@@ -1940,20 +1934,12 @@ ${AI_NAME}에게 주는 글쓰기 지침으로, 모든 문서에 적용됩니다
   pluginPermGitSync:
     "내 Git으로 열린 폴더의 Git 저장소를 가져오기, 푸시, 풀하기",
   pluginPermSsh: "내 SSH 설정으로 서버에 연결 (허용한 서버만)",
-  pluginSshAsk:
-    "{plugin}이(가) 내 SSH 설정으로 {host}에 연결해 그곳의 파일을 읽고 쓰려고 합니다.",
   pluginSshUnknownHost:
     "{host}은(는) 아직 알려진 호스트가 아닙니다. 터미널에서 한 번 연결해(ssh {host}) 키를 확인하고 받아들인 뒤 다시 시도하세요.",
   pluginSshNeedsLogin:
     "{host}이(가) 비밀번호나 불러오지 않은 키를 요구했습니다. 키를 SSH 에이전트에 추가하거나(ssh-add) 키 로그인을 설정한 뒤 다시 시도하세요.",
   pluginPermComments: "문서 여백의 메모 읽기 및 남기기",
   pluginPermAiModel: "내 AI 모델 사용(AI 서비스 사용량에 포함됨)",
-  pluginAiAsk:
-    "{plugin}이(가) 내 AI 모델을 사용하려고 합니다. 보내는 내용은 AI 서비스 사용량에 포함되며, 이 플러그인은 한 달에 최대 {limit} 토큰입니다.",
-  pluginAiLimit:
-    "{plugin}이(가) 이번 달 AI 토큰 {limit}개를 다 썼습니다. {limit}개를 더 허용할까요?",
-  pluginAiAllow: "허용",
-  pluginAiUsage: "이번 달 AI: {limit} 토큰 중 {used}",
   pluginPermAgents:
     "이 컴퓨터에 설치된 AI 에이전트 실행하기(파일을 읽고 바꿀 수 있음)",
   pluginPermBackground: "일정에 따라 코드 실행하기(모든 창을 닫아도)",

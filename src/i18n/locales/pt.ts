@@ -2023,11 +2023,6 @@ Habilidades ficam na pasta skills/ ao lado deste arquivo, um arquivo
   pluginStatusAllOff: "Os plugins estão desativados.",
   pluginDevTag: "desenvolvimento",
   pluginEnableLabel: "Ativar {name}",
-  pluginPermissionsLabel: "Permissões",
-  pluginNoPermissions: "Não pede nenhuma.",
-  pluginGranted: "Concedida",
-  pluginNotGranted: "Não concedida",
-  pluginRevoke: "Revogar",
   pluginErrorsGroup: "Erros recentes",
   pluginErrorsCopy: "Copiar",
   pluginErrorsClear: "Limpar",
@@ -2050,7 +2045,6 @@ Habilidades ficam na pasta skills/ ao lado deste arquivo, um arquivo
   pluginUninstallAsk:
     "Desinstalar {name}? Os arquivos e os dados que ele guardou serão apagados.",
   pluginOk: "OK",
-  pluginAllow: "Permitir",
   pluginPermissionsAsk: "{name} pede para:",
   pluginFailedNotice: "{name} foi desativado: {reason}",
   pluginStoppedAnswering: "parou de responder",
@@ -2080,8 +2074,6 @@ Habilidades ficam na pasta skills/ ao lado deste arquivo, um arquivo
     "Buscar, enviar e puxar o repositório Git da pasta aberta com o seu Git",
   pluginPermSsh:
     "Ligar-se a servidores com as suas definições SSH (só os que permitir)",
-  pluginSshAsk:
-    "{plugin} quer ligar-se a {host} com as suas definições SSH, para ler e escrever ficheiros lá.",
   pluginSshUnknownHost:
     "{host} ainda não é um anfitrião conhecido. Ligue-se uma vez num terminal (ssh {host}) para verificar e aceitar a sua chave e tente de novo.",
   pluginSshNeedsLogin:
@@ -2089,12 +2081,6 @@ Habilidades ficam na pasta skills/ ao lado deste arquivo, um arquivo
   pluginPermComments: "Ler e deixar notas na margem dos seus documentos",
   pluginPermAiModel:
     "Usar o seu modelo de IA (conta para o uso do seu serviço de IA)",
-  pluginAiAsk:
-    "{plugin} quer usar o seu modelo de IA. O que ele envia conta para o uso do seu serviço de IA, até {limit} tokens por mês para este plugin.",
-  pluginAiLimit:
-    "{plugin} usou os seus {limit} tokens de IA deste mês. Permitir mais {limit}?",
-  pluginAiAllow: "Permitir",
-  pluginAiUsage: "IA este mês: {used} de {limit} tokens",
   pluginPermAgents:
     "Executar um agente de IA instalado neste computador (ele pode ler e alterar arquivos)",
   pluginPermBackground:

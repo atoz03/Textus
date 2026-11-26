@@ -105,8 +105,8 @@ flowchart LR
     F -- "made for another Textus" --> C[incompatible]
     F -- "switch saved off" --> OFF[off]
     F -- "switch saved on" --> ON[on]
-    OFF -- "switched on,<br/>permissions granted" --> ON
-    ON -- "switched off,<br/>or a permission revoked" --> OFF
+    OFF -- "switched on,<br/>its permissions granted" --> ON
+    ON -- "switched off" --> OFF
     ON -- "the watchdog stops it" --> FAIL[failed]
     FAIL -- "Turn back on" --> ON
     FAIL -- "switched off" --> OFF
@@ -212,9 +212,10 @@ The API, by namespace (first version):
 
 ## 6. Permissions in the backend
 
-- **Granting.** On install the manifest's `permissions` are shown in plain
-  words; the user grants all or cancels, and can revoke one later in the
-  plugin's Settings page. Grants live in the backend, in the app data folder:
+- **Granting.** Installing a plugin and switching it on grants all its
+  manifest's `permissions`, with no dialog and nothing to revoke one by one:
+  the user's trust is in the plugin, given once. An update that lists more
+  is granted them when it loads switched on. Grants live in the backend, in the app data folder:
   `plugins/state.json` - per plugin its version, enabled, granted
   permissions and the folders it was given.
 - **Enforcement in the backend.** A plugin's privileged calls are backend commands
@@ -251,8 +252,8 @@ A **Plugins** page in Settings (a built-in page in settings-pages.tsx):
   failed: "PDF Viewer stopped answering - Turn back on"; section 3).
   Clicking a row opens its page.
 - **A plugin's page** (a page of its own inside the tab, as Get plugins is):
-  - what it adds (commands, views, file types), its permissions with
-    Revoke beside each, the folders it may read;
+  - what it adds (commands, views, file types), the folders it may read,
+    and the data it keeps;
   - its settings, drawn from its `configuration` schema with the same rows
     as Textus's own (a boolean is a switch, an enum a select, a string or
     number a field), then its own `settingsPage` if it has one;

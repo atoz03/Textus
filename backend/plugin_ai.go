@@ -18,10 +18,9 @@ import (
 	"textus/backend/plugins"
 )
 
-// textus.ai.complete and textus.ai.stream: a plugin asking the user's
-// writing model, with the ai.model permission, the user's yes on its first
-// call, and a monthly allowance kept in plugins/ai.json, where the plugin
-// can't reach it.
+// textus.ai.complete and textus.ai.stream: a plugin that is on, with the
+// ai.model permission, asking the user's writing model; what it used this
+// month is counted in plugins/ai.json, where the plugin can't reach it.
 
 func (a *App) aiUsagePath() string { return filepath.Join(a.pluginsRoot(), "ai.json") }
 
@@ -53,7 +52,7 @@ func (a *App) updateAIUsage(change func(u *plugins.AIUsage)) error {
 
 // pluginModel is the provider and model a plugin's call goes to, once
 // everything allows it: Textus AI on, the plugin running with ai.model,
-// the user's yes and tokens left, and no more than plugins.LongestInput.
+// and no more than plugins.LongestInput.
 func (a *App) pluginModel(plugin, system, prompt string) (string, string, error) {
 	if err := plugins.RequireID(plugin); err != nil {
 		return "", "", err
@@ -65,9 +64,6 @@ func (a *App) pluginModel(plugin, system, prompt string) (string, string, error)
 	e := s.Plugins[plugin]
 	if !s.AllOn || e == nil || !e.Enabled || !slices.Contains(e.Granted, "ai.model") {
 		return "", "", errors.New("This plugin may not use your AI model (ai.model).")
-	}
-	if no := plugins.Refusal(a.aiUsage().Plugins[plugin]); no != "" {
-		return "", "", errors.New(no)
 	}
 	if plugins.TooLong(system, prompt) {
 		return "", "", fmt.Errorf("At most %d characters can be sent.", plugins.LongestInput)
@@ -90,9 +86,9 @@ func (a *App) pluginModel(plugin, system, prompt string) (string, string, error)
 	return provider, model, nil
 }
 
-// spendPluginAI counts what a call cost against the plugin's allowance:
-// what was sent, and the answer or what was written of it before a
-// cancel. A call that failed costs nothing.
+// spendPluginAI counts what a call cost: what was sent, and the answer or
+// what was written of it before a cancel. A call that failed costs
+// nothing.
 func (a *App) spendPluginAI(plugin, system, prompt, answer string, err error, soFar string) error {
 	written, counted := plugins.Counted(answer, err, soFar)
 	if !counted {
@@ -140,7 +136,7 @@ type pluginAIRequest struct {
 }
 
 func init() {
-	// Whether Textus AI is on, and the plugin's yes and tokens this month.
+	// Whether Textus AI is on, and the plugin's tokens this month.
 	command("plugin_ai_status", func(c *Call, a struct {
 		Plugin string `json:"plugin"`
 	}) (plugins.AIStatus, error) {
@@ -148,23 +144,6 @@ func init() {
 			return plugins.AIStatus{}, err
 		}
 		return plugins.StatusOf(c.app.aiUsage().Plugins[a.Plugin], c.app.ensureAIOn() == nil), nil
-	})
-	// The user's yes to a plugin's use of the model; with more, another
-	// month's allowance on top, this month.
-	command("plugin_ai_allow", func(c *Call, a struct {
-		Plugin string `json:"plugin"`
-		More   bool   `json:"more"`
-	}) (nothing, error) {
-		if err := plugins.RequireID(a.Plugin); err != nil {
-			return nil, err
-		}
-		return nil, c.app.updateAIUsage(func(u *plugins.AIUsage) {
-			e := u.Entry(a.Plugin)
-			e.Allowed = true
-			if a.More {
-				e.Extra += plugins.MonthlyTokens
-			}
-		})
 	})
 	// One answer from the user's writing model, whole. Stopped with
 	// plugin_http_cancel and cancelId.

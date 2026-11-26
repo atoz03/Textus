@@ -164,7 +164,7 @@ func GetStatus(s plugins.State, store, id, root string) (*Status, error) {
 	if top == "" {
 		return nil, nil
 	}
-	if err := guard(store, top, false); err != nil {
+	if err := guard(store, top); err != nil {
 		return nil, err
 	}
 	n := namesOf(root)
@@ -243,7 +243,7 @@ func Log(s plugins.State, store, id, root, path string, limit *uint32) ([]Commit
 	if top == "" {
 		return []Commit{}, nil
 	}
-	if err := guard(store, top, false); err != nil {
+	if err := guard(store, top); err != nil {
 		return nil, err
 	}
 	rel, err := fromTop(s, id, root, top, path)
@@ -307,7 +307,7 @@ func Show(s plugins.State, store, id, root, hash, path string) (*string, error) 
 	if top == "" {
 		return nil, nil
 	}
-	if err := guard(store, top, false); err != nil {
+	if err := guard(store, top); err != nil {
 		return nil, err
 	}
 	rel, err := fromTop(s, id, root, top, path)
@@ -341,7 +341,7 @@ func MakeCommit(s plugins.State, store, id, root, message string, paths []string
 	if top == "" {
 		return "", errors.New("The folder isn't in a Git repository.")
 	}
-	if err := guard(store, top, true); err != nil {
+	if err := guard(store, top); err != nil {
 		return "", err
 	}
 	// Files, each one named: a folder would bring along everything in it,

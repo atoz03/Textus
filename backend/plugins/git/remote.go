@@ -26,8 +26,7 @@ const networkTime = 180 * time.Second
 const syncPermission = "git.sync"
 
 // ready is the repository's top, checked: the permission, a repository,
-// and nothing in it that runs without the writer's word (push and pull run
-// hooks).
+// and nothing its settings name that runs without the writer's word.
 func ready(s plugins.State, store, id, root string) (string, error) {
 	if !s.Allows(id, syncPermission) {
 		return "", plugins.Refused(id, syncPermission)
@@ -36,7 +35,7 @@ func ready(s plugins.State, store, id, root string) (string, error) {
 	if top == "" {
 		return "", errors.New("The folder isn't in a Git repository.")
 	}
-	if err := guard(store, top, true); err != nil {
+	if err := guard(store, top); err != nil {
 		return "", err
 	}
 	return top, nil

@@ -1811,11 +1811,6 @@ export default {
   pluginStatusAllOff: "外掛程式已全部關閉。",
   pluginDevTag: "開發中",
   pluginEnableLabel: "開啟 {name}",
-  pluginPermissionsLabel: "權限",
-  pluginNoPermissions: "不需要任何權限。",
-  pluginGranted: "已授予",
-  pluginNotGranted: "未授予",
-  pluginRevoke: "撤銷",
   pluginErrorsGroup: "最近的錯誤",
   pluginErrorsCopy: "複製",
   pluginErrorsClear: "清除",
@@ -1837,7 +1832,6 @@ export default {
   pluginUnload: "移除",
   pluginUninstallAsk: "要解除安裝 {name} 嗎？它的檔案和保存的資料都會刪除。",
   pluginOk: "好",
-  pluginAllow: "允許",
   pluginPermissionsAsk: "{name} 請求以下權限：",
   pluginFailedNotice: "{name} 已被關閉：{reason}",
   pluginStoppedAnswering: "它不再回應",
@@ -1862,19 +1856,12 @@ export default {
   pluginPermGitCommit: "用你的 Git 在開啟的資料夾中提交",
   pluginPermGitSync: "用你的 Git 擷取、推送和拉取開啟的資料夾所在的儲存庫",
   pluginPermSsh: "用你的 SSH 設定連線伺服器（只連你允許的）",
-  pluginSshAsk: "{plugin} 想用你的 SSH 設定連線 {host}，在那裡讀寫檔案。",
   pluginSshUnknownHost:
     "{host} 還不是已知主機。請先在終端機裡連線一次（ssh {host}），核對並接受它的金鑰，然後再試。",
   pluginSshNeedsLogin:
     "{host} 需要密碼或一個尚未載入的金鑰。請把金鑰加入 SSH agent（ssh-add）或設定金鑰登入，然後再試。",
   pluginPermComments: "讀取和新增文件頁邊的註解",
   pluginPermAiModel: "使用你的 AI 模型（會計入你的 AI 服務用量）",
-  pluginAiAsk:
-    "{plugin} 想使用你的 AI 模型。它傳送的內容會計入你的 AI 服務用量，這個外掛每月最多 {limit} token。",
-  pluginAiLimit:
-    "{plugin} 本月的 {limit} 個 AI token 已用完。再允許 {limit} 個嗎？",
-  pluginAiAllow: "允許",
-  pluginAiUsage: "本月 AI：已用 {used} / {limit} token",
   pluginPermAgents: "執行這台電腦上安裝的 AI Agent（它能讀取和修改檔案）",
   pluginPermBackground: "按排程執行程式碼，關閉所有視窗後也會執行",
   pluginScheduleNotice:

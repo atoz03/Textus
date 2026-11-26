@@ -1,6 +1,5 @@
 import { forgetPluginSettings } from "./store/plugin-settings";
 import { plugins as pluginsIpc, type PluginFile } from "../platform/ipc";
-import type { Permission } from "./store/manifest";
 import { contributingPlugins } from "./contributions/plugin-contributions";
 import { canRun, canSwitch, nextStatus } from "./store/lifecycle";
 import {
@@ -11,24 +10,22 @@ import {
   update,
 } from "./store/plugin-records";
 import { hosts, stopHost } from "./running-hosts";
-import { askPermissions } from "./store/ask-permissions";
 import { apply, loadPlugins, withdraw } from "./manager";
 
 /**
- * Switching plugins on and off, granting and revoking, installing and
- * removing: each told to the backend, which owns the state, and applied in
- * this window (loadPlugins brings the others in line).
+ * Switching plugins on and off, installing and removing: each told to the
+ * backend, which owns the state, and applied in this window (loadPlugins
+ * brings the others in line).
  */
 
-/** Settings' switch for one plugin. Turning it on asks for its
- *  permissions first; refused, it stays or goes off. */
+/** Settings' switch for one plugin. Turned on, it has what its manifest
+ *  lists: installing and switching it on is the user's yes, asked once
+ *  there and not again permission by permission. */
 export async function setPluginEnabled(id: string, on: boolean): Promise<void> {
   const record = pluginRecord(id);
   if (!record || !record.manifest) return;
   if (!canSwitch(record.status)) return;
-  const granted = on ? await askPermissions(record) : null;
-  // Refused: off, even one already on (an update asking for more).
-  if (!on || (!granted && record.status === "on")) {
+  if (!on) {
     // Marked off first: a message from its open page meanwhile starts
     // nothing that would outlive the switch.
     update(id, {
@@ -40,7 +37,7 @@ export async function setPluginEnabled(id: string, on: boolean): Promise<void> {
     await pluginsIpc.set(id, false, record.granted);
     return;
   }
-  if (!granted) return;
+  const granted = [...record.manifest.permissions];
   await pluginsIpc.set(id, true, granted);
   const next = {
     ...record,
@@ -50,24 +47,6 @@ export async function setPluginEnabled(id: string, on: boolean): Promise<void> {
   };
   update(id, next);
   if (pluginMayRun(next)) apply(next);
-}
-
-export async function revokePermission(
-  id: string,
-  permission: Permission,
-): Promise<void> {
-  const record = pluginRecord(id);
-  if (!record) return;
-  const granted = record.granted.filter((p) => p !== permission);
-  // Without a permission it asks for, it can't run: off until granted,
-  // marked so before its host stops.
-  update(id, {
-    granted,
-    status: nextStatus(record.status, { type: "revoke" }),
-  });
-  stopHost(id);
-  withdraw(id);
-  await pluginsIpc.set(id, false, granted);
 }
 
 /** Settings › Extensions › Plugins › Plugins: every plugin at once. */

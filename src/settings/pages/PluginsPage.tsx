@@ -143,19 +143,17 @@ export function PluginsPage({ t }: SettingsPageProps) {
       t={t}
       intro={t.extensionsIntroPlugins}
       help={t.pluginsInstallHelp}
-      primary={{
-        label: t.createMakePlugin,
-        onSelect: () => requestCreate("", "plugin"),
-      }}
+      // Installing comes first; making one with Textus AI is one way among
+      // the rest.
+      primary={
+        canInstallPluginFile
+          ? {
+              label: t.pluginsInstallFile,
+              onSelect: () => void installFile(false),
+            }
+          : undefined
+      }
       actions={[
-        ...(canInstallPluginFile
-          ? [
-              {
-                label: t.pluginsInstallFile,
-                onSelect: () => void installFile(false),
-              },
-            ]
-          : []),
         ...(canPickPluginFolder
           ? [
               {
@@ -168,6 +166,10 @@ export function PluginsPage({ t }: SettingsPageProps) {
               },
             ]
           : []),
+        {
+          label: t.createMakePlugin,
+          onSelect: () => requestCreate("", "plugin"),
+        },
       ]}
       top={
         <>

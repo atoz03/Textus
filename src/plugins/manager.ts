@@ -137,6 +137,18 @@ export function loadPlugins(reload = false): Promise<void> {
         makeRecord(p.id, p.dev ? "dev" : "installed", p.manifest, state, p.dir),
       );
     records.sort((a, b) => compareNames(pluginName(a), pluginName(b)));
+    // On is the user's yes to all a plugin lists: an update that lists
+    // more has that too, in the backend's checks as in this window's.
+    for (const [i, record] of records.entries()) {
+      const listed = record.manifest?.permissions ?? [];
+      if (
+        record.status !== "on" ||
+        listed.every((p) => record.granted.includes(p))
+      )
+        continue;
+      records[i] = { ...record, granted: [...listed] };
+      await pluginsIpc.set(record.id, true, [...listed]).catch(() => {});
+    }
     const was = pluginsSnapshot();
     const before = new Map(was.records.map((r) => [r.id, r]));
     const kept = (record: PluginRecord) => {
