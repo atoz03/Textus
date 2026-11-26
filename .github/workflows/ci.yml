@@ -21,7 +21,8 @@ name: CI
 #   before release the full suite on every platform: native on Linux, macOS
 #                  and Windows, and e2e. It runs on the pull request that
 #                  bumps the version, and release.yml calls it on the
-#                  tagged commit. The iOS and Android apps are still the
+#                  tagged commit; it can be run by hand on a branch too
+#                  (workflow_dispatch). The iOS and Android apps are still the
 #                  Tauri builds (docs/dev/architecture.md), which main no
 #                  longer has: CI builds neither.
 #
@@ -44,6 +45,13 @@ on:
   # From the release workflow before it builds a tag: the full suite,
   # whatever changed.
   workflow_call:
+    inputs:
+      full:
+        type: boolean
+        default: true
+  # By hand on a branch, the same full suite, to see every platform pass
+  # before tagging: gh workflow run ci.yml --ref main
+  workflow_dispatch:
     inputs:
       full:
         type: boolean

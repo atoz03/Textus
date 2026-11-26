@@ -251,8 +251,9 @@ runs the quick suite: `check`, the e2e flows, and `native` and the built
 app on Linux when the change reaches Go; a push to `main` runs it again without the e2e
 flows, which the pull request ran. The full suite - every job below on every
 platform, whatever changed - runs on the tagged commit before a release is
-built (`release.yml` calls `ci.yml`) and on the pull request that changes
-the version. Run the e2e flows locally before a pull request
+built (`release.yml` calls `ci.yml`), on the pull request that changes
+the version, and when run by hand on a branch
+(`gh workflow run ci.yml --ref main`). Run the e2e flows locally before a pull request
 that reaches the browser. The required checks are `check`, `e2e`, `native`
 and `ci-config`; `e2e` and `native` are one-line jobs that pass when every
 job they stand for passed, or when all of them were skipped.
