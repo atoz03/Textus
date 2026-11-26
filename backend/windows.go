@@ -260,6 +260,7 @@ func (a *App) wire(w *appWindow) {
 				openOutside(e.URL)
 			}
 		})
+		page.OnRenderProcessGone(func(reason string) { a.pageGone(w, reason) })
 	}
 	win.OnClose(func(e *mygo.CloseEvent) {
 		// While it can still be read: its frame for the next launch, in the

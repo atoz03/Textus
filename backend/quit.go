@@ -61,6 +61,30 @@ func (a *App) takeOverQuit(e *mygo.QuitEvent) {
 	}
 }
 
+// pageUnresponsive is MyGo's reason for a page that hangs (Windows): it
+// may answer yet, unlike one whose process is gone.
+const pageUnresponsive = "unresponsive"
+
+// closeUnasked closes a window without asking its page. Tests replace it.
+var closeUnasked = (*appWindow).destroy
+
+// pageGone: the window's page process has ended. It crashed, or a signal
+// to the app's whole process group ended it with the app: `timeout`, for
+// one, sends SIGTERM to the app and then to its group, WebKit's processes
+// included, and MyGo may take the two for one. No page is left to answer
+// a close, so the window closes unasked from now on, and at once while a
+// quit waits for it, which would otherwise never end.
+func (a *App) pageGone(w *appWindow, reason string) {
+	if reason == pageUnresponsive {
+		return
+	}
+	w.closeListened.Store(false)
+	if a.quitting.Load() {
+		// Not inside the web view's report of its end.
+		go closeUnasked(w)
+	}
+}
+
 // quitCanceled: MyGo's quit was cancelled after exit asked for it, so the
 // app runs on, with its tray if background mode is on.
 func (a *App) quitCanceled() {

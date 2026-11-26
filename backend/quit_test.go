@@ -277,3 +277,77 @@ func TestNoBackgroundHostOpensWhileTheAppQuits(t *testing.T) {
 		t.Error("the background host opened during a quit")
 	}
 }
+
+// closings stands in for closing a window unasked: MyGo then reports it
+// closed (windowGone), and its label arrives on the channel.
+func closings(t *testing.T, a *App) <-chan string {
+	t.Helper()
+	closed := make(chan string, 4)
+	was := closeUnasked
+	closeUnasked = func(w *appWindow) {
+		closed <- w.label
+		a.windowGone(w)
+	}
+	t.Cleanup(func() { closeUnasked = was })
+	return closed
+}
+
+func noClosing(t *testing.T, closed <-chan string) {
+	t.Helper()
+	select {
+	case label := <-closed:
+		t.Errorf("%s closed unasked", label)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestAQuitEndsTheAppOnceThePageItAskedIsGone(t *testing.T) {
+	// `timeout` sends SIGTERM to the app, then to its process group: the
+	// quit asks the page, whose process the same signal ended.
+	ended := endings(t)
+	main := &appWindow{label: "main"}
+	main.closeListened.Store(true)
+	a := &App{windows: map[string]*appWindow{"main": main}}
+	closed := closings(t, a)
+	a.quitting.Store(true)
+	a.pageGone(main, "crashed")
+	if waitForEnd(t, ended) {
+		t.Error("relaunched")
+	}
+	if label := <-closed; label != "main" {
+		t.Errorf("closed %s", label)
+	}
+	if main.closeListened.Load() {
+		t.Error("a close would still go to the page that is gone")
+	}
+}
+
+func TestAWindowWhosePageIsGoneClosesUnasked(t *testing.T) {
+	ended := endings(t)
+	main := &appWindow{label: "main"}
+	main.closeListened.Store(true)
+	a := &App{windows: map[string]*appWindow{"main": main}}
+	closed := closings(t, a)
+	a.pageGone(main, "terminated")
+	if main.closeListened.Load() {
+		t.Error("the next close would go to the page that is gone")
+	}
+	// Outside a quit the window stays until it is closed.
+	noClosing(t, closed)
+	noEnd(t, ended)
+}
+
+func TestAPageThatHangsIsStillAsked(t *testing.T) {
+	ended := endings(t)
+	main := &appWindow{label: "main"}
+	main.closeListened.Store(true)
+	a := &App{windows: map[string]*appWindow{"main": main}}
+	closed := closings(t, a)
+	a.quitting.Store(true)
+	a.pageGone(main, pageUnresponsive)
+	if !main.closeListened.Load() {
+		t.Error("a page that may answer yet is no longer asked")
+	}
+	noClosing(t, closed)
+	noEnd(t, ended)
+}

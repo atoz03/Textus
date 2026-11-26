@@ -67,6 +67,12 @@ run on with its windows gone. When the system ends the session (logging
 out, shutting down) the windows close unasked, and the session is kept
 first, as a quit keeps it.
 
+A window whose page's process is gone has no one to ask: it closes unasked
+from then on, and at once while a quit waits for it (`pageGone`). The page
+may have crashed, or a signal to the app's process group ended it with the
+app: `timeout` sends `SIGTERM` to the app and then to its group, WebKit's
+processes included, and MyGo may take the two for one quit.
+
 ## Background mode
 
 **Settings › General › Application › Keep running in the background**
