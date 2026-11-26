@@ -263,6 +263,8 @@ func extractDocument(path string) (string, error) {
 		return extract.DocxMarkdown(path)
 	case "pptx":
 		return extract.PptxMarkdown(path)
+	case "epub":
+		return extract.EpubMarkdown(path)
 	case "html", "htm", "xhtml":
 		raw, err := os.ReadFile(path)
 		if err != nil {
