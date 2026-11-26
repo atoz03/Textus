@@ -13,6 +13,13 @@ import (
 // sees the old file or the new one, never a part. The file is written beside
 // its destination, synced, then renamed over it.
 func writeAtomic(path string, data []byte) error {
+	return writeAtomicBy(path, data, "")
+}
+
+// writeAtomicBy is writeAtomic for the window labelled by, when a window
+// asked for it ("" when none did): the other windows' trees still hear of
+// a save.
+func writeAtomicBy(path string, data []byte, by string) error {
 	// A link is written through: the file it leads to changes, the link stays.
 	if real, err := filepath.EvalSymlinks(path); err == nil {
 		path = real
@@ -30,10 +37,11 @@ func writeAtomic(path string, data []byte) error {
 		}
 	}()
 	// A document keeps the permissions it had. A file written over (a save)
-	// is not news to the file tree; a new one is.
+	// is not news to the saving window's tree; a new one is, and so is a
+	// save to the other windows' trees.
 	if info, err := os.Stat(path); err == nil {
 		_ = tmp.Chmod(info.Mode().Perm())
-		noteOwnWrite(path)
+		noteOwnWrite(path, by)
 	}
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
@@ -55,10 +63,16 @@ func writeAtomic(path string, data []byte) error {
 
 // writeFileAtomic is writeAtomic that first makes the folder path goes in.
 func writeFileAtomic(path string, data []byte) error {
+	return writeFileAtomicBy(path, data, "")
+}
+
+// writeFileAtomicBy is writeAtomicBy that first makes the folder path goes
+// in.
+func writeFileAtomicBy(path string, data []byte, by string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return writeAtomic(path, data)
+	return writeAtomicBy(path, data, by)
 }
 
 // moveAside renames a file that does not parse to "<name>.corrupt-<n>", for

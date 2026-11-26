@@ -111,6 +111,22 @@ func TestAnOwnFileReportedRemovedButStillThereWasWrittenOver(t *testing.T) {
 	}
 }
 
+// A save is its own window's alone; a write for no window is every
+// window's.
+func TestASaveIsItsOwnWindowsAloneAndOneForNoWindowIsEveryWindows(t *testing.T) {
+	dir := t.TempDir()
+	saved, written := filepath.Join(dir, "saved.md"), filepath.Join(dir, "written.md")
+	noteOwnWrite(saved, "a")
+	noteOwnWrite(written, "")
+	saved, written = realPath(saved), realPath(written)
+	if !isOwnWrite(saved, "a") || isOwnWrite(saved, "b") {
+		t.Error("a save is its own window's alone")
+	}
+	if !isOwnWrite(written, "a") || !isOwnWrite(written, "b") {
+		t.Error("a write for no window is every window's")
+	}
+}
+
 func TestWatchedWholeOnlyTheTopmostOpenFoldersAreWatched(t *testing.T) {
 	at := filepath.FromSlash
 	dirs := []string{at("/n"), at("/n/a"), at("/n/a/b"), at("/other"), at("/nb")}
@@ -234,7 +250,7 @@ func drain(sent <-chan dirsChanged) {
 func TestARealFolderReportsFilesMadeRenamedAndRemoved(t *testing.T) {
 	dir := t.TempDir()
 	sent := make(chan dirsChanged, 64)
-	w := newWindowWatch(isOwnWrite, func(c dirsChanged) { sent <- c })
+	w := newWindowWatch(func(p string) bool { return isOwnWrite(p, "main") }, func(c dirsChanged) { sent <- c })
 	defer w.close()
 	if !w.only([]string{dir}, false) {
 		t.Fatal("not watched")
@@ -278,6 +294,25 @@ func TestARealFolderReportsFilesMadeRenamedAndRemoved(t *testing.T) {
 	}
 	expect("removed after a save")
 
+	// Saved from another window: news to this one's tree; from this one, not.
+	theirs := filepath.Join(dir, "theirs.md")
+	if err := os.WriteFile(theirs, []byte("# Theirs"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	expect("made by another app")
+	drain(sent)
+	if err := writeAtomicBy(theirs, []byte("# Theirs, again"), "other"); err != nil {
+		t.Fatal(err)
+	}
+	expect("saved from another window")
+	drain(sent)
+	if err := writeAtomicBy(theirs, []byte("# Theirs, mine now"), "main"); err != nil {
+		t.Fatal(err)
+	}
+	if !quietFor(sent, time.Second) {
+		t.Error("this window's own save was news")
+	}
+
 	// The tree reading the folder is not a change: no loop.
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
@@ -299,7 +334,7 @@ func TestAFolderWatchedWholeReportsItsOpenFoldersAlone(t *testing.T) {
 		}
 	}
 	sent := make(chan dirsChanged, 64)
-	w := newWindowWatch(isOwnWrite, func(c dirsChanged) { sent <- c })
+	w := newWindowWatch(func(p string) bool { return isOwnWrite(p, "main") }, func(c dirsChanged) { sent <- c })
 	defer w.close()
 	if !w.only([]string{dir, open}, true) {
 		t.Fatal("not watched")

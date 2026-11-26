@@ -386,9 +386,13 @@ export type DetachedTab_Serialize = {
 	importedFrom?: string,
 };
 
-/**  Read by the file drags in src/app/file-drop/finder-drag.ts. */
+/**  Read by the file drags in src/app/file-drop/finder-drag.ts. Its Go
+ *  side is backend/system.go dragModifiers. */
 export type DragModifiers = {
 	shift: boolean,
+	/**  Option on a Mac. */
+	alt: boolean,
+	ctrl: boolean,
 };
 
 /**

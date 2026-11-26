@@ -419,7 +419,7 @@ func init() {
 		if err := c.app.notASecret(a.Path); err != nil {
 			return nil, err
 		}
-		return nil, writeFileAtomic(a.Path, []byte(a.Contents))
+		return nil, writeFileAtomicBy(a.Path, []byte(a.Contents), c.Label())
 	})
 	command("write_base64_file", func(c *Call, a struct {
 		Path string `json:"path"`
@@ -435,7 +435,7 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		return nil, writeAtomic(a.Path, raw)
+		return nil, writeAtomicBy(a.Path, raw, c.Label())
 	})
 	// The file tree's copy (a paste, Duplicate, a drag with Option or Ctrl,
 	// files dropped from a file manager): path copied into the folder into,

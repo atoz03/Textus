@@ -367,7 +367,9 @@ func gather(ctx context.Context, changes <-chan treeChange, send func(dirsChange
 	}
 }
 
-// ownWrites is what the app wrote over lately, and when.
+// ownWrites is what the app wrote over lately, when, and the window whose
+// save it was: only that window's tree takes it as its own; one for no
+// window (""), every window's tree.
 var ownWrites struct {
 	sync.Mutex
 	list []ownWrite
@@ -376,6 +378,7 @@ var ownWrites struct {
 type ownWrite struct {
 	path string
 	at   time.Time
+	by   string
 }
 
 // realPath is where path really is, links followed; for one not there
@@ -394,23 +397,25 @@ func realPath(p string) string {
 	return p
 }
 
-// noteOwnWrite: the app is about to write over path, so its change is not
-// news to the file tree.
-func noteOwnWrite(p string) {
+// noteOwnWrite: the app is about to write over path, for the window
+// labelled by or for none (""), so its change is not news to that
+// window's tree, or to any.
+func noteOwnWrite(p, by string) {
 	p = realPath(p)
 	now := time.Now()
 	ownWrites.Lock()
 	defer ownWrites.Unlock()
 	ownWrites.list = slices.DeleteFunc(ownWrites.list, func(w ownWrite) bool { return now.Sub(w.at) >= ownFor })
-	ownWrites.list = append(ownWrites.list, ownWrite{path: p, at: now})
+	ownWrites.list = append(ownWrites.list, ownWrite{path: p, at: now, by: by})
 }
 
-// isOwnWrite reports whether the app wrote over path lately.
-func isOwnWrite(p string) bool {
+// isOwnWrite reports whether the window labelled window wrote over path
+// lately, or the app did for no window.
+func isOwnWrite(p, window string) bool {
 	ownWrites.Lock()
 	defer ownWrites.Unlock()
 	for _, w := range ownWrites.list {
-		if w.path == p && time.Since(w.at) < ownFor {
+		if w.path == p && time.Since(w.at) < ownFor && (w.by == "" || w.by == window) {
 			return true
 		}
 	}
@@ -438,7 +443,7 @@ func (t *treeWatches) watch(label string, dirs []string, seq *float64, send func
 		return true
 	}
 	if w == nil {
-		w = newWindowWatch(isOwnWrite, send)
+		w = newWindowWatch(func(p string) bool { return isOwnWrite(p, label) }, send)
 		t.byWindow[label] = w
 	}
 	return w.only(dirs, watchWhole)

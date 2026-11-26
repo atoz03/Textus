@@ -179,7 +179,9 @@ func init() {
 	command("set_window_bar_height", func(c *Call, _ none) (nothing, error) { return nil, nil })
 	command("set_roman_input", func(c *Call, _ none) (nothing, error) { return nil, nil })
 	command("edit_natively", func(c *Call, _ none) (bool, error) { return false, nil })
-	command("drag_modifiers", func(c *Call, _ none) (map[string]bool, error) { return map[string]bool{"shift": false}, nil })
+	// The keys are told by the webview's own drag events here
+	// (src/platform/native/event.ts): none is said to be held.
+	command("drag_modifiers", func(c *Call, _ none) (dragModifiers, error) { return dragModifiers{}, nil })
 	command("release_instance", func(c *Call, _ none) (nothing, error) { return nil, nil })
 	// After an update is installed: every window closes as at Quit (an
 	// unsaved document asks, or is kept as a draft), then the new version
@@ -281,4 +283,14 @@ func init() {
 	})
 	command("temp_dir", func(c *Call, _ none) (string, error) { return os.TempDir(), nil })
 	command("app_version", func(c *Call, _ none) (string, error) { return c.app.shared.Version, nil })
+}
+
+// dragModifiers is the keys held while the system drags files over a
+// window. Its TypeScript side is `DragModifiers` in
+// src/platform/bindings/app.ts.
+type dragModifiers struct {
+	Shift bool `json:"shift"`
+	// Alt is Option on a Mac.
+	Alt  bool `json:"alt"`
+	Ctrl bool `json:"ctrl"`
 }

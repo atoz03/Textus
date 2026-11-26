@@ -41,9 +41,10 @@ function subscribe(): void {
 
 /**
  * Files dragged in from a file manager, as the page sees them: the
- * webview's own drag events give where the pointer is and Shift, but no
- * paths. These are told as `native://drag-enter`, `-over` and `-leave`;
- * the drop, with its paths, comes from the backend (`native://drag-drop`).
+ * webview's own drag events give where the pointer is and the keys held
+ * (Shift, Alt or Option, Ctrl), but no paths. These are told as
+ * `native://drag-enter`, `-over` and `-leave`; the drop, with its paths,
+ * comes from the backend (`native://drag-drop`).
  */
 let watchingDrags = false;
 
@@ -60,6 +61,8 @@ function watchPageDrags(): void {
   const at = (e: DragEvent) => ({
     position: { x: e.clientX, y: e.clientY },
     shift: e.shiftKey,
+    alt: e.altKey,
+    ctrl: e.ctrlKey,
   });
   window.addEventListener(
     "dragenter",
