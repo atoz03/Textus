@@ -96,7 +96,8 @@ func manifestServer(t *testing.T, manifests map[string]string) *httptest.Server 
 }
 
 func TestACheckFindsThisBuildsEntry(t *testing.T) {
-	key := updateKeys("linux", "amd64")[0]
+	// The entry of the platform the test runs on, which the check reads.
+	key := updateKeys(runtime.GOOS, runtime.GOARCH)[0]
 	manifest := `{"version":"1.5.0","notes":"Notes","pub_date":"2026-11-01T00:00:00Z","platforms":{
 		"linux-x86_64":{"url":"https://example.com/Textus.AppImage","signature":"tauri"},
 		"` + key + `":{"url":"https://example.com/textus-1.5.0-linux-amd64.tar.gz","size":42,"signature":"c2ln"}}}`
