@@ -209,11 +209,7 @@ func init() {
 			return nil, nil
 		}
 		if w := c.app.window(a.Owner); w != nil {
-			if w.win.IsMinimized() {
-				w.win.Restore()
-			}
-			w.win.Show()
-			w.win.Focus()
+			w.bringForward()
 		}
 		return nil, nil
 	})

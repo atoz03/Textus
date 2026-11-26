@@ -62,9 +62,11 @@ type App struct {
 	// screen.
 	normalFrames map[string]keptFrame
 
-	windowCounter   atomic.Uint32
-	uiReady         atomic.Bool
-	quitting        atomic.Bool
+	windowCounter atomic.Uint32
+	uiReady       atomic.Bool
+	quitting      atomic.Bool
+	// exiting: the windows are gone and MyGo is asked to quit (exit).
+	exiting         atomic.Bool
 	openingAtLaunch atomic.Bool
 
 	menu     *menuState
@@ -213,7 +215,11 @@ func Run(shared Shared) error {
 			}
 		})
 	}
+	// A quit MyGo starts (the Dock's, a signal's) runs as the app's own.
+	app.OnBeforeQuit(a.takeOverQuit)
+	app.OnQuitCanceled(a.quitCanceled)
 	app.OnQuit(func() {
+		a.removeTrayAtExit()
 		a.stopMCP()
 		a.stopAgents()
 		a.closeSSH(func(string, uint32) bool { return false })
@@ -274,16 +280,6 @@ func (u *untilReady) ready() {
 	for _, f := range held {
 		f()
 	}
-}
-
-// exit ends the app once its windows are gone, or starts the version an
-// update installed.
-func (a *App) exit() {
-	if relaunchAfterQuit.Load() {
-		mygo.App.Relaunch()
-		return
-	}
-	mygo.App.Quit()
 }
 
 // readFlag is a boolean setting the backend acts on, or its default.

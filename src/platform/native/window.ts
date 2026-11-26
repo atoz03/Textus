@@ -60,6 +60,8 @@ export interface NativeWindow {
   close(): Promise<void>;
   /** Closes without asking. */
   destroy(): Promise<void>;
+  /** Brings the window to the front, restored if it was minimized. */
+  show(): Promise<void>;
   minimize(): Promise<void>;
   toggleMaximize(): Promise<void>;
   isMaximized(): Promise<boolean>;
@@ -125,6 +127,7 @@ function nativeWindow(label: string): NativeWindow {
     label,
     close: () => run("window_close"),
     destroy: () => run("window_destroy"),
+    show: () => run("window_show"),
     minimize: () => run("window_minimize"),
     toggleMaximize: () => run("window_toggle_maximize"),
     isMaximized: () => invoke<boolean>("window_is_maximized").then(Boolean),

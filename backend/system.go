@@ -235,7 +235,9 @@ func init() {
 	windowCommand("window_destroy", func(w *appWindow) { w.destroy() })
 	windowCommand("window_minimize", func(w *appWindow) { w.win.Minimize() })
 	windowCommand("window_toggle_maximize", func(w *appWindow) { w.win.ToggleMaximize() })
-	windowCommand("window_show", func(w *appWindow) { w.win.Show(); w.win.Focus() })
+	// A window asked to close by a quit, minimized or behind others, comes
+	// forward with its question (close-flow.ts).
+	windowCommand("window_show", func(w *appWindow) { w.bringForward() })
 	command("window_is_maximized", func(c *Call, _ none) (bool, error) {
 		w, err := c.win()
 		if err != nil {

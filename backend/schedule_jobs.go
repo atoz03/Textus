@@ -184,9 +184,10 @@ func (a *App) queueRun(run jobRun) {
 	a.openBackgroundHost()
 }
 
-// openBackgroundHost opens the hidden window, unless it is open.
+// openBackgroundHost opens the hidden window, unless it is open or the app
+// is quitting, which it would hold up.
 func (a *App) openBackgroundHost() {
-	if a.window(backgroundHostLabel) != nil {
+	if a.window(backgroundHostLabel) != nil || a.quitting.Load() || a.exiting.Load() {
 		return
 	}
 	_, err := a.openWindow(windowSpec{

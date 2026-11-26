@@ -123,7 +123,13 @@ func (a *App) handleCLI(ctx context.Context, r cli.Request) cli.Answer {
 		return a.cliSkills(r)
 	case "export":
 		return a.cliExport(r)
-	case "commands", "plugin", "theme":
+	case "commands":
+		if quitAsked(r.Args) {
+			go a.quit()
+			return cli.OK("")
+		}
+		return a.inWindow(r)
+	case "plugin", "theme":
 		return a.inWindow(r)
 	}
 	return cli.Fail(fmt.Sprintf("'%s' is not a textus command.", r.Command), 2)

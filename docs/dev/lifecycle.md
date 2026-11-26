@@ -5,8 +5,9 @@ background mode and its tray icon, plugins' scheduled jobs, and updates.
 The code is `backend/app.go` (`Run`: setup and MyGo's app events),
 `backend/launch.go` (what a launch opens) and `backend/open_route.go`
 (which window documents handed over go to), `backend/session.go`
-(`quit`), `backend/windows.go` (the windows), `backend/background.go` and
-`backend/tray.go`, and `backend/schedule_jobs.go`. The desktop app only;
+(`quit`) and `backend/quit.go` (how a quit ends), `backend/windows.go`
+(the windows), `backend/background.go` and `backend/tray.go`, and
+`backend/schedule_jobs.go`. The desktop app only;
 iOS has one window that the system manages.
 
 ## Launching
@@ -31,26 +32,40 @@ Code picks (`windowFor`).
 
 ## Closing the last window
 
-MyGo quits when its last window closes unless the app listens for that;
-Textus listens (`lastWindowClosed`), and `keepsRunning` in `background.go`
-decides:
+When the last of the user's windows (an editor or a detached chat) closes,
+`afterWindowGone` in `quit.go` decides, with `keepsRunning` in
+`background.go`:
 
 | Platform       | Background mode off  | Background mode on             |
 | -------------- | -------------------- | ------------------------------ |
 | macOS          | Keeps running (Dock) | Keeps running (Dock, menu bar) |
 | Windows, Linux | Exits                | Keeps running (tray)           |
 
-Every window is destroyed when it closes; nothing is kept hidden for later.
-A quit under way is never held back: its last window ends the process
-(`windowGone`).
+Windows the user never sees - plugins' `background-host`, a floating view,
+a PDF being laid out, the dragged tab's pill - never keep the app running:
+an exit closes them with it. MyGo's own report that its last window is gone
+(`lastWindowClosed`) decides the same way, for a process whose last window
+was one of those. Every window is destroyed when it closes; nothing is kept
+hidden for later. A quit under way is never held back: its last window ends
+the process (`windowGone`).
 
 ## Quitting
 
-**File › Quit**, `⌘Q` / `Ctrl + Q` and the tray's **Quit Textus** all run
-`quit` (`session.go`): it records the session, asks every window to close
-(so each unsaved document gets its prompt; **Cancel** stops the quit), and
-once the last window is gone ends the app (`exit`), or starts the new
-version an update installed. With no window open it exits at once.
+**File › Quit**, `⌘Q` / `Ctrl + Q`, the tray's **Quit Textus** and
+`textus commands run quit` all run `quit` (`session.go`): it records the
+session, asks every window to close (so each unsaved document gets its
+prompt, and a window that has to ask comes to the front first; **Cancel**
+stops the quit), and once the last window is gone ends the app (`exit`),
+or starts the new version an update installed. With no window open it
+exits at once. `exit` takes the tray icon down before MyGo quits: Windows
+keeps the icon of a process that ended until a pointer passes over it.
+
+A quit MyGo starts itself - **Quit** in the Dock or the app switcher on
+macOS, `SIGINT` or `SIGTERM` - runs as the app's own (`takeOverQuit`):
+left to MyGo, a window that asks first would cancel it, and the app would
+run on with its windows gone. When the system ends the session (logging
+out, shutting down) the windows close unasked, and the session is kept
+first, as a quit keeps it.
 
 ## Background mode
 

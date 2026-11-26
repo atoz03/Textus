@@ -165,7 +165,14 @@ export function useWindowCloseGuard(
 ): void {
   const keep = useLatest(keepUnsaved);
   useEffect(() => {
-    const unlisten = thisWindow().onCloseRequested(async (event) => {
+    const win = thisWindow();
+    // A quit asks every window, minimized or behind others too: one that
+    // must ask first comes forward, or its question holds the quit unseen.
+    const ask = () => {
+      setPendingClose({ kind: "window" });
+      void win.show().catch(() => {});
+    };
+    const unlisten = win.onCloseRequested(async (event) => {
       await flushAutosave();
       const dirty = liveTabs().filter(tabIsDirty);
       if (dirty.length > 0 && keep.current) {
@@ -183,12 +190,12 @@ export function useWindowCloseGuard(
         );
         if (kept.some((result) => result.status === "rejected")) {
           event.preventDefault();
-          setPendingClose({ kind: "window" });
+          ask();
           return;
         }
       } else if (dirty.length > 0) {
         event.preventDefault();
-        setPendingClose({ kind: "window" });
+        ask();
         return;
       }
       await flushPendingWrites().catch(() => undefined);

@@ -3,9 +3,11 @@ package backend
 import (
 	"fmt"
 	"log"
+	"maps"
 	"math"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -314,13 +316,23 @@ func (w *appWindow) destroy() {
 	w.win.Close()
 }
 
-// windowGone forgets a closed window, and quits when it was the last one of
-// a quit.
+// bringForward shows the window in front, restored if it was minimized.
+func (w *appWindow) bringForward() {
+	if w.win.IsMinimized() {
+		w.win.Restore()
+	}
+	w.win.Show()
+	w.win.Focus()
+}
+
+// windowGone forgets a closed window, and ends the app when it was the
+// last one of a quit, or the last of the user's that leaves it nothing to
+// run for (afterWindowGone).
 func (a *App) windowGone(w *appWindow) {
 	a.mu.Lock()
 	delete(a.windows, w.label)
 	a.recentFocus = removeString(a.recentFocus, w.label)
-	others := len(a.windows)
+	left := slices.Collect(maps.Keys(a.windows))
 	a.mu.Unlock()
 	a.forgetWindowSession(w.label)
 	a.forgetChatWindow(w.label)
@@ -339,8 +351,12 @@ func (a *App) windowGone(w *appWindow) {
 		a.forgetFloatingWindow(w.label)
 	}
 	a.appStateChanged()
-	if others == 0 && a.quitting.Load() {
+	switch afterWindowGone(runtime.GOOS, a.readFlag(backgroundSetting), a.quitting.Load(), w.label, left) {
+	case endApp:
 		a.exit()
+	case quitApp:
+		// Not inside MyGo's report of the close: quit closes windows too.
+		go a.quit()
 	}
 }
 
@@ -423,9 +439,7 @@ func (a *App) buildMainWindow(restored *keptFrame) error {
 // documents a fresh launch would restore.
 func (a *App) reopenWithoutWindows() {
 	if w := a.lastEditor(); w != nil {
-		w.win.Restore()
-		w.win.Show()
-		w.win.Focus()
+		w.bringForward()
 		return
 	}
 	var windows []WindowSession

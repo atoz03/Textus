@@ -25,6 +25,7 @@ const browserWindow: ThisWindow = {
   label: "main",
   close: done,
   destroy: done,
+  show: done,
   minimize: done,
   toggleMaximize: done,
   isMaximized: () => Promise.resolve(false),
