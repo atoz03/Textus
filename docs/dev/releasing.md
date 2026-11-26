@@ -255,7 +255,7 @@ tarball holds a second build, linked as the Arch package's
 (`backend/distribution.go`), which reports new versions but leaves
 installing them to pacman. `scripts/updater-manifest.mjs` and
 `scripts/mirror-keys.mjs` map the file names to the keys; their tests
-list every name above, and the Tauri builds' names up to 1.4.6.
+list every name above, and the Tauri builds' names.
 
 ## Pre-releases
 
@@ -332,11 +332,12 @@ of them is "Latest" a Levis install finds no manifest and stays as it is. The
 name stays forbidden for the reason above. A rebuild of a 1.1.0-or-older tag
 stops at the guard until that copy is deleted from its release.
 
-The Tauri builds (up to 1.4.6) read `textus-latest.json` too, but only
-their own keys (`darwin-aarch64`, `linux-x86_64-deb`, …), signed with the
-Tauri key (`TAURI_SIGNING_PRIVATE_KEY`), which a Go release doesn't carry:
-their check fails, as the manifest has no entry for their platform, and
-they stay where they are. Bringing them to the Go builds needs a bridge release that the Tauri
+The Tauri builds (up to 1.4.6, and the 1.4.7 test builds) read
+`textus-latest.json` too, but only their own keys (`darwin-aarch64`,
+`linux-x86_64-deb`, …), signed with the Tauri key
+(`TAURI_SIGNING_PRIVATE_KEY`), which a Go release doesn't carry: their
+check fails, as the manifest has no entry for their platform, and they
+stay where they are. Bringing them to the Go builds needs a bridge release that the Tauri
 updater accepts; whether to make one is the maintainers' decision.
 `scripts/updater-manifest.mjs` still checks a Tauri tag's configuration,
 so the Tauri releases can be rebuilt.
@@ -356,7 +357,7 @@ The signing, notarizing, upload and deploy secrets live in the repository's
 **release** environment (Settings › Environments › release), not in the
 repository's own secrets: `APPLE_*`, `MYGO_UPDATER_PRIVATE_KEY`,
 `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_PLAYGROUND_TOKEN` and
-`ARCH_REPO_DEPLOY_KEY`, and for the Tauri releases up to 1.4.6 (a rebuild,
+`ARCH_REPO_DEPLOY_KEY`, and for the Tauri builds, up to 1.4.7-rc.4 (a rebuild,
 a bridge release, `android-release.yml`) `TAURI_SIGNING_PRIVATE_KEY` and
 `ANDROID_*` (the APK's signing key). `MYGO_UPDATER_PRIVATE_KEY` signs the
 updates: it is made once with `mygo keygen`, its public half is

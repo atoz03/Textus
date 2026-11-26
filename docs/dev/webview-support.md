@@ -6,9 +6,13 @@ engine a user may have is the oldest one the frontend has to work in.
 | Platform                             | Engine              | Oldest supported                             |
 | ------------------------------------ | ------------------- | -------------------------------------------- |
 | Windows 10 and 11                    | WebView2 (Chromium) | Chromium 105                                 |
-| macOS 11 and later                   | WKWebView           | the installed Safari's; the build assumes 16 |
+| macOS 12 and later                   | WKWebView           | the installed Safari's; the build assumes 16 |
 | iPhone and iPad (iOS 16.4 and later) | WKWebView           | Safari 16.4                                  |
 | Linux                                | WebKitGTK           | what the distribution ships                  |
+
+macOS 12 is the Go backend's floor, not the engine's: Go programs run on
+nothing older since Go 1.25, and MyGo writes it as `LSMinimumSystemVersion`.
+The Tauri builds ran on macOS 11 up to 1.4.6.
 
 ## Why Chromium 105 on Windows
 
