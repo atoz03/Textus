@@ -82,7 +82,7 @@
   border: 1px solid var(--doc-border);
   border-radius: var(--doc-radius-sm);
   background: var(--doc-bg);
-  color: var(--text-muted);
+  color: var(--doc-muted);
   font: 12px var(--font-mono);
   cursor: pointer;
   /* Interface-sized, as the block's page is: the page keeps its
@@ -105,7 +105,7 @@
 
 .plugin-code-block .plugin-webview-problem {
   padding: 0.8em 1em;
-  color: var(--text-muted);
+  color: var(--doc-muted);
 }
 
 /* An opened source's tools stay in sight: Done Editing is its way back,

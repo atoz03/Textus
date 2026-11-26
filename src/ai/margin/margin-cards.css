@@ -63,7 +63,7 @@
   border: 1px solid var(--review-note-border);
   background: var(--review-note-bg);
   color: var(--ui-text);
-  font-family: var(--font-ui, inherit);
+  font-family: var(--font-sans);
   font-size: var(--text-secondary);
   line-height: 1.55;
   /* A card is its hairline; the shadow comes only under the pointer and

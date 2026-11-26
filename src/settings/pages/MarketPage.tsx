@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { HeadRow } from "../../engine/controls/HeadRow";
+import { PreviousIcon } from "../../engine/controls/icons";
 
 /** An item's page in Get more (a catalog plugin, a gallery theme): back to
  *  the list, its head - mark, name, what it is, who made it, its button -
@@ -31,7 +32,8 @@ export function MarketPage({
     <div className="plugin-page market-plugin-page" {...data}>
       {onBack && (
         <button type="button" className="plugin-back" onClick={onBack}>
-          ‹ {backLabel}
+          <PreviousIcon />
+          {backLabel}
         </button>
       )}
       <HeadRow

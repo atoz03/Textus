@@ -314,6 +314,9 @@ button.plugin-card-open {
 /* One plugin's page. */
 /* Back to the page before: a button of its own, easy to find. */
 .plugin-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   margin: var(--space-3) 0;
   padding: 4px 12px 4px 8px;
   border: 1px solid var(--ui-border);

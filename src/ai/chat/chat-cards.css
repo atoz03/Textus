@@ -37,8 +37,7 @@
   corner-shape: round;
   background: var(--review-note-line);
   color: var(--ui-on-fill);
-  font: 700 calc(10.5px * var(--ui-text-scale, 1)) / 1
-    var(--font-ui, sans-serif);
+  font: 600 calc(10.5px * var(--ui-text-scale, 1)) / 1 var(--font-sans);
 }
 
 .agent-comment .agent-proposal-show {

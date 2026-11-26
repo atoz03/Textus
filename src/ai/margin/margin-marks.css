@@ -24,7 +24,7 @@
   corner-shape: round;
   background: var(--review-note-line);
   color: var(--ui-on-fill);
-  font: 700 12px/1 var(--font-ui, sans-serif);
+  font: 600 12px/1 var(--font-sans);
   cursor: pointer;
   box-shadow: 0 0 0 3px var(--review-anchor-bg);
   animation: pending-pick-in var(--dur-base) var(--ease-spring-bouncy) both;

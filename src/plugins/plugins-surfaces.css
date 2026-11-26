@@ -28,8 +28,8 @@
   text-overflow: ellipsis;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--shape-pill);
-  corner-shape: round;
+  /* A field, not a control: a rounded rectangle (design-language.md 6). */
+  border-radius: var(--shape-s);
 }
 @media (any-hover: hover) {
   .web-page-address:hover {
@@ -40,7 +40,7 @@
   outline: none;
   color: var(--ui-text);
   background: var(--ui-bg);
-  border-color: var(--ui-primary);
+  border-color: var(--ui-accent);
 }
 .web-page-chevron-up {
   transform: rotate(-90deg);

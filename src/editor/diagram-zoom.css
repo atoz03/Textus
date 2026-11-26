@@ -76,7 +76,7 @@
   height: 2rem;
   font-size: 1.2rem;
   line-height: 1;
-  color: var(--text);
+  color: var(--ui-text);
   background: var(--ui-bg);
   border: 1px solid var(--ui-border);
   border-radius: 50%;
@@ -89,7 +89,7 @@
   left: 50%;
   transform: translateX(-50%);
   font-size: var(--text-footnote);
-  color: var(--text-muted, var(--text));
+  color: var(--ui-muted);
   background: var(--ui-bg);
   padding: 0.2rem 0.6rem;
   border-radius: var(--shape-pill);
@@ -104,7 +104,7 @@
   margin-top: -1.25rem;
   font-size: 1.5rem;
   line-height: 1;
-  color: var(--text);
+  color: var(--ui-text);
   background: var(--ui-bg);
   border: 1px solid var(--ui-border);
   border-radius: 50%;

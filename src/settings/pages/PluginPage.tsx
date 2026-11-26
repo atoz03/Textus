@@ -7,6 +7,7 @@ import { PluginErrors } from "./PluginErrors";
 import { PluginWalkthroughs } from "./PluginWalkthroughs";
 import { PluginData } from "./PluginData";
 import { showConfirm } from "../../engine/controls/app-dialog";
+import { PreviousIcon } from "../../engine/controls/icons";
 import { links } from "../../platform/ipc";
 import { useSettings } from "../../prefs/SettingsContext";
 import type { Strings } from "../../i18n/strings";
@@ -112,7 +113,8 @@ export function PluginPage({
     <div className="plugin-page" data-plugin-page={record.id}>
       {onBack && (
         <button type="button" className="plugin-back" onClick={onBack}>
-          ‹ {t.pluginBackToList}
+          <PreviousIcon />
+          {t.pluginBackToList}
         </button>
       )}
       {/* Its name is on its tab: the page starts with what to do. Only
