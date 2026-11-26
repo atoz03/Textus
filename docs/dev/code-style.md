@@ -8,8 +8,8 @@ gofmt and `.editorconfig`, so it is never worth discussing.
 ## Where code goes
 
 [architecture.md](architecture.md) maps the folders and the layers they sit
-in. A folder never imports from a layer above it, and Tauri is reached only
-through `src/platform/` (ESLint). [recipes.md](recipes.md) walks through
+in. A folder never imports from a layer above it, and the backend is reached
+only through `src/platform/` (ESLint). [recipes.md](recipes.md) walks through
 the common additions (a setting, a menu item, a backend command, a string,
 a plugin API call, an e2e test); [reuse.md](reuse.md) lists the one place
 for each common need. Interface rules (spacing, type sizes, buttons,

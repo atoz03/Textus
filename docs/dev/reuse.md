@@ -58,7 +58,7 @@ The pieces:
 | Folding case and accents                                    | `utils/search-fold.ts`; pinyin `utils/pinyin.ts`                                                               |
 | Paths: `/`-separated, a note file, a URL or a drive path    | `utils/path.ts` (`slashed`, `isNoteFile`, `noteStem`, `hasUrlScheme`, `isDrivePath`, `relativePath`)           |
 | Reading a `[[link]]`                                        | `utils/note-link.ts` (`parseNoteLink`; `WIKILINK_SOURCE` to find them in text)                                 |
-| Where a link goes, as a click takes it                      | `files/link-resolve.ts` (and Rust `resolve_note_link`, which shares its cases)                                 |
+| Where a link goes, as a click takes it                      | `files/link-resolve.ts` (and Go `resolve_note_link`, `backend/links.go`, which shares its cases)               |
 | Writing a link the way the folder does                      | `files/link-style.ts`, `files/link-resolve.ts` `linkToTarget`; Markdown links `editor/markdown/link-syntax.ts` |
 | A picture's or link's target as written                     | `linkDestination` in `editor/markdown/link-syntax.ts`                                                          |
 | A link to a file put in a document (a picture for an image) | `files/link-to-file.ts` (`linkToFile`, `fileLinkSource`; `linkingDocument` for the tab to link from)           |
@@ -69,7 +69,7 @@ The pieces:
 | A link's or picture's path completed as it is typed         | `files/path-completion.ts` (`targetItems`)                                                                     |
 | Front matter                                                | `utils/frontmatter.ts`                                                                                         |
 | `\|` in a table cell                                        | `editor/tables/cell-pipes.ts`                                                                                  |
-| How the folder is written, whichever app made it            | `conventions` (Rust `src-tauri/src/conventions/`, `fs.folderConventions`; plugins `files.conventions`)         |
+| How the folder is written, whichever app made it            | `conventions` (Go `backend/conventions.go`, `fs.folderConventions`; plugins `files.conventions`)               |
 
 ## Textus AI
 
@@ -88,5 +88,5 @@ To build on it:
 | Blocks as the model sees them (`[#id]`)    | `editor/markdown/doc-blocks.ts`, `editor/markdown/doc-markdown.ts`                                                                                       |
 | Streaming text in                          | `engine/motion/stream-reveal.ts`                                                                                                                         |
 | Sources as footnotes                       | `ai/citations.ts`                                                                                                                                        |
-| A provider and its models                  | `ai/provider-catalog.ts`, Rust `crates/aicompat` (no Tauri inside)                                                                                       |
+| A provider and its models                  | `ai/provider-catalog.ts`, Go `backend/ai/aicompat/` (no MyGo inside)                                                                                     |
 | From a plugin                              | `textus.ai.registerTool` (a tool the AI may call), `ai.state()` / `ai.onDidChangeState`                                                                  |

@@ -138,5 +138,5 @@ OLD_CHROMIUM=/path/to/chrome-linux/chrome \
 ```
 
 It builds the frontend as the app ships it, in development mode for the
-dev Tauri shim, and serves the build. Screenshots aren't compared there.
+dev host shim (`src/dev/host-shim.ts`), and serves the build. Screenshots aren't compared there.
 CI doesn't run it.

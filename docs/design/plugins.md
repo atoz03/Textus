@@ -28,11 +28,11 @@ Principles, from the roadmap:
 No plugin ships inside the app. The official ones are published from
 CatVinci-Studio/textus-plugins - each version a release with its zip, and a
 catalog (`index.json`) listing them with their SHA-256 - and Settings ›
-Plugins › Get plugins installs one from there: Rust fetches the catalog
+Plugins › Get plugins installs one from there: the backend fetches the catalog
 from a fixed address, downloads the package, checks it and installs it
 into the app's data folder, `plugins/<id>/`, marking it Official in
-`state.json` when the catalog says it is CatVinci's (src-tauri/src/plugins/
-catalog.rs). Others install from a file or, in developer mode, a folder.
+`state.json` when the catalog says it is CatVinci's
+(backend/plugins/catalog.go). Others install from a file or, in developer mode, a folder.
 All are the same kind of plugin, run the same way.
 
 A folder (or a `.textusplugin` zip of one) with a manifest,
@@ -114,7 +114,7 @@ flowchart LR
 
 - **Its files read** - on start, after an install, a reload or an uninstall
   (src/plugins/manager.ts' `loadPlugins`): its status starts again from
-  its manifest and its switch, saved in Rust (`plugins/state.json`). A
+  its manifest and its switch, saved by the backend (`plugins/state.json`). A
   failure isn't saved as such: the switch is saved off, and the next start
   reads it as off.
 - **Switched on** asks for whatever permission it wants and hasn't been
@@ -138,7 +138,7 @@ Three kinds of place a plugin's code runs, none of which can reach the app:
    `<iframe sandbox="allow-scripts">` per plugin, started on its first
    activation event and removed when the plugin is disabled. Without
    `allow-same-origin` it has an opaque origin: no access to the app's
-   storage, cookies, DOM or `window.__TAURI__`. It is written as `srcdoc` -
+   storage, cookies, DOM or `window.mygo`. It is written as `srcdoc` -
    the API's runtime and the plugin's `main`, read from its folder by the
    broker - under a Content Security Policy of its own, `default-src 'none';
 script-src 'unsafe-inline'`: no network, no other script. Everything goes
@@ -177,12 +177,12 @@ the app at the centre as the **broker**:
 ```
 webview  ⇄  broker (app window)  ⇄  plugin host (worker)
                     ⇅
-              Rust (privileged calls)
+            backend (privileged calls)
 ```
 
 - The broker owns every channel. It checks each call against the plugin's
   granted permissions before doing anything, and hands privileged work to
-  Rust through plugin-scoped commands (section 6).
+  the backend through plugin-scoped commands (section 6).
 - Messages are structured-clone data only, typed by the
   `@textus/plugin-api` package: a `.d.ts` of the whole API and a small
   runtime that turns `textus.workspace.readFile(...)` into an RPC call.
@@ -214,10 +214,10 @@ The API, by namespace (first version):
 
 - **Granting.** On install the manifest's `permissions` are shown in plain
   words; the user grants all or cancels, and can revoke one later in the
-  plugin's Settings page. Grants live in Rust, in the app data folder:
+  plugin's Settings page. Grants live in the backend, in the app data folder:
   `plugins/state.json` - per plugin its version, enabled, granted
   permissions and the folders it was given.
-- **Enforcement in Rust.** A plugin's privileged calls are Tauri commands
+- **Enforcement in the backend.** A plugin's privileged calls are backend commands
   that take the plugin id and check the grant there, not in the frontend:
   - `plugin_fs_read` / `plugin_fs_write`: the path canonicalised and
     required to be inside the open folder (or one granted explicitly),
@@ -277,9 +277,9 @@ Each kind comes from where it is simplest to keep and to review:
 
 | Kind    | Where it comes from                                                                           | Installed as                                       |
 | ------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Plugins | `CatVinci-Studio/textus-plugins`: its `catalog` release's `index.json`, one release a version | a zip, checked by SHA-256, unpacked by Rust        |
+| Plugins | `CatVinci-Studio/textus-plugins`: its `catalog` release's `index.json`, one release a version | a zip, checked by SHA-256, unpacked by the backend |
 | Themes  | `CatVinci-Studio/textus-themes` (the website's gallery), sent in as a GitHub comment          | one CSS file, a user theme                         |
-| Skills  | built into the app (src-tauri/src/ai/skills/); the user's own are files                       | a switch: five on in a new profile, the rest added |
+| Skills  | built into the app (backend/ai/skills/); the user's own are files                             | a switch: five on in a new profile, the rest added |
 | MCP     | anything with an MCP server; four common ones are ready to add (src/settings/mcp.ts)          | a command or a URL in `mcpServers`                 |
 
 A plugin or theme someone else wrote is reviewed before it is listed: a
@@ -289,7 +289,7 @@ and are made optional by their switches; a catalog of skills written by
 others can come later in the same shape as the plugins'. MCP servers are
 the user's own choice of program or service: nothing is listed that the
 user didn't add, and a server's tools reach the model only while its
-switch is on (src-tauri/src/mcp/).
+switch is on (backend/mcp/).
 
 ## 9. Order of work (betas on `main`)
 

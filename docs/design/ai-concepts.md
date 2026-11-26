@@ -10,7 +10,7 @@ Change a concept here first, then everywhere else.
 The AI itself is `AI_NAME` in `src/i18n/names.ts` ("Textus AI"); the help guides spell the name out.
 
 "Conversation" below means the AI panel and Quick Ask, which run the same
-agent (`src-tauri/src/ai/agent/`). "Completion" is the grey continuation.
+agent (`backend/ai_agent.go`, `backend/ai/agent_*.go`). "Completion" is the grey continuation.
 Grammar check uses only the writing conventions and the library's names.
 
 ## Glossary
@@ -54,8 +54,10 @@ there, and the project's own settings live in its `.textus/` folder.**
   text files and the text of its PDF, Word, PowerPoint, spreadsheet, EPUB
   and RTF files (`find_files`, which lists them all without a name,
   `read_file`, `search_files`;
-  `src-tauri/src/extract/` turns them into Markdown - headings, lists,
-  tables, slides and their notes, footnotes - as for chat attachments),
+  `backend/extract/` turns them into Markdown - headings, lists,
+  tables, slides and their notes, footnotes - as for chat attachments; the
+  Go backend reads only Word and HTML so far,
+  [architecture.md](../dev/architecture.md#the-backend)),
   and look at its images with `read_file` when the provider takes images;
   `@` in the composer attaches a text file. They walk it as the sidebar's
   file search does (`backend/walk.go`): hidden entries, what
@@ -64,7 +66,7 @@ there, and the project's own settings live in its `.textus/` folder.**
   long file (up to 16 MB) in parts, by line range; an `@` attachment is
   still a whole file of at most 100 KB, and an image at most 6 MB.
 - In code it is the _workspace root_ (`settings.agentWorkspaceRoot`,
-  `workspace::project_root`).
+  `projectRoot`).
 
 ### `.textus/` folder
 
@@ -116,8 +118,8 @@ consistent, one entry per file.**
   text around the cursor for completion. At most 8,000 characters of
   entries per request (characters, not bytes, so Chinese gets as much as
   English); entries nobody mentions cost nothing. The Memory tab marks the
-  entries the last request carried - Rust records them
-  (`project::record_library_use`), so the mark is what was sent - and
+  entries the last request carried - the backend records them
+  (`recordLibraryUse`), so the mark is what was sent - and
   names those that came up but didn't fit.
 
 ### Writing instructions (`agent.md`)
@@ -155,7 +157,7 @@ Textus AI never changes them.
   named by an id, `<scope>/<folder>/<file stem>`
   (`personal/memory/no-semicolons`, `project/library/lin-wan`).
 - **Create / edit:** Textus AI, after each exchange in any mode (a separate
-  small request, memory::pass - it writes memory, never the document) while
+  small request, `backend/ai/memory_pass.go` - it writes memory, never the document) while
   **Settings > Textus AI > Remember automatically** is on (the default). It
   adds, updates or forgets ("forget the no-semicolons rule"); each change
   shows under the reply as "Remembered: … (project) · Undo · Make personal"
@@ -179,7 +181,7 @@ Textus AI never changes them.
   Accepting a kind only ends its run - nothing is offered for it.
 - **Scope:** about this work - project; the user's general habits -
   personal; with no project folder (an unsaved draft) everything is
-  personal and no fact is kept. Rust writes only inside the two `memory/`
+  personal and no fact is kept. The backend writes only inside the two `memory/`
   folders and the project's library, through the atomic writer; an
   identical memory (same letters and digits, ignoring case, spacing and
   punctuation) is not saved twice, and to change one the model passes its
@@ -206,7 +208,7 @@ description.**
 - **On disk:** built-in: 9 skills bundled with the app, each panel
   mode's own and always on - Write: expand, tighten, translate, summarize;
   Review: proofread, continuity; Create: theme, plugin, skill
-  (`src-tauri/src/ai/skills/*.md`, read-only); global: `skills/*.md` in the
+  (`backend/ai/skills/*.md`, read-only); global: `skills/*.md` in the
   global config folder, where the market's skills install
   (textus-plugins/skills); project: `.textus/skills/*.md`. Frontmatter
   `name` and `description` (block scalars allowed), Textus-only keys under
@@ -228,20 +230,20 @@ description.**
   `textus-based-on` (so **Reset to built-in** may delete it); or by hand in
   either folder.
 - **Reference packs:** `contract`, `craft` and `standards-<lang>` for ten
-  languages (`src-tauri/src/ai/skills/packs/`), never listed or called with
+  languages (`backend/ai/skills/packs/`), never listed or called with
   `/`. A skill's `textus-packs` sections (`standards#dialogue` = the
   document language's pack) are appended to its instructions whenever it is
   used, and the model can load any section with
   `use_skill("standards-fr#dialogue")`. Attribution:
-  `src-tauri/src/ai/skills/ATTRIBUTION.md`.
+  `backend/ai/skills/ATTRIBUTION.md`.
 - **Textus AI uses it:** the name and description of every skill it may
   start (`textus-invocation: both`; not `user-only` ones like `/tighten`, not
   turned-off built-ins) are listed in the system prompt
   (`---available skills---`) for tool-calling providers, the user's own
   marked "(project)" or "(yours)" and preferred over a built-in when both
   match; the body arrives through `use_skill`, or - when the user types
-  `/name` or an alias (`/校对`) - already expanded by Rust
-  (`builtin::expand_message`) in a `<skill name="...">` block, which the
+  `/name` or an alias (`/校对`) - already expanded by the backend
+  (`ai.ExpandMessage`) in a `<skill name="...">` block, which the
   agent follows without loading it again. Conversations only.
 
 ### Global config folder
@@ -289,7 +291,7 @@ document language: a profile such as `zh-Hans-CN/fiction`, `en-GB/govuk` or
   French spacing, quote systems, serial comma, -ize/-ise...), Automatic
   follows the document's own majority and flags only the minority.
 - **Textus AI uses it:** through the deterministic rules engine
-  (`src-tauri/src/ai/rules/`): the grammar check adds the engine's findings
+  (`backend/ai/rules/`): the grammar check adds the engine's findings
   to the model's; conversations get the read-only tools
   `check_conventions` and `measure_text`, and each proposal's text is made
   to follow the P0 conventions the document already follows before the
@@ -407,13 +409,13 @@ part of the project.
   English with the project menu's items, the **Style** chip and the
   Settings rows that make and open it (and what reaches completion), and
   hands over the same names in the user's UI language as a table
-  (`src-tauri/src/ai/ui-names/<code>.txt`, only that one language), to be
+  (`backend/ai/ui-names/<code>.txt`, only that one language), to be
   used when replying in it, so its answers point at labels that exist.
   Without a project folder it names only the Settings row: the project bar
   isn't shown then. Unit tests check every name in each table against that
   language's strings (`src/i18n/locales/<code>.ts`) or, for "project menu",
   its help guide, and the "Learn my style" headings
-  (`src-tauri/src/ai/style-headings/<code>.txt`) against the starter
+  (`backend/ai/style-headings/<code>.txt`) against the starter
   profiles; the live eval's `concept/` cases check the replies.
 
 ## Names in code
@@ -423,12 +425,12 @@ names above.
 
 | User-facing name       | In code                                                                                                                                                                                                                                                                                      |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Project folder         | workspace root: `settings.agentWorkspaceRoot` (`""` = none), `workspace::project_root`, `AgentWorkspace.root`                                                                                                                                                                                |
-| `.textus/` folder      | `WORKSPACE_DIR_NAME`                                                                                                                                                                                                                                                                         |
-| Style profile          | `AgentWorkspace.style`, `project::read_style`, `learn_style`                                                                                                                                                                                                                                 |
-| Library                | `AgentWorkspace.library`, `project::read_library`, `project::relevant_library`                                                                                                                                                                                                               |
+| Project folder         | workspace root: `settings.agentWorkspaceRoot` (`""` = none), `projectRoot`, `AgentWorkspace.root`                                                                                                                                                                                            |
+| `.textus/` folder      | `workspaceDirName`                                                                                                                                                                                                                                                                           |
+| Style profile          | `AgentWorkspace.style`, `readStyle`, `learn_style`                                                                                                                                                                                                                                           |
+| Library                | `AgentWorkspace.library`, `readLibrary`, `ai.PickLibrary`                                                                                                                                                                                                                                    |
 | Writing instructions   | `AgentWorkspace.instructions` (global) and `AgentWorkspace.project_instructions`; `agentSystemPrompt*` strings                                                                                                                                                                               |
 | AI remembered          | `backend/ai/memory.go`, `AgentWorkspace.Memories`, the memory pass (`memory_pass.go`), `memory_undo`, `memory_move`, `memory_delete` (into `.forgotten/`), `memory_restore`, `memory_remember`, `Memories.SelectFor`, `settings.rememberAutomatically`, `MemoryChip`, `revision-learning.ts` |
-| Skills                 | `AgentWorkspace.skills`, the `use_skill` tool, `import_agent_skill`, `ai::builtin`, `customize_builtin_skill`, `reset_builtin_skill`, `set_builtin_skill_enabled`                                                                                                                            |
+| Skills                 | `AgentWorkspace.skills`, the `use_skill` tool, `import_agent_skill`, `backend/ai/builtin.go`, `customize_builtin_skill`, `reset_builtin_skill`, `set_builtin_skill_enabled`                                                                                                                  |
 | Suggested next message | `suggest_next_message` (`backend/ai_suggest.go`), `useNextMessage` (`ai/chat/next-message.ts`), `FollowUpChips`, `settings.suggestNextMessage`                                                                                                                                               |
-| Global config folder   | `GLOBAL_DIR` (`textus/`), `global_agent_dir`, `agentWorkspaceLabel`                                                                                                                                                                                                                          |
+| Global config folder   | `globalAgentDir` (`textus/`), `globalAgentPath`, `agentWorkspaceLabel`                                                                                                                                                                                                                       |

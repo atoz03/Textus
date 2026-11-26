@@ -90,8 +90,8 @@ when the document reached disk.
   into the editor as one undo step, so what is saved is what shows. After
   the write, plugins hear `didSave`.
 - **The write** keeps the file's line endings and byte-order mark
-  (`writeDocFile`, `document/file-format.ts`) and goes through Rust's
-  write-then-rename. A tracked document's file gets its original, the
+  (`writeDocFile`, `document/file-format.ts`) and goes through the backend's
+  write-then-rename (`backend/atomic.go`). A tracked document's file gets its original, the
   changes going beside it (`document/tracked-file.ts`). A failed write says
   why, and the tab stays dirty.
 - **A first save** (Save As, or an untitled draft's autosave) moves
@@ -122,7 +122,7 @@ until it is saved, reloaded or saved elsewhere, so the prompt shows once.
 With **Settings › Privacy › Recover unsaved content after a crash** on
 (`enableDraftRecovery`, the default),
 every dirty tab is snapshotted a few seconds after typing settles, or every
-30 seconds during a long burst (`src/document/draft-autosave.ts`). Rust
+30 seconds during a long burst (`src/document/draft-autosave.ts`). The backend
 keeps one snapshot per tab in the app's `drafts/` folder
 (`backend/drafts.go`) and deletes it once the tab is saved
 or closed. What is still there at the next launch is unresolved: it opens
@@ -160,7 +160,7 @@ and links to a moved note are rewritten (`files/move-links.ts`).
 - **A window** (`useWindowCloseGuard`): every close path - the close
   button, Close Window, Quit - flushes autosave, then prompts once for all
   dirty tabs, or keeps them as drafts with `keepUnsavedOnClose`. Pending
-  settings and UI-state writes reach Rust before the window goes
+  settings and UI-state writes reach the backend before the window goes
   ([storage.md](storage.md#how-the-files-are-written)). Quitting asks every
   window in turn ([lifecycle.md](lifecycle.md#quitting)).
 - Changes still to decide (Textus AI's proposals, the writer's tracked

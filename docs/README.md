@@ -11,7 +11,7 @@ Start here:
 
 | Document                                 | What it covers                                                                                         |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| [architecture.md](dev/architecture.md)   | The folders in `src/` and `src-tauri/`, the layers ESLint enforces, UI layering, the backend bridge, CSS, the CSP |
+| [architecture.md](dev/architecture.md)   | The folders in `src/` and `backend/`, the layers ESLint enforces, UI layering, the backend bridge, CSS, the CSP |
 | [recipes.md](dev/recipes.md)             | Step by step: a setting, a menu item and shortcut, a backend command, a UI string, a plugin API call, an e2e test, platform code |
 | [code-style.md](dev/code-style.md)       | The code-shape, interface and writing rules, and the script that checks each                            |
 | [triage.md](dev/triage.md)               | Sorting issues and pull requests, and how a newcomer issue is written                                  |
