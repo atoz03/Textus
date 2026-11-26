@@ -22,10 +22,16 @@ import (
 
 // The in-app update check on the chosen channel. Textus publishes
 // textus-latest.json, never latest.json: Levis installs read that name
-// from this repository and trust the same key. Beta reads the download
-// bucket's textus-beta.json (GitHub's releases/latest skips
-// pre-releases), then stable. Only newer versions are offered, except on
-// an explicit back-to-stable.
+// from this repository and trust the same key. Beta reads textus-beta.json
+// (GitHub's releases/latest skips pre-releases), then stable. Only newer
+// versions are offered, except on an explicit back-to-stable.
+//
+// Both manifests are atoz03/Textus's, whose releases are signed with the
+// key in mygo.json (updates.publicKey): CatVinci-Studio/Textus's are
+// signed with another, which this build would refuse. No workflow writes
+// this repository's textus-beta.json yet (update-beta-manifest.yml writes
+// CatVinci-Studio's download bucket), so beta finds none there and reads
+// stable.
 //
 // A Go build's entry in the manifest is MyGo's update of its target,
 // "mygo-<GOOS>-<GOARCH>": the archive's URL, size and Ed25519 signature
@@ -35,8 +41,8 @@ import (
 // with and replaces the app.
 
 const (
-	stableManifestURL = "https://github.com/CatVinci-Studio/Textus/releases/latest/download/textus-latest.json"
-	betaManifestURL   = "https://textus.md/download/textus-beta.json"
+	stableManifestURL = "https://github.com/atoz03/Textus/releases/latest/download/textus-latest.json"
+	betaManifestURL   = "https://github.com/atoz03/Textus/releases/latest/download/textus-beta.json"
 	maxManifestBytes  = 1 << 20
 )
 

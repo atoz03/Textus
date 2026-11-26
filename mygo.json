@@ -28,6 +28,10 @@
       "role": "Editor"
     }
   ],
+  "updates": {
+    "publicKey": "pB1kfBMM9YupB4EMDAzP/6EYWT9N06GOW33q/Ah3Eyo=",
+    "github": "atoz03/Textus"
+  },
   "macos": {
     "icon": "packaging/icons/icon.icns",
     "minimumSystemVersion": "13.0"

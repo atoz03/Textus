@@ -280,11 +280,16 @@ The app has two (`backend/updater.go`):
 
 - **Stable** reads the newest stable GitHub release's `textus-latest.json`
   (`stableManifestURL`).
-- **Beta** reads `textus-beta.json` from the website's download bucket
-  (<https://textus.md/download/textus-beta.json>, `betaManifestURL`), and
-  falls back to the stable endpoint when that fails. GitHub has no fixed
-  URL for the newest pre-release, so the beta manifest lives on our own
-  bucket.
+- **Beta** reads `textus-beta.json` (`betaManifestURL`), and falls back to
+  the stable endpoint when that fails. GitHub has no fixed URL for the
+  newest pre-release, so CatVinci-Studio/Textus keeps the beta manifest on
+  its own download bucket (<https://textus.md/download/textus-beta.json>).
+
+Both URLs name atoz03/Textus, whose releases are signed with the key in
+`mygo.json`; CatVinci-Studio/Textus signs its own with another. No
+workflow writes atoz03/Textus's beta manifest yet (the job below writes
+the bucket, and skips other repositories), so its beta channel reads
+stable.
 
 Either way the app takes its own entry (`mygo-<GOOS>-<GOARCH>`, or
 `mygo-darwin-universal` on a Mac), and MyGo's updater downloads that
@@ -348,8 +353,8 @@ the workflow drifts back. On a tag, the release's preflight also requires
 `updates.publicKey` in `mygo.json` (the public half of
 `MYGO_UPDATER_PRIVATE_KEY`, [Secrets](#secrets)) and `updates.github`:
 a build without them can never update itself. The beta manifest is
-`textus-beta.json` and lives only on the download bucket, never on a
-GitHub release.
+`textus-beta.json`, which CatVinci-Studio/Textus keeps on its download
+bucket, never on a version's GitHub release.
 
 ## Secrets
 
