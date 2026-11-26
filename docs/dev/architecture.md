@@ -269,7 +269,9 @@ touches `system.go` answers without acting on them (the Roman input
 source for a plugin's key mode, the Edit menu's native actions, drag
 modifiers), the AI's live evals ([ai-eval.md](../design/ai-eval.md)),
 the chat's `edit_chapters` tool (a helper per chapter for a change through
-a long document), and the iOS and Android builds. Web page tabs are native
+a long document), reading PDF, PowerPoint, spreadsheet, EPUB and RTF files
+for the AI and `textus read` (`extractDocument` reads Word and HTML), the
+portable Windows build (`distribution.go`), and the iOS and Android builds. Web page tabs are native
 pages on macOS and Windows only, and tabs drag between windows there
 only: Linux, Wayland above all, gives no window positions.
 `src/platform/capabilities.ts` turns the frontend's side of what is

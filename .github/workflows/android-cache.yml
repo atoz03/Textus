@@ -1,23 +1,18 @@
 name: Android cache
 
-# Keeps Gradle's downloads (and the Rust build for Android) cached on main.
+# Kept Gradle's downloads (and the Rust build for Android) cached on main
+# for the Tauri builds' Android release. The Go backend builds no Android
+# app and main has no src-tauri/ (docs/dev/architecture.md), so it no
+# longer runs by itself: its push and weekly triggers are off, and a run by
+# hand fails until the Android build is ported.
+#
 # A release runs on a tag, and a tag can restore only caches saved on the
 # default branch: without this, every release fetched all of Gradle's
 # dependencies from Maven Central again, which has answered a burst with
-# 429 and failed the release's Android build. android-release.yml and CI's
-# android job restore what this saves (same keys).
+# 429 and failed the release's Android build. android-release.yml restores
+# what this saves (same keys).
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - src-tauri/Cargo.lock
-      - package-lock.json
-      - scripts/android-prepare.sh
-      - .github/workflows/android-cache.yml
-  schedule:
-    # Weekly, so the cache isn't evicted after seven days unused.
-    - cron: "17 6 * * 1"
   workflow_dispatch:
 
 permissions:

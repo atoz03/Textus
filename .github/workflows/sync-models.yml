@@ -51,7 +51,7 @@ jobs:
           if [ "$status" -ge 2 ]; then exit "$status"; fi
           echo "pins_ok=$([ "$status" -eq 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           if git diff --quiet -- src/ai/models-snapshot.json \
-            src-tauri/crates/aicompat/data/model-capabilities.json; then
+            backend/ai/aicompat/model-capabilities.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -88,7 +88,7 @@ jobs:
 
           git switch -C "$BRANCH"
           git add src/ai/models-snapshot.json \
-            src-tauri/crates/aicompat/data/model-capabilities.json
+            backend/ai/aicompat/model-capabilities.json
           git commit -m "$title"
           git push --force origin "$BRANCH"
 

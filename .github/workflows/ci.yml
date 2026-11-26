@@ -6,33 +6,36 @@ name: CI
 #                  the unit tests in 2 shards), the whole e2e suite in
 #                  Chromium (2 shards) and in WebKit (3 shards; its width
 #                  sweep and a11y scan in the full suite only),
-#                  plus the Rust checks on Linux when src-tauri/ changed
-#                  (scripts/ci-changes.mjs), with a check of the Android
-#                  target. A change to GitHub's settings
+#                  plus the Go checks and the built app on Linux when the
+#                  change reaches the Go backend (scripts/ci-changes.mjs).
+#                  A change to GitHub's settings
 #                  or root Markdown alone checks only their format;
 #                  documentation alone checks format, links and the tests
 #                  that read the docs, without builds or e2e. Required:
 #                  check, e2e, native, ci-config. A contributor runs
 #                  `npm run check` locally.
-#   push to main   check, and the Rust checks and Linux app build
+#   push to main   check, and the Go checks and the Linux app
 #                  (scripts/ci-changes.mjs takes every push as native):
 #                  the merged tree's build. The e2e suite ran on the pull
 #                  request; here only the browsers' cache is refreshed.
 #   before release the full suite on every platform: native on Linux, macOS
-#                  and Windows, e2e, the iOS simulator. It runs on the pull
-#                  request that bumps the version, and release.yml calls it
-#                  on the tagged commit.
+#                  and Windows, and e2e. It runs on the pull request that
+#                  bumps the version, and release.yml calls it on the
+#                  tagged commit. The iOS and Android apps are still the
+#                  Tauri builds (docs/dev/architecture.md), which main no
+#                  longer has: CI builds neither.
 #
 # `check`'s save round trip (src/document-view/save-roundtrip*.test.ts)
 # runs only when the change can reach saving: the editor, src/document*/,
 # the Markdown helpers, the npm dependencies or CI. Markdown under src/,
-# e2e/ or src-tauri/ (help guides, the AI skills) is code, not
+# e2e/ or backend/ (help guides, the AI skills) is code, not
 # documentation.
 #
-# Caches: Rust builds and the Playwright browsers are saved from main only
-# (the browsers by `browser-cache`).
-# Pull requests restore main's and write none, so they don't evict main's
-# from the repository's 10 GB.
+# Caches: the Playwright browsers are saved from main only (by
+# `browser-cache`); pull requests restore main's and write none, so they
+# don't evict main's from the repository's 10 GB. Go's modules and build
+# cache are setup-go's, one per go.sum, which a pull request writes only
+# when it changes go.sum.
 
 on:
   pull_request:
@@ -56,7 +59,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Whether the change is light, reaches the Rust build (`native`) or
+  # Whether the change is light, reaches the Go build (`native`) or
   # saving (`roundtrip`): scripts/ci-changes.mjs.
   changes:
     runs-on: ubuntu-22.04
@@ -68,7 +71,7 @@ jobs:
       roundtrip: ${{ steps.diff.outputs.roundtrip }}
       # The full suite: before a tag (the release workflow calls this one)
       # and on the pull request that bumps the version. Otherwise the quick
-      # one: check, and Rust on Linux where Rust changed.
+      # one: check, and Go on Linux where the change reaches it.
       full: ${{ steps.diff.outputs.full }}
     steps:
       - uses: actions/checkout@v7
@@ -368,9 +371,9 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # Linux alone in the quick suite, where the change reaches Rust; macOS
-  # and Windows (with their unit tests: path and line-ending code) in the
-  # full one, which the release waits for on the tagged commit.
+  # Linux alone in the quick suite, where the change reaches Go; macOS and
+  # Windows (with their unit tests: path and line-ending code) in the full
+  # one, which the release waits for on the tagged commit.
   native-platform:
     needs: changes
     if: needs.changes.outputs.native == 'true' || needs.changes.outputs.full == 'true'
@@ -378,33 +381,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The Rust checks on each platform, and the unit tests on each one
+        # The Go checks on each platform, and the unit tests on each one
         # too: path handling, line endings and the like differ between them.
         # Not again on Linux, where `check` runs them on the same image. On
         # Windows, the slowest machine for both, in a job of their own beside
-        # the Rust one. macOS keeps them in one job: its runners are the
-        # scarce ones, and the ios job already takes a second.
+        # the Go one. macOS keeps them in one job: its runners are the
+        # scarce ones.
         #
         # macos-26: what macos-latest points at today, pinned (as in the
         # release workflows) so an image switch is a deliberate change.
         #
         # Linux alone, or all of them in the full suite (see above).
-        include: ${{ fromJSON(needs.changes.outputs.full == 'true' && '[{"name":"ubuntu-22.04","os":"ubuntu-22.04","rust":true},{"name":"macos-26","os":"macos-26","rust":true,"unit":true},{"name":"windows-2025","os":"windows-2025","rust":true},{"name":"windows-2025, unit tests","os":"windows-2025","unit":true}]' || '[{"name":"ubuntu-22.04","os":"ubuntu-22.04","rust":true}]') }}
+        include: ${{ fromJSON(needs.changes.outputs.full == 'true' && '[{"name":"ubuntu-22.04","os":"ubuntu-22.04","go":true},{"name":"macos-26","os":"macos-26","go":true,"unit":true},{"name":"windows-2025","os":"windows-2025","go":true},{"name":"windows-2025, unit tests","os":"windows-2025","unit":true}]' || '[{"name":"ubuntu-22.04","os":"ubuntu-22.04","go":true}]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
-    env:
-      # Debug info is most of what the dev and test profiles write and link
-      # (on Windows a .pdb per binary), and CI never opens a debugger; a
-      # failing test still names its file and line.
-      CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - uses: actions/checkout@v7
         if: matrix.unit || needs.changes.outputs.native == 'true'
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux' && needs.changes.outputs.native == 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - uses: actions/setup-node@v7
         if: matrix.unit || needs.changes.outputs.native == 'true'
         with:
@@ -418,44 +411,18 @@ jobs:
         run: npm test
         env:
           TEXTUS_SKIP_ROUNDTRIP: "1"
-      # Installs the toolchain src-tauri/rust-toolchain.toml names.
-      - if: matrix.rust && needs.changes.outputs.native == 'true'
-        uses: dtolnay/rust-toolchain@stable
+      # The Go that go.mod names.
+      - if: matrix.go && needs.changes.outputs.native == 'true'
+        uses: actions/setup-go@v7
         with:
-          components: rustfmt, clippy
-      - if: matrix.rust && needs.changes.outputs.native == 'true'
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "./src-tauri -> target"
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - if: matrix.rust && needs.changes.outputs.native == 'true'
+          go-version-file: go.mod
+      # gofmt, go vet and the backend's tests (scripts/check-native.mjs).
+      - if: matrix.go && needs.changes.outputs.native == 'true'
         run: npm run check:native
-      # The Android target, checked (not built) wherever the change reaches
-      # Rust: a dependency or module given to the desktop alone fails here,
-      # not in the full suite's mobile jobs, which don't block. iOS-only code
-      # (target_os = "ios") still waits for the ios job. A few crates build
-      # C, so the runner image's default NDK supplies the compiler (any
-      # recent one does for a check). Clippy rather than check: its
-      # -D warnings reaches only our crates, where RUSTFLAGS would build
-      # every dependency again; a warning here is desktop-only code the
-      # phone compiles too, to gate #[cfg(desktop)].
-      - name: Check the Android target
-        if: runner.os == 'Linux' && needs.changes.outputs.native == 'true'
-        working-directory: src-tauri
-        run: |
-          bin="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          if [ ! -x "$bin/aarch64-linux-android24-clang" ]; then
-            echo "::error::no Android NDK on this runner image (ANDROID_NDK_HOME)"
-            exit 1
-          fi
-          rustup target add aarch64-linux-android
-          export CC_aarch64_linux_android="$bin/aarch64-linux-android24-clang"
-          export AR_aarch64_linux_android="$bin/llvm-ar"
-          cargo clippy --target aarch64-linux-android --lib -- -D warnings
 
   # One required check for the three platforms: passes only when all of
   # them passed (or were skipped together, when the change can't reach the
-  # Rust build).
+  # Go build).
   native:
     needs: [changes, native-platform]
     if: always()
@@ -470,164 +437,32 @@ jobs:
           test "$CHANGES" = success
           test "$RESULT" = success || test "$RESULT" = skipped
 
-  # The built app on Linux, driven like a user (scripts/drive-linux.mjs):
-  # it starts on a document, takes typing and saves it. Not required yet.
+  # The built app on Linux (scripts/smoke-linux.sh): its .deb, a start on
+  # a document under Xvfb, the terminal's commands answered by its window
+  # (an export among them), launches handed over to it, and Quit. Not
+  # required yet.
   linux-app:
     needs: changes
     if: needs.changes.outputs.native == 'true' || needs.changes.outputs.full == 'true'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
-    env:
-      CARGO_PROFILE_DEV_DEBUG: "0"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - name: Install Linux dependencies
+      # What the .deb depends on, which the app loads as it starts, and a
+      # display to start it on.
+      - name: Install the app's libraries and Xvfb
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb
+          sudo apt-get install -y libgtk-3-0t64 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 xvfb dbus
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
+      - uses: actions/setup-go@v7
         with:
-          workspaces: "./src-tauri -> target"
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: cargo install tauri-driver --locked
-      - name: Build the app
-        run: npm run tauri build -- --debug --no-bundle
-      - name: Drive it
-        run: |
-          export XDG_CONFIG_HOME="$RUNNER_TEMP/config" XDG_DATA_HOME="$RUNNER_TEMP/data" XDG_CACHE_HOME="$RUNNER_TEMP/cache"
-          mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
-          xvfb-run -a bash -c 'tauri-driver & sleep 3; node scripts/drive-linux.mjs src-tauri/target/debug/textus'
-
-  # iOS: proves the shared code and the #[cfg(desktop)] gating compile for
-  # the iOS simulator (docs/dev/ios-code-map.md). No secrets and no signing: the
-  # Xcode project is generated fresh (gen/apple is not committed) and the
-  # simulator build is unsigned (--no-sign). Not a required check while the
-  # iOS port is young.
-  ios:
-    needs: changes
-    if: needs.changes.outputs.full == 'true'
-    # Not required: its failure shows here without failing the run (or
-    # the release that calls it).
-    continue-on-error: true
-    runs-on: xcode-27
-    timeout-minutes: 60
-    env:
-      # As in native-platform: no debug info for a build nothing debugs.
-      CARGO_PROFILE_DEV_DEBUG: "0"
-    steps:
-      - uses: actions/checkout@v7
-      # The same Xcode the TestFlight upload uses (ios-release.yml has why
-      # it is picked this way).
-      - name: Select Xcode
-        run: |
-          xcode=$(find /Applications -maxdepth 1 -type d -name 'Xcode_27*.app' \
-            | grep -E '/Xcode_[0-9.]+\.app$' | sort -V | tail -n1)
-          if [ -z "$xcode" ]; then
-            echo "::error::no released Xcode 27 on this runner image"
-            exit 1
-          fi
-          sudo xcode-select -s "$xcode"
-          xcodebuild -version
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios, aarch64-apple-ios-sim
-          # Xcode 27's SwiftPM hides the Swift plugins' @_cdecl exports;
-          # swift-rs makes them global again with rustup's llvm-objcopy.
-          components: llvm-tools
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "./src-tauri -> target"
-          key: ios
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Install XcodeGen (used by tauri ios init)
-        run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
-      - run: npm ci
-      - run: npm run build
-      - name: Generate the Xcode project (src-tauri/gen/apple)
-        run: npx tauri ios init --ci && sh scripts/ios-prepare.sh
-      - name: Build for the iOS simulator, unsigned
-        run: npx tauri ios build --ci --debug --target aarch64-sim --no-sign
-      # Built is not started: a command whose state only the desktop
-      # manages aborts the app once its page calls it.
-      - name: Start it in the simulator
-        run: scripts/smoke-ios-sim.sh src-tauri/gen/apple/build/arm64-sim/Textus.app --screenshot ios-sim.png
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ios-sim
-          path: |
-            ios-sim.png
-            ~/Library/Logs/DiagnosticReports/Textus*.ips
-          if-no-files-found: ignore
-
-  # Android: the same proof for the APK (scripts/android-prepare.sh): the
-  # project is generated fresh (gen/android is not committed) and built for
-  # arm64, debug and unsigned by our key. Not a required check while the
-  # Android port is young.
-  android:
-    needs: changes
-    if: needs.changes.outputs.full == 'true'
-    continue-on-error: true
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    env:
-      CARGO_PROFILE_DEV_DEBUG: "0"
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "./src-tauri -> target"
-          key: android
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: npm ci
-      # Gradle's downloads: Maven Central has refused a cold run (429).
-      # android-cache.yml saves them on main under the same key.
-      - uses: actions/cache@v6
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'package-lock.json', 'scripts/android-prepare.sh') }}
-          restore-keys: gradle-${{ runner.os }}-
-      # Retries that wait seconds and grow, not 125 ms, when Central says 429.
-      - name: Gradle retries downloads with a back-off
-        run: |
-          mkdir -p ~/.gradle
-          cat >> ~/.gradle/gradle.properties <<'PROPS'
-          systemProp.org.gradle.internal.repository.max.retries=6
-          systemProp.org.gradle.internal.repository.initial.backoff=2000
-          PROPS
-      # The runner image's SDK and newest NDK.
-      - name: Generate the Android project (src-tauri/gen/android)
-        run: |
-          echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
-          NDK_HOME=$ANDROID_NDK_LATEST_HOME npx tauri android init --ci
-          sh scripts/android-prepare.sh
-      - name: Build the APK for arm64, debug
-        run: npx tauri android build --ci --debug --target aarch64 --apk
-      - uses: actions/upload-artifact@v7
-        with:
-          name: textus-android-debug
-          path: src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk
-          if-no-files-found: error
+          go-version-file: go.mod
+      - name: Build the app and its packages
+        run: npx mygo build -platform linux/amd64
+      - name: Smoke test
+        run: xvfb-run -a dbus-run-session -- scripts/smoke-linux.sh

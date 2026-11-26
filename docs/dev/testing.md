@@ -67,11 +67,11 @@ a key the macOS menu takes reaches nothing.
 
 CI has three layers (`.github/workflows/ci.yml`):
 
-| When                                              | What runs                                                                                                                                                                                              | Required                      |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------- |
-| Every pull request (forks too)                    | `check` (types, lint, formats, repo checks and build, beside the unit tests in 2 shards); the whole e2e suite in Chromium (2 shards) and in WebKit (3 shards); Rust on Linux when `src-tauri/` changed | check, e2e, native, ci-config |
-| A push to `main` (a merged pull request)          | `check`, Rust and the Linux app build; the browsers' cache refreshed. No e2e: it ran on the pull request                                                                                               | -                             |
-| Before a release (the version bump's PR, the tag) | everything: the above, plus Rust on macOS and Windows and the iOS simulator                                                                                                                            | all of them                   |
+| When                                              | What runs                                                                                                                                                                                                                           | Required                      |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| Every pull request (forks too)                    | `check` (types, lint, formats, repo checks and build, beside the unit tests in 2 shards); the whole e2e suite in Chromium (2 shards) and in WebKit (3 shards); Go and the built app on Linux when the change reaches the Go backend | check, e2e, native, ci-config |
+| A push to `main` (a merged pull request)          | `check`, Go and the built app on Linux; the browsers' cache refreshed. No e2e: it ran on the pull request                                                                                                                           | -                             |
+| Before a release (the version bump's PR, the tag) | everything: the above, plus Go on macOS and Windows                                                                                                                                                                                 | all of them                   |
 
 A change to GitHub's settings, the license or the root Markdown alone
 checks only their format (`light` in `scripts/ci-changes.mjs`).
@@ -135,7 +135,7 @@ instead).
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `openApp(page, options)`           | Opens the window with onboarding done, animations and the caret blink off. `settings` seeds the settings (Chinese UI unless set), `storage` localStorage, `colorScheme` the appearance, `animations: true` keeps the motion, `ready` what to wait for (an editor by default). |
 | `PHONE`, `TABLET`                  | `test.use(PHONE)`: an iPhone 390 wide, by touch, in the phone's layout; `TABLET` an iPad 768 wide, the desktop's layout by touch.                                                                                                                                             |
-| `emit(page, name, payload)`        | Sends a backend event as Rust would: a menu item (`"menu-toggle-sidebar"`), a file drop, a window event.                                                                                                                                                                      |
+| `emit(page, name, payload)`        | Sends a backend event as the Go backend would: a menu item (`"menu-toggle-sidebar"`), a file drop, a window event.                                                                                                                                                            |
 | `mockInvoke(page, { cmd: value })` | Answers a command with a canned value.                                                                                                                                                                                                                                        |
 | `settled(page)`                    | Waits until no animation runs and nothing scrolls for a few frames (at most 3 s), in place of a fixed pause before checking where things came to rest.                                                                                                                        |
 | `pasteMarkdown(page, md)`          | Pastes text into the active editor and waits for it to land.                                                                                                                                                                                                                  |
@@ -190,11 +190,12 @@ npm run test:perf                      # the stopwatch flows (@perf: frame budge
 npm run bench:motion                   # frame timing of every animation and scroll (e2e/bench/)
 npm run bench:large-doc                # large documents (below)
 npm run bench:plugins                  # the official plugins on a large folder (below)
-scripts/smoke-linux.sh --build         # the built Linux app and its .deb
+xvfb-run -a dbus-run-session -- scripts/smoke-linux.sh --build
+                                       # the built Linux app and its .deb (any display will do)
 npm run screenshots:readme             # regenerate the README screenshots (e2e/shots/readme/)
 npm run screenshots:website            # the website's app screenshots (e2e/shots/website/)
-cd src-tauri && cargo test --lib live_eval -- --ignored --nocapture --test-threads=1
-                                       # real Anthropic API (costs money - docs/design/ai-eval.md)
+node scripts/live-eval.mjs run         # real Anthropic API (costs money), in a checkout of
+                                       # 8da2d2f0: the Go backend has no live evals yet
 ```
 
 A flow that times itself (a frame budget, a slide checked frame by frame)
@@ -237,19 +238,16 @@ has the rest. Animations only move `opacity` and `transform`
 `src/engine/motion/motion-properties.test.ts` reads every stylesheet and fails on
 anything else.
 
-CI also builds the iOS app for the simulator, unsigned, on macOS (the `ios`
-job) - proof that the desktop/iOS split in `docs/dev/ios-code-map.md` still
-compiles - and starts it there (`scripts/smoke-ios-sim.sh`): a returning
-user's launch, failing if the app is gone 20 seconds later, with the crash
-report's stack in the log. Compiling can't show a command registered on iOS
-whose state only the desktop manages; starting it does. Running it on a
-device is a manual step on a Mac.
+CI builds no iOS or Android app: both are still the Tauri builds, whose
+sources `main` no longer has ([architecture.md](architecture.md#the-backend)).
+Up to 1.4.6 an `ios` job built the iOS app for the simulator and started it
+there (`scripts/smoke-ios-sim.sh`), and an `android` job built the APK.
 
 ## How CI is laid out
 
 `.github/workflows/ci.yml` runs at two depths. A pull request into `main`
-runs the quick suite: `check`, the e2e flows, and `native` on Linux when
-the change reaches Rust; a push to `main` runs it again without the e2e
+runs the quick suite: `check`, the e2e flows, and `native` and the built
+app on Linux when the change reaches Go; a push to `main` runs it again without the e2e
 flows, which the pull request ran. The full suite - every job below on every
 platform, whatever changed - runs on the tagged commit before a release is
 built (`release.yml` calls `ci.yml`) and on the pull request that changes
@@ -267,13 +265,13 @@ job they stand for passed, or when all of them were skipped.
 | `e2e (1/2)` and `e2e (2/2)`            | `npm run test:e2e -- --shard=N/2`, with a pinned textus-plugins checkout                                                                                           | a pull request, the full suite                         |
 | `e2e webkit (1/3)` … `(3/3)`           | every flow in WebKit, the width sweep and a11y scan only in the full suite; `e2e` passes only when they do                                                         | a pull request, the full suite                         |
 | `browser cache (chromium)`, `(webkit)` | the Playwright browser fetched and cached when this version's is missing                                                                                           | a push to `main`                                       |
-| `native (ubuntu-22.04)`                | `npm run check:native`, then Android's `cargo clippy` with warnings as errors (`aarch64-linux-android`, the image's default NDK)                                   | the change reaches Rust                                |
+| `native (ubuntu-22.04)`                | `npm run check:native`: gofmt, `go vet` and the Go backend's tests                                                                                                 | the change reaches Go                                  |
 | `native (macos-26)`                    | `npm test`, then `npm run check:native`                                                                                                                            | the full suite                                         |
 | `native (windows-2025)`                | `npm run check:native`                                                                                                                                             | the full suite                                         |
 | `native (windows-2025, unit tests)`    | `npm test`                                                                                                                                                         | the full suite                                         |
-| `ios`                                  | the unsigned iOS simulator build, started in the simulator (not required)                                                                                          | the full suite                                         |
+| `linux-app`                            | `npx mygo build` for Linux, then `scripts/smoke-linux.sh` under Xvfb (not required)                                                                                | the change reaches Go                                  |
 
-macOS, Windows and iOS run only in the full suite; in the quick one
+macOS and Windows run only in the full suite; in the quick one
 `native` is the Linux job alone. A release builds only once the full suite
 passed on its tag ([releasing.md](releasing.md#what-the-workflow-does)).
 
@@ -290,15 +288,15 @@ runs `check`'s formatting and README checks alone, merged too. Some choices that
 - The unit tests run once per platform, but not twice on Linux: `check`
   already runs them on the same image the Linux native job uses. On
   Windows they get a job of their own, because there both they and the
-  Rust build are slowest; on macOS they stay in the Rust job, as macOS
+  Go build are slowest; on macOS they stay in the Go job, as macOS
   runners are the scarce ones.
 - `check` builds with `vite build`, not `npm run build`: the `tsc` in front
   of the latter has just run in `npm run check`.
-- Rust builds without debug info (`CARGO_PROFILE_DEV_DEBUG=0`): smaller
-  caches to restore, and less to link.
-- Rust builds and the Playwright browser are cached from `main` only. A pull
-  request restores `main`'s caches and saves none, so the repository's
-  10 GB of cache space holds `main`'s and isn't churned by every branch.
+- The Playwright browser is cached from `main` only. A pull request
+  restores `main`'s cache and saves none, so the repository's 10 GB of
+  cache space holds `main`'s and isn't churned by every branch. Go's
+  modules and build cache are setup-go's, one per `go.sum`, which a pull
+  request saves only when it changes `go.sum`.
 
 ## Large-document benchmark
 
@@ -471,19 +469,21 @@ floating view's size (`floating-views.test.ts`). Changing the scale curve
 
 ### 6. Built app (`scripts/smoke-linux.sh`)
 
-The release binary and `.deb`: the package's binary, icons and `.desktop`
-entry (takes files, claims Markdown); the app starting on a file; a second
-launch handing its file to the running instance and exiting. Runs with
-throwaway config/data directories. Window checks need niri; `--screenshot`
-also needs the screen unlocked.
+The release binary and `.deb` from `npx mygo build`: the package's app,
+command, icons and `.desktop` entry (takes files and `textus:` links, claims
+Markdown); the app starting on a file; its window answering the `textus`
+command over the app's socket (the palette's commands, the themes, an export
+to HTML); a launch while the app starts, and one with a file from another
+folder, handed to the running instance, which opens it; and Quit ending the
+app with status 0 and no panic in its log. It runs with a throwaway HOME,
+XDG folders and runtime folder, so neither its lock nor its socket reaches
+a Textus in use, and needs a display: CI's `linux-app` job runs it under
+`xvfb-run -a dbus-run-session`; locally a headless compositor works too
+(`mutter --headless --virtual-monitor 1280x800 --wayland`).
 
-`scripts/drive-linux.mjs <binary>` drives the debug build through
-`tauri-driver` (WebKitWebDriver): it starts on a document, takes typing and
-saves it to disk. CI's `linux-app` job runs it under xvfb.
-
-`scripts/smoke-ios-sim.sh <Textus.app>` does the same for iOS in the
-simulator: past onboarding, so the window loads its plugins and menus as at
-every later launch, and alive 20 seconds on. CI's `ios` job runs it.
+`scripts/drive-linux.mjs` types into the Tauri build through
+`tauri-driver`; MyGo's webview has no WebDriver, so the Go build has no
+counterpart and CI no longer runs it.
 
 ### 7. Live (`ai::live_eval`, ignored by default)
 
@@ -512,7 +512,8 @@ budget and leaves the judge off (`TEXTUS_EVAL_JUDGE=1` turns it on), and
 filter with `--filter` while iterating; `compare` then shows what a change
 did against the provider's baseline (docs/design/ai-eval.md, "Running it").
 The checking code itself is unit-tested and runs with the normal
-`cargo test`.
+`cargo test`. All of this is the Rust code at `8da2d2f0`: the Go backend
+doesn't have the live evals yet ([architecture.md](architecture.md#the-backend)).
 
 ## What is deliberately not covered
 
@@ -521,8 +522,9 @@ The checking code itself is unit-tested and runs with the normal
   that it looks the same.
 - **macOS and Windows native behaviour**: drag-to-merge, the file dialogs,
   the updater, PDF export, notarized bundles. CI proves they compile.
-- **Attachment extraction of real files.** The OOXML parser is tested on
-  hand-written XML; `pdf-extract` and `calamine` are trusted.
+- **Attachment extraction of real files.** The .docx reader is tested on
+  hand-written XML. The Go backend reads only Word and HTML documents for
+  now ([architecture.md](architecture.md#the-backend)).
 
 Changes to window management, drafts, or anything that can lose unsaved
 work must still be exercised by hand, and the PR should say what was.

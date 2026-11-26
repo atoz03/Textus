@@ -4,8 +4,8 @@ name: Security audit
 # a week (and on demand). Dependencies change under us even when our code
 # doesn't, so this runs on a schedule rather than on pull requests. A high
 # or critical advisory opens an issue - or comments on the open one - so it
-# can't go unnoticed. Rust advisories that can't reach Textus are listed,
-# with the reason, in src-tauri/.cargo/audit.toml.
+# can't go unnoticed. Go advisories count only where Textus calls the
+# vulnerable code: govulncheck follows the calls.
 
 on:
   schedule:
@@ -36,19 +36,20 @@ jobs:
           npm ci --ignore-scripts
           npm audit --omit=dev --audit-level=high | tee npm-audit.txt
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
 
-      - name: Rust advisories
-        id: cargo
+      # Pinned, like every tool here: a new release changes nothing by itself.
+      - name: Go advisories
+        id: go
         continue-on-error: true
-        working-directory: src-tauri
         run: |
           set -o pipefail
-          cargo install cargo-audit --locked --quiet
-          cargo audit | tee ../cargo-audit.txt
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./... | tee go-vulncheck.txt
 
       - name: Report
-        if: steps.npm.outcome == 'failure' || steps.cargo.outcome == 'failure'
+        if: steps.npm.outcome == 'failure' || steps.go.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -57,7 +58,7 @@ jobs:
             echo "The weekly audit found advisories ([run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}))."
             echo
             [ -s npm-audit.txt ] && { echo '<details><summary>npm audit</summary>'; echo; echo '```'; tail -n 60 npm-audit.txt; echo '```'; echo '</details>'; }
-            [ -s cargo-audit.txt ] && { echo '<details><summary>cargo audit</summary>'; echo; echo '```'; tail -n 60 cargo-audit.txt; echo '```'; echo '</details>'; }
+            [ -s go-vulncheck.txt ] && { echo '<details><summary>govulncheck</summary>'; echo; echo '```'; tail -n 60 go-vulncheck.txt; echo '```'; echo '</details>'; }
           } > body.md
           open=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
           if [ -n "$open" ]; then

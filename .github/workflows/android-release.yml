@@ -1,10 +1,12 @@
 name: Android release
 
 # Builds the signed Android APK (arm64) for a release and attaches it to the
-# draft as Textus_<version>_android_arm64.apk. release.yml calls this before
-# publishing, so a failed build keeps the release a draft. The project in
-# src-tauri/gen/android is not committed: it is generated here and finished
-# by scripts/android-prepare.sh, as on a developer's machine.
+# release as Textus_<version>_android_arm64.apk. The APK is a Tauri build,
+# so this builds only a tag that has src-tauri/ (up to 1.4.6); release.yml
+# no longer calls it, as the Go backend builds no Android app yet. Run it
+# by hand for such a tag. The project in src-tauri/gen/android is not
+# committed: it is generated here and finished by
+# scripts/android-prepare.sh, as on a developer's machine.
 #
 # Needs ANDROID_KEYSTORE (the .jks, base64), ANDROID_KEY_ALIAS,
 # ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_PASSWORD in the release
