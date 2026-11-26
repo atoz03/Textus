@@ -3,7 +3,8 @@
 `textus` is the app's own binary, run by a small script that
 `backend/cli_install*.go` installs (macOS `/usr/local/bin/textus`,
 Windows `bin\textus.cmd`, Linux `~/.local/bin/textus`, which runs the
-AppImage or the installed binary; a package that ships the binary itself as
+installed binary and takes the place of the link to it that MyGo's
+install script makes there; a package that ships the binary itself as
 `/usr/bin/textus` needs no script). The script sets `TEXTUS_CLI=1` so the
 binary knows a terminal started it. The app installs it at startup where
 no password is needed (a development build doesn't); Settings › General

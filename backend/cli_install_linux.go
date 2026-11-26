@@ -62,6 +62,14 @@ func installCLICommand() error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
+	// MyGo's install.sh links the command to the app's binary: the script
+	// takes the link's place, as a write through it would overwrite the
+	// binary.
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+	}
 	if err := os.WriteFile(path, []byte(linuxScript(app)), 0o755); err != nil {
 		return err
 	}

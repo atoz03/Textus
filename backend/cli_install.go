@@ -15,8 +15,9 @@ import (
 //     `open -a Textus` once that is gone.
 //   - Windows: bin\textus.cmd beside the app, that folder on the user's
 //     PATH.
-//   - Linux: ~/.local/bin/textus runs the AppImage or the installed binary;
-//     a package that puts the binary itself at /usr/bin/textus needs none.
+//   - Linux: ~/.local/bin/textus runs the AppImage or the installed binary,
+//     in place of the link to the binary that MyGo's install.sh makes; a
+//     package that puts the binary itself at /usr/bin/textus needs none.
 //
 // Startup installs it quietly where no password is needed; Settings ›
 // General retries. On Windows startup only keeps the script current: the
