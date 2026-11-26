@@ -27,18 +27,11 @@ const maxPluginRead = 256 * 1024 * 1024
 const appToolsOwner = "textus"
 
 // requireNotAppData refuses the app's own folders (other plugins' storage,
-// settings, keys), which no plugin reaches through the workspace calls.
+// settings, keys), which no plugin reaches through the workspace calls -
+// under any spelling of them (samepath.go).
 func (a *App) requireNotAppData(path string) error {
-	for _, dir := range []string{a.dirs.Data, a.dirs.Config} {
-		if dir == "" {
-			continue
-		}
-		if real, err := filepath.EvalSymlinks(dir); err == nil {
-			dir = real
-		}
-		if _, under := pathUnder(path, dir); under {
-			return errors.New("The app's own files are not part of the folder.")
-		}
+	if inAnyDir(path, a.dirs.Data, a.dirs.Config) {
+		return errors.New("The app's own files are not part of the folder.")
 	}
 	return nil
 }

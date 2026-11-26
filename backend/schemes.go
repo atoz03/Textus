@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -15,34 +14,34 @@ import (
 // file of the disk to an <img> or <video> (src/platform/file-src.ts), and
 // textus-plugin:// a plugin's own files to its frames (plugin_menu.go).
 
+// credentialDirs and credentialFiles are the usual places of the user's
+// credentials, from the home folder.
+var (
+	credentialDirs  = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".config/gcloud", ".config/gh", "Library/Keychains"}
+	credentialFiles = []string{".netrc", ".npmrc", ".git-credentials"}
+)
+
 // assetDenied keeps the files that hold secrets out of the asset scheme,
-// whatever a page asks for: the app's own settings and keys, and the
-// usual places of the user's credentials.
+// whatever a page asks for and however it spells it (samepath.go): the
+// app's own settings and keys, and the usual places of the user's
+// credentials.
 func (a *App) assetDenied(path string) bool {
-	fold := func(p string) string {
-		if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-			return strings.ToLower(p)
-		}
-		return p
-	}
-	p := fold(filepath.Clean(path))
-	if dir := a.dirs.Config; dir != "" {
-		if filepath.Dir(p) == fold(filepath.Clean(dir)) && strings.EqualFold(filepath.Ext(p), ".json") {
-			return true
-		}
+	if a.dirs.Config != "" && strings.EqualFold(filepath.Ext(path), ".json") && samePath(filepath.Dir(path), a.dirs.Config) {
+		return true
 	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return false
 	}
-	home = fold(filepath.Clean(home))
-	for _, dir := range []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".config/gcloud", ".config/gh", "Library/Keychains"} {
-		if _, ok := pathUnder(p, filepath.Join(home, fold(filepath.FromSlash(dir)))); ok {
-			return true
-		}
+	dirs := make([]string, len(credentialDirs))
+	for i, dir := range credentialDirs {
+		dirs[i] = filepath.Join(home, filepath.FromSlash(dir))
 	}
-	for _, file := range []string{".netrc", ".npmrc", ".git-credentials"} {
-		if p == filepath.Join(home, file) {
+	if inAnyDir(path, dirs...) {
+		return true
+	}
+	for _, file := range credentialFiles {
+		if samePath(path, filepath.Join(home, file)) {
 			return true
 		}
 	}

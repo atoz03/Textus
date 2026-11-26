@@ -332,3 +332,63 @@ func TestAPluginReadsNoneOfTheAppsOwnFiles(t *testing.T) {
 		t.Error("a plugin without files.read reads the folder")
 	}
 }
+
+// otherSpellings are the spellings of dir that name it on this machine
+// besides its own: through a link, in upper case where the file system
+// ignores case (macOS, Windows), through a Mac's data volume.
+func otherSpellings(t *testing.T, dir string) []string {
+	t.Helper()
+	dir = resolvedPath(dir)
+	var out []string
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(dir, link); err == nil {
+		out = append(out, link)
+	} else {
+		t.Logf("no links here: %v", err)
+	}
+	for _, p := range []string{strings.ToUpper(dir), "/System/Volumes/Data" + dir} {
+		if info, err := os.Stat(p); err == nil && info.IsDir() {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func TestAPluginReadsNoneOfTheAppsOwnFilesUnderAnotherSpelling(t *testing.T) {
+	a := pluginApp(t)
+	if err := a.updatePlugins(func(s *plugins.State) {
+		s.AllOn = true
+		e := s.Entry("a.b")
+		e.Enabled, e.Granted = true, []string{"files.read"}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	config := a.dirs.Config
+	for _, name := range []string{"plugin_secrets.json", "settings.json"} {
+		writeText(t, filepath.Join(config, name), `{"key":"s3cret"}`)
+	}
+	writeText(t, filepath.Join(a.dirs.Data, "notes", "a.md"), "# A")
+	refused := func(what string, err error) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), "app's own files") {
+			t.Errorf("%s: %v", what, err)
+		}
+	}
+	parent, name := filepath.Dir(resolvedPath(config)), filepath.Base(resolvedPath(config))
+	for _, root := range otherSpellings(t, parent) {
+		for _, file := range []string{"plugin_secrets.json", "settings.json"} {
+			_, err := run(a, "plugin_fs_read", `{"id":"a.b","root":`+string(mustJSON(root))+`,"path":`+string(mustJSON(name+"/"+file))+`}`)
+			refused(root+": "+file, err)
+			_, err = run(a, "plugin_read_resource", `{"id":"a.b","path":`+string(mustJSON(filepath.Join(root, name, file)))+`}`)
+			refused(root+": the resource "+file, err)
+		}
+		_, err := run(a, "plugin_fs_list", `{"id":"a.b","root":`+string(mustJSON(root))+`,"path":`+string(mustJSON(name))+`}`)
+		refused(root+": the listing", err)
+	}
+	for _, root := range append(otherSpellings(t, a.dirs.Data), otherSpellings(t, config)...) {
+		_, err := run(a, "plugin_metadata_all", `{"id":"a.b","root":`+string(mustJSON(root))+`,"after":null}`)
+		refused(root+": the index", err)
+		_, err = run(a, "plugin_fs_search", `{"id":"a.b","root":`+string(mustJSON(root))+`,"query":"a"}`)
+		refused(root+": the search", err)
+	}
+}

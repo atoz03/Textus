@@ -56,7 +56,7 @@ func (a *App) notASecret(path string) error {
 		real = filepath.Join(dir, filepath.Base(path))
 	}
 	name := strings.ToLower(filepath.Base(real))
-	if filepath.Dir(real) != config {
+	if !samePath(filepath.Dir(real), config) {
 		return nil
 	}
 	for _, s := range secretFiles {
@@ -287,11 +287,9 @@ func (a *App) copyEntry(from, into string) (string, error) {
 		return "", err
 	}
 	to := filepath.Join(into, madeName)
-	config, _ := filepath.EvalSymlinks(a.dirs.Config)
 	made := []string{to}
 	if err := copyTree(from, to, func(p string) bool {
-		_, under := pathUnder(p, config)
-		return config != "" && under
+		return inAnyDir(p, a.dirs.Config)
 	}, &made); err != nil {
 		undoMade(made)
 		return "", err
