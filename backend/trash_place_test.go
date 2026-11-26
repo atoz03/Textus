@@ -76,7 +76,7 @@ func TestATrashInfoRecordSaysWhereAnItemCameFrom(t *testing.T) {
 		t.Errorf("at %v", at)
 	}
 	// A disk's own Trash keeps the path under the disk's top.
-	if path, _, ok := trashInfo([]byte("[Trash Info]\nPath=notes/a.md\n"), "/media/usb"); !ok || path != filepath.Join("/media/usb", "notes/a.md") {
+	if path, _, ok := trashInfo([]byte("[Trash Info]\nPath=notes/a.md\n"), "/media/usb"); !ok || path != "/media/usb/notes/a.md" {
 		t.Errorf("relative %q", path)
 	}
 	if _, _, ok := trashInfo([]byte("[Other]\nPath=/a.md\n"), ""); ok {

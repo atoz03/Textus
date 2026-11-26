@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -118,8 +119,8 @@ func placesOf(went []string, fresh []held) []*string {
 
 // trashInfo reads a freedesktop.org Trash's record of an item
 // (info/<name>.trashinfo): the path it came from, relative ones under
-// topdir, and when it went.
-func trashInfo(raw []byte, topdir string) (path string, at time.Time, ok bool) {
+// topdir, and when it went. Its paths are POSIX ones, whatever reads them.
+func trashInfo(raw []byte, topdir string) (from string, at time.Time, ok bool) {
 	section := false
 	scan := bufio.NewScanner(bytes.NewReader(raw))
 	for scan.Scan() {
@@ -138,15 +139,15 @@ func trashInfo(raw []byte, topdir string) (path string, at time.Time, ok bool) {
 			if err != nil {
 				return "", time.Time{}, false
 			}
-			if !filepath.IsAbs(p) {
-				p = filepath.Join(topdir, p)
+			if !strings.HasPrefix(p, "/") {
+				p = path.Join(topdir, p)
 			}
-			path = p
+			from = p
 		case "DeletionDate":
 			at, _ = time.ParseInLocation("2006-01-02T15:04:05", strings.TrimSpace(value), time.Local)
 		}
 	}
-	return path, at, path != ""
+	return from, at, from != ""
 }
 
 // recycleRecord reads a Windows Recycle Bin's record of an item (its $I
