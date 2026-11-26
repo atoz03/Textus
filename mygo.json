@@ -38,9 +38,7 @@
     "maintainer": "CatVinci Studio",
     "comment": "Integrated Writing Environment, designed for professional writing",
     "categories": ["Utility", "TextEditor"],
-    "depends": {
-      "deb": ["libayatana-appindicator3-1"]
-    },
+    "depends": ["libayatana-appindicator3-1"],
     "command": "textus"
   }
 }
