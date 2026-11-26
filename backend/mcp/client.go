@@ -222,6 +222,18 @@ func (c *Conn) failure(why string) error {
 	return errors.New(why)
 }
 
+// stopped is the error for a started server that stopped. Its standard
+// error is copied in full only once waiting for the process ends, a moment
+// after its output closed, so it waits for that; a program the server
+// started can hold the pipe, so not for long.
+func (c *Conn) stopped() error {
+	select {
+	case <-c.stdio.p.Done():
+	case <-time.After(2 * time.Second):
+	}
+	return c.failure("the server stopped")
+}
+
 func (c *Conn) request(ctx context.Context, method string, params any, limit time.Duration) (jsontext.Value, error) {
 	id := c.next.Add(1)
 	m := message{JSONRPC: "2.0", ID: &id, Method: method, Params: params}
@@ -249,7 +261,7 @@ func (c *Conn) notify(ctx context.Context, method string) error {
 		return err
 	}
 	if c.stdio.write(m) != nil {
-		return c.failure("the server stopped")
+		return c.stopped()
 	}
 	return nil
 }
@@ -342,7 +354,7 @@ func (s *stdio) request(ctx context.Context, c *Conn, id uint64, m message) (jso
 	s.mu.Lock()
 	if s.ended {
 		s.mu.Unlock()
-		return nil, c.failure("the server stopped")
+		return nil, c.stopped()
 	}
 	s.waiting[id] = answer
 	s.mu.Unlock()
@@ -353,7 +365,7 @@ func (s *stdio) request(ctx context.Context, c *Conn, id uint64, m message) (jso
 	}
 	if s.write(m) != nil {
 		forget()
-		return nil, c.failure("the server stopped")
+		return nil, c.stopped()
 	}
 	select {
 	case r := <-answer:
@@ -363,7 +375,7 @@ func (s *stdio) request(ctx context.Context, c *Conn, id uint64, m message) (jso
 		case r := <-answer:
 			return r.result, r.err
 		default:
-			return nil, c.failure("the server stopped")
+			return nil, c.stopped()
 		}
 	case <-ctx.Done():
 		forget()
