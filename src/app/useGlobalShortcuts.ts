@@ -78,8 +78,8 @@ export const WEBVIEW_FILE_COMMANDS: Record<string, string> = {
   "mod+,": "settings",
 };
 
-/** New Tab's second key, which no menu item carries. */
-const NEW_TAB_TOO = "mod+t";
+/** New File's second key, which no menu item carries. */
+const NEW_FILE_TOO = "mod+t";
 
 /** Edit › Replace… and Find Next where the page sees keys first; a Mac's
  *  menu items take them before. */
@@ -160,7 +160,7 @@ export function useGlobalShortcuts(opts: {
       // WebView2 would print the window itself on Ctrl+P. With no menu at all
       // (an iPad's keyboard) they go to the app's own menu handlers.
       const fileCommand =
-        combo === NEW_TAB_TOO ? "new-file" : WEBVIEW_FILE_COMMANDS[combo];
+        combo === NEW_FILE_TOO ? "new-file" : WEBVIEW_FILE_COMMANDS[combo];
       if (fileCommand && !hasAppMenu) {
         e.preventDefault();
         if (canUseWindows || fileCommand !== "new-window")
@@ -168,7 +168,7 @@ export function useGlobalShortcuts(opts: {
             emitMenuEvent(fileCommand as NativeMenuId);
         return;
       }
-      if (fileCommand && (appDrawsWindowFrame || combo === NEW_TAB_TOO)) {
+      if (fileCommand && (appDrawsWindowFrame || combo === NEW_FILE_TOO)) {
         e.preventDefault();
         void menuIpc.triggerMenuItem(fileCommand);
         return;

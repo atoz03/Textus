@@ -48,7 +48,7 @@ func (a *App) dispatchMenu(id, origin string) {
 	}
 	switch {
 	case id == "new-file":
-		// New Tab, as a browser's: a tab in the focused window; a window
+		// New File: a tab in the focused window; a window
 		// when there is none.
 		if focused != "" {
 			emitFocused("menu-new-file", nil)
