@@ -5,8 +5,10 @@ the release workflows do. This page is the one place for the branch,
 pull request and commit rules; other documents link here.
 
 The desktop app ships from a `vX.Y.Z` tag through
-`.github/workflows/release.yml`; the iOS app ships from an `ios-vX.Y.Z` tag
-through `.github/workflows/ios-release.yml` (see [ios-release.md](ios-release.md)).
+`.github/workflows/release.yml`, which builds it with MyGo (`mygo build`,
+configured in `mygo.json`); the iOS app ships from an `ios-vX.Y.Z` tag
+through `.github/workflows/ios-release.yml` (see [ios-release.md](ios-release.md)),
+still from the Tauri sources at `8da2d2f0`.
 The browser playground isn't released: it is deployed after each newest
 stable release ([infrastructure.md](infrastructure.md#playground)).
 
@@ -88,13 +90,12 @@ Before either kind, in the release's pull request:
   loading, run the benchmarks on the same machine as last time and compare.
 
 1. In the release's pull request to `main`, set the version to
-   `X.Y.Z-rc.N` in `package.json`, `src-tauri/Cargo.toml` and
-   `src-tauri/tauri.conf.json`, then run `npm install --package-lock-only`
-   and `cargo check` (in `src-tauri/`) so `package-lock.json` (both of its
-   version fields) and `Cargo.lock` follow. `node scripts/check-versions.mjs`
-   (part of `npm run check`) fails until all five files agree. A pull
-   request that changes the version runs the full CI suite on every
-   platform by itself.
+   `X.Y.Z-rc.N` in `package.json` and `mygo.json`, then run
+   `npm install --package-lock-only` so `package-lock.json` (both of its
+   version fields) follows. The Go backend takes its version from the
+   `package.json` it embeds. `node scripts/check-versions.mjs` (part of
+   `npm run check`) fails until the three files agree. A pull request that
+   changes the version runs the full CI suite on every platform by itself.
 2. Once it is merged, tag that exact commit on `main`:
 
    ```sh
@@ -138,20 +139,26 @@ Release notes aren't required for a pre-release: the fragments stay in
 
 ### What the workflow does
 
-1. `release.yml` checks that the tag matches the version files and runs
+1. `release.yml` checks that the tag matches the version files and that
+   the tagged `mygo.json` has the key its updates are signed for, and runs
    the full CI suite on the tagged commit (`ci.yml`, every job on every
    platform); the builds start only once it passed. The pull request that
    set the version ran the same suite, so this run should hold no surprise -
-   look at it whole, `e2e-webkit` and `ios` included, which the builds don't
-   wait for. A flaky job is rerun alone (`gh run rerun <run> --failed`); a
-   real failure is fixed on `main` and the unpublished tag moved to the new
-   commit. Run `npm run test:perf` once and compare its numbers with the
-   last release's: a reference, not a gate. Then it builds,
-   signs and notarizes for macOS (Apple silicon and Intel), Windows and Linux
-   (x64 and ARM64 each; see [Installers](#installers)), builds and signs the
-   Android APK (`android-release.yml`),
-   writes the updater manifest onto the draft, publishes the GitHub release,
-   points the beta channel's manifest at it, mirrors the
+   look at it whole, `e2e-webkit` and `linux-app` included. A flaky job is
+   rerun alone (`gh run rerun <run> --failed`); a real failure is fixed on
+   `main` and the unpublished tag moved to the new commit. Run
+   `npm run test:perf` once and compare its numbers with the last
+   release's: a reference, not a gate. Then `mygo build` builds the apps
+   for macOS, Windows and Linux, x64 and ARM64 each (see
+   [Installers](#installers)), on two kinds of runner: `macos-26` signs and
+   notarizes the Mac apps and their disk images, and `ubuntu-24.04` builds
+   the Linux apps and packages and the Windows apps with their NSIS
+   installers (MyGo needs no cgo, so neither ARM64 nor Windows needs a
+   runner of its own).
+   Each build uploads its installers and its signed update (the archive,
+   the deltas and `update-<target>.json`) to the tag's draft. Then the
+   workflow writes the updater manifest onto the draft, publishes the
+   GitHub release, points the beta channel's manifest at it, mirrors the
    installers to the website's download bucket, and sends the tested
    `textus-bin` package to the `[catvinci]` pacman repository in
    `CatVinci-Studio/arch-repo` (see `packaging/arch/README.md`).
@@ -163,22 +170,34 @@ Release notes aren't required for a pre-release: the fragments stay in
 
 2. Verify the release:
    - the GitHub release is public and has every file in
-     [Installers](#installers), and a `.sig` beside each one with updater
-     keys;
-   - `latest.json` is still Levis 0.9.8's and `textus-latest.json` has the new
+     [Installers](#installers), with an `update-<target>.json` for each of
+     the six targets;
+   - the release has no `latest.json`, and `textus-latest.json` has the new
      version with the keys listed there (`jq '.platforms | keys'`):
-     `darwin-aarch64`, `darwin-x86_64`, `linux-x86_64`, `linux-aarch64`,
-     `windows-x86_64` and `windows-aarch64`, each also with its installer
-     suffix;
+     `mygo-darwin-arm64`, `mygo-darwin-amd64`, `mygo-linux-amd64`,
+     `mygo-linux-arm64`, `mygo-windows-amd64` and `mygo-windows-arm64`;
    - <https://textus.md/download/manifest.json> names the new
-     files under all eleven keys, `windows-arm64`, `linux-arm64`, `deb-arm64`,
-     `rpm-arm64` and `android` included;
+     files under the ten mirror keys in [Installers](#installers),
+     `windows-arm64`, `deb-arm64`, `rpm-arm64` and the two Linux archives'
+     included;
    - <https://textus.md/download/textus-beta.json> has the new
      version;
    - the Arch repository has `textus-bin-X.Y.Z-1`;
    - later that day, `brew info --cask textus` shows the new version. If
      Homebrew's bot hasn't bumped it after a day, open the bump pull
      request by hand with `brew bump-cask-pr textus --version X.Y.Z`.
+
+   The first release built with MyGo changes what the Tauri releases
+   (up to 1.4.6) had, so check these by hand once:
+   - the website's download page and the Homebrew cask find their files
+     by name: the disk images are now `textus-X.Y.Z-arm64.dmg` and
+     `textus-X.Y.Z-amd64.dmg` (were `Textus_X.Y.Z_aarch64.dmg` and
+     `…_x64.dmg`), and there is no AppImage, Android APK or portable zip,
+     so the mirror has no `linux`, `linux-arm64`, `android` or `…-portable`
+     key; the Linux archives, which MyGo's install script installs, take
+     the AppImages' place;
+   - installs of the Tauri builds don't move to it by themselves
+     ([Updater manifest](#updater-manifest)).
 
 A failed run can be rebuilt with
 `gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z`: the workflows, the
@@ -192,38 +211,51 @@ same for `update-beta-manifest.yml` and `update-arch-repo.yml`.
 
 ## Installers
 
-Each release carries these, named by tauri-bundler (`X.Y.Z` is the
-version). The files with updater keys have a `.sig` beside them, and the
-updater manifest (`textus-latest.json`) points those keys at them; the
+Each release carries these, named by `mygo build` (`X.Y.Z` is the
+version; a pre-release's `.deb` and `.rpm` write it `X.Y.Z~rc.N`). The
 download mirror's `manifest.json` gives the website one file per mirror
-key. A pre-release has no `.rpm`, and so no `…-rpm` keys.
+key.
 
-| Platform          | File                                    | Built on           | Updater keys                  | Mirror key      |
-| ----------------- | --------------------------------------- | ------------------ | ----------------------------- | --------------- |
-| macOS, Apple      | `Textus_X.Y.Z_aarch64.dmg`              | `macos-26`         | -                             | `mac`           |
-| macOS, Apple      | `Textus_X.Y.Z_aarch64.app.tar.gz`       | `macos-26`         | `darwin-aarch64`, `…-app`     | -               |
-| macOS, Intel      | `Textus_X.Y.Z_x64.dmg`                  | `macos-26` (cross) | -                             | `mac-intel`     |
-| macOS, Intel      | `Textus_X.Y.Z_x64.app.tar.gz`           | `macos-26` (cross) | `darwin-x86_64`, `…-app`      | -               |
-| Windows x64       | `Textus_X.Y.Z_x64-setup.exe`            | `windows-latest`   | `windows-x86_64`, `…-nsis`    | `windows`       |
-| Windows ARM64     | `Textus_X.Y.Z_arm64-setup.exe`          | `windows-11-arm`   | `windows-aarch64`, `…-nsis`   | `windows-arm64` |
-| Windows x64       | `Textus_X.Y.Z_x64-portable.zip`         | `windows-2025`     | -                             | -               |
-| Windows ARM64     | `Textus_X.Y.Z_arm64-portable.zip`       | `windows-11-arm`   | -                             | -               |
-| Linux x64         | `Textus_X.Y.Z_amd64.AppImage`           | `ubuntu-22.04`     | `linux-x86_64`, `…-appimage`  | `linux`         |
-| Linux x64         | `Textus_X.Y.Z_amd64.deb`                | `ubuntu-22.04`     | `linux-x86_64-deb`            | `deb`           |
-| Linux x64         | `Textus-X.Y.Z-1.x86_64.rpm`             | `ubuntu-22.04`     | `linux-x86_64-rpm`            | `rpm`           |
-| Linux ARM64       | `Textus_X.Y.Z_aarch64.AppImage`         | `ubuntu-22.04-arm` | `linux-aarch64`, `…-appimage` | `linux-arm64`   |
-| Linux ARM64       | `Textus_X.Y.Z_arm64.deb`                | `ubuntu-22.04-arm` | `linux-aarch64-deb`           | `deb-arm64`     |
-| Linux ARM64       | `Textus-X.Y.Z-1.aarch64.rpm`            | `ubuntu-22.04-arm` | `linux-aarch64-rpm`           | `rpm-arm64`     |
-| Arch Linux x86_64 | `Textus_X.Y.Z_linux_x86_64.tar.gz`      | `ubuntu-22.04`     | -                             | -               |
-| Arch Linux x86_64 | `textus-bin-X.Y.Z-1-x86_64.pkg.tar.zst` | Arch container     | -                             | -               |
-| Android ARM64     | `Textus_X.Y.Z_android_arm64.apk`        | `ubuntu-24.04`     | -                             | `android`       |
+| Platform          | File                                    | Built on               | Mirror key            |
+| ----------------- | --------------------------------------- | ---------------------- | --------------------- |
+| macOS, Apple      | `textus-X.Y.Z-arm64.dmg`                | `macos-26`             | `mac`                 |
+| macOS, Intel      | `textus-X.Y.Z-amd64.dmg`                | `macos-26` (cross)     | `mac-intel`           |
+| Windows x64       | `textus-setup-X.Y.Z-amd64.exe`          | `ubuntu-24.04` (cross) | `windows`             |
+| Windows ARM64     | `textus-setup-X.Y.Z-arm64.exe`          | `ubuntu-24.04` (cross) | `windows-arm64`       |
+| Linux x64         | `textus_X.Y.Z_amd64.deb`                | `ubuntu-24.04`         | `deb`                 |
+| Linux x64         | `textus-X.Y.Z-1.x86_64.rpm`             | `ubuntu-24.04`         | `rpm`                 |
+| Linux x64         | `textus-X.Y.Z-linux-amd64.tar.gz`       | `ubuntu-24.04`         | `linux-archive`       |
+| Linux ARM64       | `textus_X.Y.Z_arm64.deb`                | `ubuntu-24.04` (cross) | `deb-arm64`           |
+| Linux ARM64       | `textus-X.Y.Z-1.aarch64.rpm`            | `ubuntu-24.04` (cross) | `rpm-arm64`           |
+| Linux ARM64       | `textus-X.Y.Z-linux-arm64.tar.gz`       | `ubuntu-24.04` (cross) | `linux-arm64-archive` |
+| Arch Linux x86_64 | `Textus_X.Y.Z_linux_x86_64.tar.gz`      | `ubuntu-24.04`         | -                     |
+| Arch Linux x86_64 | `textus-bin-X.Y.Z-1-x86_64.pkg.tar.zst` | Arch container         | -                     |
 
-ARM64 Windows and Linux ship from 1.1.0 on, built on GitHub's native arm64
-runners. The Arch package stays x86_64: it is built and tested in the
-x86_64-only `archlinux` container, and `[catvinci]` has no aarch64
-repository. `scripts/updater-manifest.mjs` (`platformKeys`) and
+The release also carries MyGo's install script, which installs the Linux
+archive for the user, in `~/.local/textus.app`, where the app can update
+itself:
+
+```sh
+curl -fsSL https://github.com/CatVinci-Studio/Textus/releases/latest/download/install.sh | sh
+```
+
+The `.deb` and `.rpm` install the app in `/opt/textus`, where it can't
+([Update channels](#update-channels)). Beside these, each of the six
+targets (`darwin-arm64`, `darwin-amd64`, `linux-amd64`, `linux-arm64`,
+`windows-amd64`, `windows-arm64`) has a signed update: the app as
+installed, `textus-X.Y.Z-<target>.tar.gz` (on Linux the archive above),
+deltas from the versions before it (`textus-A.B.C-to-X.Y.Z-<target>.delta`,
+`updates.deltas` in `mygo.json`), and `update-<target>.json`, which names
+them with their sizes and signatures. The updater manifest
+(`textus-latest.json`) gathers the six under the keys `mygo-<target>`.
+
+The Arch package stays x86_64: it is built and tested in the x86_64-only
+`archlinux` container, and `[catvinci]` has no aarch64 repository. Its
+tarball holds a second build, linked as the Arch package's
+(`backend/distribution.go`), which reports new versions but leaves
+installing them to pacman. `scripts/updater-manifest.mjs` and
 `scripts/mirror-keys.mjs` map the file names to the keys; their tests
-list every name above.
+list every name above, and the Tauri builds' names up to 1.4.6.
 
 ## Pre-releases
 
@@ -231,8 +263,9 @@ A tag with a semver pre-release suffix (`v1.3.10-rc.1`; the 1.3.0 test
 builds were `v1.3.0-beta.N`) is published as a GitHub pre-release. The
 version files carry the same suffix (`1.3.10-rc.1`):
 the tag check compares the whole version, and release notes are only
-required for stable tags. Linux (x64 and ARM64) gets the `.deb` and AppImage but no `.rpm`
-(RPM versions can't contain `-`).
+required for stable tags. The `.deb` and `.rpm` write it `1.3.10~rc.1`,
+which both package managers sort before `1.3.10` (an RPM version can't
+contain `-`); the Tauri builds made no `.rpm` of a pre-release.
 
 A pre-release reaches only the users who chose **Settings › General ›
 About Textus › Update channel › Beta**. It skips the download mirror and
@@ -243,14 +276,20 @@ stable release, switch a test install to Beta and use **Check for Updates**.
 
 ## Update channels
 
-The app has two (`src-tauri/src/commands/update.rs`):
+The app has two (`backend/updater.go`):
 
-- **Stable** reads the newest stable GitHub release's `textus-latest.json`,
-  the endpoint in `tauri.conf.json`.
+- **Stable** reads the newest stable GitHub release's `textus-latest.json`
+  (`stableManifestURL`).
 - **Beta** reads `textus-beta.json` from the website's download bucket
-  (<https://textus.md/download/textus-beta.json>), and falls back
-  to the stable endpoint when that fails. GitHub has no fixed URL for the
-  newest pre-release, so the beta manifest lives on our own bucket.
+  (<https://textus.md/download/textus-beta.json>, `betaManifestURL`), and
+  falls back to the stable endpoint when that fails. GitHub has no fixed
+  URL for the newest pre-release, so the beta manifest lives on our own
+  bucket.
+
+Either way the app takes its own entry (`mygo-<GOOS>-<GOARCH>`, or
+`mygo-darwin-universal` on a Mac), and MyGo's updater downloads that
+archive or a delta, checks its size and its Ed25519 signature against
+`updates.publicKey` in `mygo.json`, and replaces the app in place.
 
 After every published tag, pre-releases included, the
 `update-beta-manifest` job (`update-beta-manifest.yml`,
@@ -265,10 +304,12 @@ the `CLOUDFLARE_API_TOKEN` secret that the download mirror uses.
 
 The app never installs an older version than it runs, so a user who goes
 back from Beta to Stable keeps the pre-release until a newer stable
-version is out. An install from the `.rpm` skips pre-releases, which
-have no `.rpm`, and waits for the stable release. Builds that don't install
-their own updates (the Arch package, iOS) have no channel setting and check
-the stable channel.
+version is out. Builds that don't install their own updates (the Arch
+package, iOS) have no channel setting and check the stable channel. An
+install from the `.deb` or `.rpm` finds updates too, but can't install
+them: the app is in `/opt/textus`, which it can't write, so MyGo's updater
+is off (`mygo.Updater.Enabled()`) and the app says to download the new
+version.
 
 ## Updater manifest
 
@@ -276,11 +317,13 @@ Textus's manifest is `textus-latest.json`, never `latest.json`. Levis 0.9.x
 installs read `latest.json` from this repository (the old
 `CatVinci-Studio/Levis` URL redirects here) and trust the same signing key, so
 a `latest.json` on a Textus release would install Textus over Levis.
-tauri-action runs with `uploadUpdaterJson: false` (`includeUpdaterJson`
-before tauri-action 1.0); before publishing, the publish job writes
-`textus-latest.json` from the draft's `.sig` files
-(`scripts/updater-manifest.mjs build`) and refuses to publish a draft that
-has a `latest.json` at all (`… guard`).
+`mygo build` writes each target's own manifest, `update-<target>.json`,
+which the build jobs upload to the draft; before publishing, the publish
+job gathers them into `textus-latest.json`
+(`scripts/updater-manifest.mjs build`), each under `mygo-<target>` with
+its archive's release URL, size, signature and deltas, and refuses to
+publish a draft that has a `latest.json` at all (`… guard`). The release
+fails rather than leave out a platform whose update is missing.
 
 Releases up to 1.1.0 carried a copy of Levis 0.9.8's own `latest.json`, so
 Levis installs updated to that last Levis, which told its user about Textus.
@@ -289,20 +332,38 @@ of them is "Latest" a Levis install finds no manifest and stays as it is. The
 name stays forbidden for the reason above. A rebuild of a 1.1.0-or-older tag
 stops at the guard until that copy is deleted from its release.
 
-`npm run check` runs `… check`, which
-fails if the updater endpoint, the beta channel's endpoint or the workflow
-drifts back. The beta manifest is `textus-beta.json` and lives only on the
-download bucket, never on a GitHub release.
+The Tauri builds (up to 1.4.6) read `textus-latest.json` too, but only
+their own keys (`darwin-aarch64`, `linux-x86_64-deb`, …), signed with the
+Tauri key (`TAURI_SIGNING_PRIVATE_KEY`), which a Go release doesn't carry:
+their check fails, as the manifest has no entry for their platform, and
+they stay where they are. Bringing them to the Go builds needs a bridge release that the Tauri
+updater accepts; whether to make one is the maintainers' decision.
+`scripts/updater-manifest.mjs` still checks a Tauri tag's configuration,
+so the Tauri releases can be rebuilt.
+
+`npm run check` checks this checkout as `… check` does (in the script's
+tests), and fails if the updater endpoint, the beta channel's endpoint or
+the workflow drifts back. On a tag, the release's preflight also requires
+`updates.publicKey` in `mygo.json` (the public half of
+`MYGO_UPDATER_PRIVATE_KEY`, [Secrets](#secrets)) and `updates.github`:
+a build without them can never update itself. The beta manifest is
+`textus-beta.json` and lives only on the download bucket, never on a
+GitHub release.
 
 ## Secrets
 
 The signing, notarizing, upload and deploy secrets live in the repository's
 **release** environment (Settings › Environments › release), not in the
-repository's own secrets: `APPLE_*`, `TAURI_SIGNING_PRIVATE_KEY`,
-`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_PLAYGROUND_TOKEN`,
-`ARCH_REPO_DEPLOY_KEY` and `ANDROID_*` (the APK's signing key). The jobs
-that use them (`release.yml` build, `android-release.yml`,
-`ios-release.yml`, `mirror-downloads.yml`, `update-beta-manifest.yml`,
+repository's own secrets: `APPLE_*`, `MYGO_UPDATER_PRIVATE_KEY`,
+`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_PLAYGROUND_TOKEN` and
+`ARCH_REPO_DEPLOY_KEY`, and for the Tauri releases up to 1.4.6 (a rebuild,
+a bridge release, `android-release.yml`) `TAURI_SIGNING_PRIVATE_KEY` and
+`ANDROID_*` (the APK's signing key). `MYGO_UPDATER_PRIVATE_KEY` signs the
+updates: it is made once with `mygo keygen`, its public half is
+`updates.publicKey` in `mygo.json`, and it can't be replaced, as installed
+apps accept only updates signed with it. The jobs that use the secrets
+(`release.yml` build, `android-release.yml`, `ios-release.yml`,
+`mirror-downloads.yml`, `update-beta-manifest.yml`,
 `update-arch-repo.yml`, `deploy-playground.yml`) name the environment, and it
 admits only `v*` and `ios-v*` tags. So a job run by hand - a retried mirror,
 a rebuilt Arch package - is started from the release's tag, not from main:
@@ -323,7 +384,8 @@ rebuilding an old tag never downgrades anyone.
 
 ## Windows installer
 
-Windows ships only the NSIS installer (`-setup.exe`), for stable and
-pre-release tags alike - the target list lives in
-`src-tauri/tauri.windows.conf.json`. See
-[windows-installer.md](windows-installer.md) for why MSI is not built.
+Windows ships only MyGo's NSIS installer (`textus-setup-X.Y.Z-<arch>.exe`),
+for stable and pre-release tags alike, made on Ubuntu with Ubuntu's NSIS
+from `mygo.json` and `packaging/windows/installer.nsh`. See
+[windows-installer.md](windows-installer.md) for what it does, and for
+the Tauri builds' installer and MSI it replaces.

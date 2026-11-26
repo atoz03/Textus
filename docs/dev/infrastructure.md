@@ -26,22 +26,22 @@ All under the [CatVinci-Studio](https://github.com/CatVinci-Studio) organization
 
 In this repository (`.github/workflows/`):
 
-| Workflow                   | Runs                                           | Does                                                                                   |
-| -------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `ci.yml`                   | every pull request, pushes to `main`           | `check` always; `e2e`, `native` on three platforms and the iOS build in the full suite |
-| `release.yml`              | a `vX.Y.Z` tag, or by hand to rebuild one      | builds, signs and publishes the desktop release ([releasing.md](releasing.md))         |
-| `android-release.yml`      | from `release.yml`                             | builds and signs the Android APK                                                       |
-| `arch-package.yml`         | from `release.yml`                             | builds and tests the `textus-bin` package                                              |
-| `mirror-downloads.yml`     | after a stable release, or by hand             | copies the installers to the website's download bucket                                 |
-| `update-beta-manifest.yml` | after every release, rc included, or by hand   | points the beta update channel's `textus-beta.json` at the newest release              |
-| `update-arch-repo.yml`     | after a stable release, or by hand             | asks `arch-repo` to serve the new `textus-bin`                                         |
-| `deploy-playground.yml`    | `release.yml`, after the newest stable release | deploys textus.md/playground/ at that tag ([below](#playground))                       |
-| `ios-release.yml`          | an `ios-vX.Y.Z` tag                            | builds the iOS app and uploads it to TestFlight ([ios-release.md](ios-release.md))     |
-| `sync-models.yml`          | Mondays 03:00 UTC                              | refreshes the AI providers' model lists and opens a pull request if they changed       |
-| `audit.yml`                | Mondays 04:00 UTC                              | checks npm and Rust dependencies for advisories; opens an issue if it finds any        |
+| Workflow                   | Runs                                           | Does                                                                                                                              |
+| -------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `ci.yml`                   | every pull request, pushes to `main`           | `check` always; `e2e`, `native` (the Go checks) on three platforms and `linux-app` (the built app's smoke test) in the full suite |
+| `release.yml`              | a `vX.Y.Z` tag, or by hand to rebuild one      | builds, signs and publishes the desktop release ([releasing.md](releasing.md))                                                    |
+| `android-release.yml`      | by hand, for a Tauri tag up to 1.4.6           | builds and signs the Tauri builds' Android APK                                                                                    |
+| `arch-package.yml`         | from `release.yml`                             | builds and tests the `textus-bin` package                                                                                         |
+| `mirror-downloads.yml`     | after a stable release, or by hand             | copies the installers to the website's download bucket                                                                            |
+| `update-beta-manifest.yml` | after every release, rc included, or by hand   | points the beta update channel's `textus-beta.json` at the newest release                                                         |
+| `update-arch-repo.yml`     | after a stable release, or by hand             | asks `arch-repo` to serve the new `textus-bin`                                                                                    |
+| `deploy-playground.yml`    | `release.yml`, after the newest stable release | deploys textus.md/playground/ at that tag ([below](#playground))                                                                  |
+| `ios-release.yml`          | an `ios-vX.Y.Z` tag                            | builds the iOS app and uploads it to TestFlight ([ios-release.md](ios-release.md))                                                |
+| `sync-models.yml`          | Mondays 03:00 UTC                              | refreshes the AI providers' model lists and opens a pull request if they changed                                                  |
+| `audit.yml`                | Mondays 04:00 UTC                              | checks npm and Go dependencies for advisories (`govulncheck`); opens an issue if it finds any                                     |
 
 Dependabot (`.github/dependabot.yml`) opens one grouped pull request a week
-for npm and Rust updates and one a month for GitHub Actions.
+for npm and Go module updates and one a month for GitHub Actions.
 
 Elsewhere:
 
@@ -110,15 +110,16 @@ Environments › release**), which only `v*` and `ios-v*` tags - pushed by
 owners ([roles.md](roles.md)) - can run jobs in. Losing or letting one expire
 stops a release, so each line says how to replace it.
 
-| Secret                                                      | Used by                        | Where it comes from, and how to replace it                                                                                            |
-| ----------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `TAURI_SIGNING_PRIVATE_KEY` and `…_PASSWORD`                | release (updater signatures)   | Generated once with `tauri signer`. **Cannot be replaced**: installed apps only trust updates signed with it. Keep an offline backup. |
-| `APPLE_CERTIFICATE`, `…_PASSWORD`, `APPLE_SIGNING_IDENTITY` | release (macOS signing)        | A Developer ID Application certificate exported as `.p12`. Check its expiry in **Apple Developer › Certificates**; renew before then. |
-| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`               | release (notarization)         | The Apple ID, an app-specific password from account.apple.com, and the team ID. Replace the password if it's revoked.                 |
-| `APPLE_API_ISSUER`, `APPLE_API_KEY_ID`, `APPLE_API_KEY_P8`  | iOS release                    | An App Store Connect API key (Admin). Doesn't expire; revoke and create a new one if it leaks.                                        |
-| `ARCH_REPO_DEPLOY_KEY`                                      | Arch update                    | Private half of a write deploy key on `arch-repo`.                                                                                    |
-| `CLOUDFLARE_API_TOKEN`                                      | download mirror, beta manifest | A Cloudflare API token with R2 edit on the account. Roll it in **My Profile › API Tokens** if it's ever exposed.                      |
-| `CLOUDFLARE_PLAYGROUND_TOKEN`                               | playground deploy              | A Cloudflare API token with Workers edit on the account, no zone rights. Rolling it: [Playground](#playground).                       |
+| Secret                                                      | Used by                        | Where it comes from, and how to replace it                                                                                                                                                  |
+| ----------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MYGO_UPDATER_PRIVATE_KEY`                                  | release (update signatures)    | Generated once with `mygo keygen`; its public half is `updates.publicKey` in `mygo.json`. **Cannot be replaced**: installed apps only trust updates signed with it. Keep an offline backup. |
+| `TAURI_SIGNING_PRIVATE_KEY` and `…_PASSWORD`                | the Tauri releases up to 1.4.6 | Generated once with `tauri signer`. Their installs only trust updates signed with it: keep it for a rebuild of those tags or a release that brings them to the Go builds.                   |
+| `APPLE_CERTIFICATE`, `…_PASSWORD`, `APPLE_SIGNING_IDENTITY` | release (macOS signing)        | A Developer ID Application certificate exported as `.p12`. Check its expiry in **Apple Developer › Certificates**; renew before then.                                                       |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`               | release (notarization)         | The Apple ID, an app-specific password from account.apple.com, and the team ID. Replace the password if it's revoked.                                                                       |
+| `APPLE_API_ISSUER`, `APPLE_API_KEY_ID`, `APPLE_API_KEY_P8`  | iOS release                    | An App Store Connect API key (Admin). Doesn't expire; revoke and create a new one if it leaks.                                                                                              |
+| `ARCH_REPO_DEPLOY_KEY`                                      | Arch update                    | Private half of a write deploy key on `arch-repo`.                                                                                                                                          |
+| `CLOUDFLARE_API_TOKEN`                                      | download mirror, beta manifest | A Cloudflare API token with R2 edit on the account. Roll it in **My Profile › API Tokens** if it's ever exposed.                                                                            |
+| `CLOUDFLARE_PLAYGROUND_TOKEN`                               | playground deploy              | A Cloudflare API token with Workers edit on the account, no zone rights. Rolling it: [Playground](#playground).                                                                             |
 
 `arch-repo` keeps its own package-signing key in its secrets; see its README.
 
@@ -128,5 +129,5 @@ stops a release, so each line says how to replace it.
   opened.
 - Before each release: make sure the Apple certificate isn't about to expire.
 - Every few months: delete merged branches and old pull requests, and look at
-  the R2 bucket's size (each release adds about 250 MB: the two AppImages
-  are most of it).
+  the R2 bucket's size (each release adds its ten installers; the Go
+  builds' Linux and Windows ones are 10 to 13 MB each).
