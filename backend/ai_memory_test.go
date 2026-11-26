@@ -495,9 +495,13 @@ func TestASkillIsOfferedOnlyForALongRequest(t *testing.T) {
 	if err != nil || got != `{"name":"Weekly-report","description":"Writes the weekly report.","instructions":"Three sections."}` {
 		t.Errorf("got %s, %v", got, err)
 	}
-	path, err := run(a, "save_offered_skill", `{"offer":`+got+`,"scope":"personal","modes":["write"],"confirmed":false}`)
+	saved, err := run(a, "save_offered_skill", `{"offer":`+got+`,"scope":"personal","modes":["write"],"confirmed":false}`)
+	var path string
+	if err == nil {
+		err = json.Unmarshal([]byte(saved), &path)
+	}
 	if err != nil || !strings.Contains(path, filepath.Join(globalAgentDir, "skills")) {
-		t.Errorf("got %s, %v", path, err)
+		t.Errorf("got %s, %v", saved, err)
 	}
 	if _, err := run(a, "save_offered_skill", `{"offer":`+got+`,"scope":"elsewhere","modes":["write"],"confirmed":false}`); err == nil || err.Error() != "Unknown scope." {
 		t.Errorf("got %v", err)

@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -70,10 +71,10 @@ func TestLinuxFindsThePackagedDesktopEntryInSearchOrder(t *testing.T) {
 	installed := func(paths ...string) func(string) bool {
 		return func(p string) bool { return slices.Contains(paths, p) }
 	}
-	if id, ok := installedDesktopID(dirs, installed("/usr/share/applications/Textus.desktop")); !ok || id != "Textus.desktop" {
+	if id, ok := installedDesktopID(dirs, installed(filepath.Join(dirs[1], "Textus.desktop"))); !ok || id != "Textus.desktop" {
 		t.Errorf("deb: %s %v", id, ok)
 	}
-	if id, ok := installedDesktopID(dirs, installed("/usr/share/applications/textus.desktop")); !ok || id != "textus.desktop" {
+	if id, ok := installedDesktopID(dirs, installed(filepath.Join(dirs[1], "textus.desktop"))); !ok || id != "textus.desktop" {
 		t.Errorf("AUR: %s %v", id, ok)
 	}
 	// An AppImage installs nothing.
