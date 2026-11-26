@@ -248,10 +248,13 @@ func readPage(u *url.URL, contentType string, body []byte) (Page, error) {
 	}
 	var title, text string
 	switch {
+	case mime == "application/pdf" || (mime == "" && bytes.HasPrefix(body, []byte("%PDF"))):
+		var err error
+		if text, err = extract.PDFTextOf(body); err != nil {
+			return Page{}, err
+		}
 	case mime == "text/html" || mime == "application/xhtml+xml" || (mime == "" && looksHTML()):
 		title, text = extract.PageMarkdown(decode(contentType, body), u.String())
-	case mime == "application/pdf" || (mime == "" && bytes.HasPrefix(body, []byte("%PDF"))):
-		return Page{}, errors.New("This address is a PDF, and web_fetch can't read PDFs in this build.")
 	case strings.HasPrefix(mime, "text/") || mime == "application/json" || strings.HasSuffix(mime, "+json") ||
 		strings.HasSuffix(mime, "+xml") || mime == "application/xml" || mime == "":
 		text = decode(contentType, body)

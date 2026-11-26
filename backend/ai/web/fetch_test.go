@@ -147,6 +147,16 @@ func TestAGBKPageIsDecodedByItsMetaCharset(t *testing.T) {
 	}
 }
 
+func TestAPDFIsReadByThePDFReader(t *testing.T) {
+	u, _ := url.Parse("https://example.com/paper")
+	for _, contentType := range []string{"application/pdf", ""} {
+		_, err := readPage(u, contentType, []byte("%PDF-1.4 cut short"))
+		if err == nil || err.Error() != "This PDF can't be read." {
+			t.Fatalf("%q: %v", contentType, err)
+		}
+	}
+}
+
 func TestFilesThatAreNotTextAreRefused(t *testing.T) {
 	u, _ := url.Parse("https://example.com/a.zip")
 	if _, err := readPage(u, "application/zip", []byte("PK\x03\x04")); err == nil {

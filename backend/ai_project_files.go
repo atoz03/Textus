@@ -259,6 +259,8 @@ func documentText(path string) (string, error) {
 // extractDocument is the Markdown of a document, by its extension.
 func extractDocument(path string) (string, error) {
 	switch fileExt(path) {
+	case "pdf":
+		return extract.PDFText(path)
 	case "docx":
 		return extract.DocxMarkdown(path)
 	case "pptx":
