@@ -71,8 +71,8 @@ type Tool struct {
 //go:embed agent_tools.json
 var toolSpecsJSON []byte
 
-// toolSpecs are the built-in tools' specs, as the Rust app offered them,
-// by name ("+images" for the variant a model that sees images gets).
+// toolSpecs are the built-in tools' specs by name ("+images" for the
+// variant a model that sees images gets).
 var toolSpecs = func() map[string]aicompat.ToolSpec {
 	var raw map[string]struct {
 		Description string `json:"description"`
