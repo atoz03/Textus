@@ -88,21 +88,35 @@ export async function themeFontFaces(
 
 let latest = "";
 let served = "";
-/** Serves `name` from its files when the web view can't draw it by name;
- *  removes what an earlier choice served otherwise. */
-export async function supplyFont(name: string): Promise<void> {
-  latest = name;
-  // Once served, the name draws: measuring again would take it away.
-  if (name === served) return;
+/** Serves each of `names` - the document's font, the interface's - from
+ *  its files when the web view can't draw it by name; removes what an
+ *  earlier choice served otherwise. */
+export async function supplyFont(...names: string[]): Promise<void> {
+  const key = names.filter(Boolean).join("\n");
+  latest = key;
+  // Once served, the names draw: measuring again would take them away.
+  if (key === served) return;
   const context = document.createElement("canvas").getContext("2d");
   let css = "";
-  if (name && context && !draws(context, name, "Handgloves 0123")) {
+  const wanted = context
+    ? [...new Set(names)].filter(
+        (name) =>
+          name &&
+          (servedHere(name) || !draws(context, name, "Handgloves 0123")),
+      )
+    : [];
+  if (wanted.length) {
     const list = await fontFamilies();
-    if (latest !== name) return;
-    const family = findFamily(list, name);
-    if (family) css = fontFaceCss(name, family);
+    if (latest !== key) return;
+    css = wanted
+      .map((name) => {
+        const family = findFamily(list, name);
+        return family ? fontFaceCss(name, family) : "";
+      })
+      .filter(Boolean)
+      .join("\n");
   }
-  served = css ? name : "";
+  served = css ? key : "";
   let style = document.getElementById(SUPPLIED_FONT_STYLE_ID);
   if (!css) return style?.remove();
   if (!style) {

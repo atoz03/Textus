@@ -1486,6 +1486,8 @@ Habilidades ficam na pasta skills/ ao lado deste arquivo, um arquivo
   docLetterSpacingCondensed: "Condensado",
   docLetterSpacingBy: "Em",
   uiTextScaleLabel: "Tamanho da interface",
+  uiFontLabel: "Fonte da interface",
+  uiFontAuto: "A do sistema",
   fileIconThemeLabel: "Ícones de arquivo",
   fileIconThemeDefault: "Padrão",
   uiTextSmall: "Pequeno",

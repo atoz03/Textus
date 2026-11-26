@@ -240,6 +240,10 @@ function readSettings(parsed: Raw | null): Settings {
       )
         ? (parsed.docLineSpacing as DocLineSpacing)
         : DEFAULT_SETTINGS.docLineSpacing,
+      uiFont:
+        typeof parsed.uiFont === "string"
+          ? parsed.uiFont.trim()
+          : DEFAULT_SETTINGS.uiFont,
       docFont:
         typeof parsed.docFont === "string"
           ? parsed.docFont.trim()

@@ -118,6 +118,7 @@ Rules:
 | Document  | `--doc-font`, `--doc-mono-font`               | The theme     | The user's writing, and anything a plugin draws as content in the document (a table's cells, a card's title) |
 
 - Interface text MUST NOT use the document font. Document content MUST NOT use the interface type roles for its body text.
+- `--font-sans` is the system's UI font until the user picks an **Interface font** in Settings › Appearance (`uiFont`); the pick leads the stack (`--font-ui-chosen`) and the system faces cover what it lacks. Interface text MUST use `--font-sans`, never a family of its own, or it ignores the user's pick.
 
 ### 4.2 Interface type roles
 

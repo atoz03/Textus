@@ -8,7 +8,7 @@ import {
 } from "../../prefs/SettingsContext";
 import { classicLookChange, isClassicLook } from "../../prefs/classic-look";
 import { SettingRow, ToggleRow } from "../sections/controls";
-import { DocTextFold } from "../sections/text-font";
+import { DocTextFold, UiFontRow } from "../sections/text-font";
 import { ThemeSection, ThemesTab } from "../sections/theme";
 import { Select } from "../../engine/controls/Select";
 import { appDrawsWindowFrame } from "../../platform/window-chrome";
@@ -52,6 +52,7 @@ export function AppearancePage({
             ))}
           </Select>
         </SettingRow>
+        <UiFontRow t={t} settings={settings} setSettings={setSettings} />
         <FileIconThemeRow t={t} settings={settings} setSettings={setSettings} />
       </SettingsGroup>
       {/* How a document's text is set: its own, whatever the theme. */}

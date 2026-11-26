@@ -1513,6 +1513,8 @@ utiliser une.
   docLetterSpacingCondensed: "Condensé",
   docLetterSpacingBy: "De",
   uiTextScaleLabel: "Taille de l'interface",
+  uiFontLabel: "Police de l'interface",
+  uiFontAuto: "Celle du système",
   fileIconThemeLabel: "Icônes de fichier",
   fileIconThemeDefault: "Par défaut",
   uiTextSmall: "Petite",

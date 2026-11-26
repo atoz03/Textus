@@ -68,6 +68,20 @@ describe("text font and character spacing", () => {
     expect(loadSettings().docFont).toBe("Songti SC");
   });
 
+  it("keeps the interface's font apart from the document's", () => {
+    expect(loadSettings().uiFont).toBe("");
+    localStorage.setItem(
+      "catvinci-settings",
+      JSON.stringify({ uiFont: " Inter ", docFont: "Songti SC" }),
+    );
+    expect(loadSettings()).toMatchObject({
+      uiFont: "Inter",
+      docFont: "Songti SC",
+    });
+    localStorage.setItem("catvinci-settings", JSON.stringify({ uiFont: 3 }));
+    expect(loadSettings().uiFont).toBe("");
+  });
+
   it("offers well-made faces first, then every face the web view draws", () => {
     // The canvas: CJK faces draw everything, any other face Latin only;
     // "Hidden" is known to the web view by its Chinese name alone.
@@ -167,6 +181,38 @@ describe("text font and character spacing", () => {
     await supplyFont("Inter");
     expect(served()).not.toBeNull();
     await supplyFont("");
+    expect(served()).toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it("serves the document's and the interface's fonts together", async () => {
+    // Inter draws only once its @font-face is in the page.
+    const served = () => document.getElementById(SUPPLIED_FONT_STYLE_ID);
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(
+      () => {
+        let font = "";
+        return {
+          set font(value: string) {
+            font = value;
+          },
+          measureText: () => ({
+            width: served() && font.includes('"Inter"') ? 2 : 1,
+          }),
+        } as unknown as CanvasRenderingContext2D;
+      },
+    );
+    await supplyFont("", "Inter");
+    expect(served()?.textContent).toContain("/f/Inter.otf");
+    // The document's font chosen after: Inter, served and drawing now,
+    // is kept for the interface.
+    Object.defineProperty(document, "fonts", {
+      configurable: true,
+      value: [{ family: '"Inter"' }],
+    });
+    await supplyFont("Georgia", "Inter");
+    expect(served()?.textContent).toContain("/f/Inter.otf");
+    Reflect.deleteProperty(document, "fonts");
+    await supplyFont("", "");
     expect(served()).toBeNull();
     vi.restoreAllMocks();
   });

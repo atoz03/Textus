@@ -74,9 +74,12 @@
      punctuation faces above stay out of the stacks. */
   --font-cjk-punct: "Textus No Punct";
   --font-cjk-punct-serif: "Textus No Punct";
-  --font-sans:
+  --font-sans-stack:
     var(--font-cjk-punct), var(--font-apple-system), "SF Pro Text",
     var(--font-text-sans), sans-serif;
+  /* The interface font chosen in Settings (--font-ui-chosen, set on the
+     root) leads, the stack after it covering what it lacks. */
+  --font-sans: var(--font-ui-chosen, var(--font-sans-stack));
   /* A mono face every platform has comes before the CJK faces, or Latin would
      be drawn proportional; the CJK faces come before the generic, which a
      Chinese Windows resolves to NSimSun. */

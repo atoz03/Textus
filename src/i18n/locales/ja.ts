@@ -1386,6 +1386,8 @@ ${AI_NAME}への執筆の指示です。すべての文書に適用されます�
   docLetterSpacingCondensed: "狭く",
   docLetterSpacingBy: "間隔",
   uiTextScaleLabel: "インターフェイスのサイズ",
+  uiFontLabel: "インターフェイスのフォント",
+  uiFontAuto: "システムに合わせる",
   fileIconThemeLabel: "ファイルアイコン",
   fileIconThemeDefault: "標準",
   uiTextSmall: "小",

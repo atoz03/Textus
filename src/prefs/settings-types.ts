@@ -243,6 +243,10 @@ export interface Settings {
   /// The size of the app's own UI text (not the document) as a factor on the
   /// type scale, for every window.
   uiTextScale: UiTextScale;
+  /** A font family for the app's own text - menus, panels, Settings, the
+   *  start page - over the system's; "" keeps the system's. The document
+   *  has its own, docFont. */
+  uiFont: string;
   /** The reader's own document text size and line spacing, over the
    *  theme's; "auto" keeps the theme's. */
   docTextSize: DocTextSize;
@@ -408,6 +412,7 @@ export const DEFAULT_SETTINGS: Settings = {
   customCss: "",
   zoom: 1,
   uiTextScale: 1,
+  uiFont: "",
   docTextSize: "auto",
   docLineSpacing: "auto",
   docFont: "",

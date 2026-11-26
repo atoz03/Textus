@@ -123,8 +123,18 @@ function usePageAttributes(settings: Settings): void {
       root.style.removeProperty("--doc-chosen-font");
       root.removeAttribute("data-doc-font");
     }
-    if (settings.docFont || suppliedFont.peek())
-      void suppliedFont.load().then((m) => m.supplyFont(settings.docFont));
+    if (settings.uiFont) {
+      root.style.setProperty(
+        "--font-ui-chosen",
+        `${JSON.stringify(settings.uiFont)}, var(--font-sans-stack)`,
+      );
+    } else {
+      root.style.removeProperty("--font-ui-chosen");
+    }
+    if (settings.docFont || settings.uiFont || suppliedFont.peek())
+      void suppliedFont
+        .load()
+        .then((m) => m.supplyFont(settings.docFont, settings.uiFont));
     const tracking = letterSpacing(
       settings.docLetterSpacing,
       settings.docLetterSpacingBy,
@@ -140,6 +150,7 @@ function usePageAttributes(settings: Settings): void {
     settings.docTextSize,
     settings.docLineSpacing,
     settings.docFont,
+    settings.uiFont,
     settings.docLetterSpacing,
     settings.docLetterSpacingBy,
   ]);

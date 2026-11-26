@@ -1318,6 +1318,8 @@ export default {
   docLetterSpacingCondensed: "緊縮",
   docLetterSpacingBy: "點數",
   uiTextScaleLabel: "介面大小",
+  uiFontLabel: "介面字型",
+  uiFontAuto: "跟隨系統",
   fileIconThemeLabel: "檔案圖示",
   fileIconThemeDefault: "預設",
   uiTextSmall: "小",

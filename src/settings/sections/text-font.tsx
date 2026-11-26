@@ -97,31 +97,44 @@ export function DocTextFold({ t, settings, setSettings }: Props) {
   );
 }
 
-function FontRow({ t, settings, setSettings }: Props) {
-  const { recommended, more } = useFontChoices(settings.language);
+/** A font picked from the installed ones: `auto` keeps the default, then
+ *  well-made faces, then the rest. */
+function FontSelectRow({
+  label,
+  auto,
+  moreLabel,
+  language,
+  value,
+  onChange,
+}: {
+  label: string;
+  auto: string;
+  moreLabel: string;
+  language: string;
+  value: string;
+  onChange: (font: string) => void;
+}) {
+  const { recommended, more } = useFontChoices(language);
   // A font chosen on another machine still shows as the choice.
   const chosenElsewhere =
-    settings.docFont &&
-    ![...recommended, ...more].some((c) => c.value === settings.docFont);
+    value && ![...recommended, ...more].some((c) => c.value === value);
   return (
-    <SettingRow label={t.docFontLabel}>
+    <SettingRow label={label}>
       <Select
         className="settings-select"
-        aria-label={t.docFontLabel}
-        value={settings.docFont}
-        onChange={(e) => setSettings({ docFont: e.target.value })}
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
       >
-        <option value="">{t.docFontAuto}</option>
-        {chosenElsewhere && (
-          <option value={settings.docFont}>{settings.docFont}</option>
-        )}
+        <option value="">{auto}</option>
+        {chosenElsewhere && <option value={value}>{value}</option>}
         {recommended.map(({ value, label }) => (
           <option key={value} value={value}>
             {label}
           </option>
         ))}
         {more.length > 0 && (
-          <optgroup label={t.docFontMore}>
+          <optgroup label={moreLabel}>
             {more.map(({ value, label }) => (
               <option key={value} value={value}>
                 {label}
@@ -131,6 +144,19 @@ function FontRow({ t, settings, setSettings }: Props) {
         )}
       </Select>
     </SettingRow>
+  );
+}
+
+function FontRow({ t, settings, setSettings }: Props) {
+  return (
+    <FontSelectRow
+      label={t.docFontLabel}
+      auto={t.docFontAuto}
+      moreLabel={t.docFontMore}
+      language={settings.language}
+      value={settings.docFont}
+      onChange={(docFont) => setSettings({ docFont })}
+    />
   );
 }
 
@@ -181,5 +207,20 @@ function LetterSpacingRow({ t, settings, setSettings }: Props) {
         )}
       </div>
     </SettingRow>
+  );
+}
+
+/** The app's own text - menus, panels, Settings - in a font of the
+ *  user's, over the system's; the document keeps its own (FontRow). */
+export function UiFontRow({ t, settings, setSettings }: Props) {
+  return (
+    <FontSelectRow
+      label={t.uiFontLabel}
+      auto={t.uiFontAuto}
+      moreLabel={t.docFontMore}
+      language={settings.language}
+      value={settings.uiFont}
+      onChange={(uiFont) => setSettings({ uiFont })}
+    />
   );
 }

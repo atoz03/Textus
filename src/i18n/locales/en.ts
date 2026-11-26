@@ -1427,6 +1427,8 @@ type /name in a conversation to use one.
   docLetterSpacingCondensed: "Condensed",
   docLetterSpacingBy: "By",
   uiTextScaleLabel: "Interface size",
+  uiFontLabel: "Interface font",
+  uiFontAuto: "System's",
   fileIconThemeLabel: "File icons",
   fileIconThemeDefault: "Default",
   uiTextSmall: "Small",

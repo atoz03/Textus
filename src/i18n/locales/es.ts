@@ -1503,6 +1503,8 @@ para usar una.
   docLetterSpacingCondensed: "Comprimido",
   docLetterSpacingBy: "En",
   uiTextScaleLabel: "Tamaño de la interfaz",
+  uiFontLabel: "Fuente de la interfaz",
+  uiFontAuto: "La del sistema",
   fileIconThemeLabel: "Iconos de archivo",
   fileIconThemeDefault: "Predeterminados",
   uiTextSmall: "Pequeño",

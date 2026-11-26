@@ -123,3 +123,17 @@ describe("an imported theme", () => {
     expect(root.hasAttribute("data-user-theme")).toBe(true);
   });
 });
+
+describe("the interface font", () => {
+  it("leads the app's own text the moment it is picked, and goes when unpicked", async () => {
+    start({ uiFont: "Inter" });
+    const chosen = () => root.style.getPropertyValue("--font-ui-chosen");
+    await vi.waitFor(() =>
+      expect(chosen()).toBe('"Inter", var(--font-sans-stack)'),
+    );
+    act(() => setter.current!({ uiFont: "" }));
+    expect(chosen()).toBe("");
+    // The document's own font is apart from it.
+    expect(root.style.getPropertyValue("--doc-chosen-font")).toBe("");
+  });
+});
