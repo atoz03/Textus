@@ -26,6 +26,9 @@ permissions:
 
 jobs:
   update-arch-repo:
+    # Not in forks: they have neither the deploy key nor CatVinci-Studio's
+    # release to point at.
+    if: github.repository == 'CatVinci-Studio/Textus'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # The arch-repo deploy key lives in the release environment, which only

@@ -162,9 +162,13 @@ jobs:
             exit 1
           fi
 
-      # With the signing secrets missing, the app would be signed ad hoc,
-      # which Gatekeeper blocks on every other Mac.
-      - name: Require the macOS signing secrets
+      # With the signing secrets missing, the app is signed ad hoc, which
+      # Gatekeeper blocks on every other Mac until its user allows it.
+      # CatVinci-Studio/Textus's release needs all of them; a fork without
+      # any (no Developer ID of its own) ships the app signed ad hoc and
+      # not notarized. Some but not all of them is a mistake anywhere.
+      - name: Check the macOS signing secrets
+        id: apple
         if: matrix.name == 'macOS'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -174,12 +178,20 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-            if [ -z "${!name}" ]; then
-              echo "::error::$name is not set: the app would ship unsigned."
-              exit 1
-            fi
+          names=(APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID)
+          missing=()
+          for name in "${names[@]}"; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
           done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "sign=true" >> "$GITHUB_OUTPUT"
+          elif [ ${#missing[@]} -lt ${#names[@]} ] || [ "$GITHUB_REPOSITORY" = CatVinci-Studio/Textus ]; then
+            echo "::error::${missing[*]} not set: the app would ship unsigned."
+            exit 1
+          else
+            echo "::warning::No macOS signing secrets: the app is signed ad hoc and not notarized, so Gatekeeper asks before it opens."
+            echo "sign=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # The Developer ID certificate and the notary service's credentials,
       # in a keychain of their own that lives as long as the job. `mygo
@@ -188,7 +200,7 @@ jobs:
       # them; that setting is added here only, so builds on a developer's
       # Mac stay ad hoc and skip the notary service.
       - name: Import the certificate and the notary credentials
-        if: matrix.name == 'macOS'
+        if: matrix.name == 'macOS' && steps.apple.outputs.sign == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -224,9 +236,10 @@ jobs:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           PLATFORM: ${{ matrix.platform }}
+          SIGN: ${{ steps.apple.outputs.sign }}
         run: |
           sign=()
-          if [ "$RUNNER_OS" = macOS ]; then sign=(-sign "$APPLE_SIGNING_IDENTITY"); fi
+          if [ "$SIGN" = true ]; then sign=(-sign "$APPLE_SIGNING_IDENTITY"); fi
           npx mygo build -platform "$PLATFORM" "${sign[@]}"
 
       # Only what users install and what updates read: not the bare

@@ -28,6 +28,8 @@ permissions:
 
 jobs:
   mirror-downloads:
+    # Not in forks: they have neither the token nor the bucket.
+    if: github.repository == 'CatVinci-Studio/Textus'
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     # The Cloudflare token lives in the release environment, which only

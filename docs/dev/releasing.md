@@ -151,7 +151,9 @@ Release notes aren't required for a pre-release: the fragments stay in
    release's: a reference, not a gate. Then `mygo build` builds the apps
    for macOS, Windows and Linux, x64 and ARM64 each (see
    [Installers](#installers)), on two kinds of runner: `macos-26` signs and
-   notarizes the Mac apps and their disk images, and `ubuntu-24.04` builds
+   notarizes the Mac apps and their disk images (a fork without the
+   `APPLE_*` secrets signs them ad hoc and skips the notary service; the
+   release of `CatVinci-Studio/Textus` stops without them), and `ubuntu-24.04` builds
    the Linux apps and packages and the Windows apps with their NSIS
    installers (MyGo needs no cgo, so neither ARM64 nor Windows needs a
    runner of its own).
@@ -161,7 +163,10 @@ Release notes aren't required for a pre-release: the fragments stay in
    GitHub release, points the beta channel's manifest at it, mirrors the
    installers to the website's download bucket, and sends the tested
    `textus-bin` package to the `[catvinci]` pacman repository in
-   `CatVinci-Studio/arch-repo` (see `packaging/arch/README.md`).
+   `CatVinci-Studio/arch-repo` (see `packaging/arch/README.md`). In a fork
+   the workflow ends once the release is published: the beta manifest,
+   the mirror, the pacman repository and the playground are
+   CatVinci-Studio's, and their jobs skip other repositories.
 
    The Homebrew cask is not ours to update: it is the official
    [`textus` cask](https://github.com/Homebrew/homebrew-cask/blob/main/Casks/t/textus.rb)
