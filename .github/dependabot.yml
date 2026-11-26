@@ -25,8 +25,8 @@ updates:
       - dependency-name: "remark-cjk-friendly-gfm-strikethrough"
         versions: ["2.3.2"]
 
-  - package-ecosystem: cargo
-    directory: /src-tauri
+  - package-ecosystem: gomod
+    directory: /
     schedule:
       interval: weekly
       day: monday
@@ -34,7 +34,7 @@ updates:
     commit-message:
       prefix: chore(deps)
     groups:
-      cargo-minor-and-patch:
+      go-minor-and-patch:
         update-types: [minor, patch]
     ignore:
       - dependency-name: "*"
