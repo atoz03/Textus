@@ -58,7 +58,7 @@ there, and the project's own settings live in its `.textus/` folder.**
   tables, slides and their notes, footnotes - as for chat attachments),
   and look at its images with `read_file` when the provider takes images;
   `@` in the composer attaches a text file. They walk it as the sidebar's
-  file search does (`src-tauri/src/walk.rs`): hidden entries, what
+  file search does (`backend/walk.go`): hidden entries, what
   `.gitignore` and `.ignore` leave out, and build and dependency folders
   are skipped, and nothing outside it can be read. `read_file` reads a
   long file (up to 16 MB) in parts, by line range; an `@` attachment is
@@ -146,7 +146,7 @@ Textus AI never changes them.
 - **On disk:** one Markdown file per memory, apart from the files the user
   writes. Personal (the user's habits, every project): `memory/<slug>.md`
   in the global config folder. The project's (this work):
-  `projects/<key>/memory/<slug>.md` beside it (`ai/project_data.rs`), never
+  `projects/<key>/memory/<slug>.md` beside it (`backend/ai_project_data.go`), never
   in the user's folder; an older `.textus/memory/` moves there once. Front matter `kind` (`requirement`, `preference` or
   `style`), `remembered-by: textus-ai`, `created`, `updated`,
   `source-conversation`, `source-title`, `source-document`; then the memory
@@ -276,7 +276,7 @@ document language: a profile such as `zh-Hans-CN/fiction`, `en-GB/govuk` or
   several separated by commas, one per language) and option keys such as
   `cjk-latin-space: on` in the front matter of `.textus/style.md`. The
   profiles and option keys are listed in
-  `src-tauri/src/ai/rules/profile.rs` (`LANGUAGE_PROFILES`, `OPTIONS`) and
+  `backend/ai/rules/profile.go` (`LanguageProfiles`, `Options`) and
   mirrored in `platform/ipc.ts` (`WRITING_CONVENTIONS`).
 - **Create / edit:** **Settings > Textus AI > Writing Assistance > Writing
   conventions** (default Automatic) for the global choice; the style
@@ -315,7 +315,7 @@ only reads, answers and comments.**
   gets every action. Every proposal is decided by the user either way
   ([ai-proposals.md](ai-proposals.md)).
 - In code: `AgentMode` (`prefs/SettingsContext.tsx`,
-  `ai/agent/prompt.rs`) with the values `write` and `review`. 1.2.0's
+  `backend/ai/mode.go`) with the values `write` and `review`. 1.2.0's
   third mode, Revise (修订), folded into Write in 1.2.1: a stored or sent
   `revise` reads as `write`, any other unknown value as the default
   (`storedAgentMode`).
@@ -402,7 +402,7 @@ part of the project.
 - **The files themselves**: the style profile, a new library entry and both
   `agent.md` starters explain themselves in comments, which never reach the
   model.
-- **Textus AI itself**: the agent's prompt (`agent.rs`'s `workspace_section`)
+- **Textus AI itself**: the agent's prompt (`agent_prompt.go`'s `workspaceSection`)
   says which project folder is in use and why, describes each concept in
   English with the project menu's items, the **Style** chip and the
   Settings rows that make and open it (and what reaches completion), and
@@ -421,14 +421,14 @@ part of the project.
 Some identifiers predate these names. They stay; their comments use the
 names above.
 
-| User-facing name       | In code                                                                                                                                                                                                                                                                                             |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Project folder         | workspace root: `settings.agentWorkspaceRoot` (`""` = none), `workspace::project_root`, `AgentWorkspace.root`                                                                                                                                                                                       |
-| `.textus/` folder      | `WORKSPACE_DIR_NAME`                                                                                                                                                                                                                                                                                |
-| Style profile          | `AgentWorkspace.style`, `project::read_style`, `learn_style`                                                                                                                                                                                                                                        |
-| Library                | `AgentWorkspace.library`, `project::read_library`, `project::relevant_library`                                                                                                                                                                                                                      |
-| Writing instructions   | `AgentWorkspace.instructions` (global) and `AgentWorkspace.project_instructions`; `agentSystemPrompt*` strings                                                                                                                                                                                      |
-| AI remembered          | `ai::memory`, `AgentWorkspace.memories`, the memory pass (`memory_pass`, `memory/pass.rs`), `memory_undo`, `memory_move`, `memory_delete` (into `.forgotten/`), `memory_restore`, `memory_remember`, `Memories::select_for`, `settings.rememberAutomatically`, `MemoryChip`, `revision-learning.ts` |
-| Skills                 | `AgentWorkspace.skills`, the `use_skill` tool, `import_agent_skill`, `ai::builtin`, `customize_builtin_skill`, `reset_builtin_skill`, `set_builtin_skill_enabled`                                                                                                                                   |
-| Suggested next message | `suggest_next_message` (`ai/next_message.rs`), `useNextMessage` (`ai/chat/next-message.ts`), `FollowUpChips`, `settings.suggestNextMessage`                                                                                                                                                         |
-| Global config folder   | `GLOBAL_DIR` (`textus/`), `global_agent_dir`, `agentWorkspaceLabel`                                                                                                                                                                                                                                 |
+| User-facing name       | In code                                                                                                                                                                                                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Project folder         | workspace root: `settings.agentWorkspaceRoot` (`""` = none), `workspace::project_root`, `AgentWorkspace.root`                                                                                                                                                                                |
+| `.textus/` folder      | `WORKSPACE_DIR_NAME`                                                                                                                                                                                                                                                                         |
+| Style profile          | `AgentWorkspace.style`, `project::read_style`, `learn_style`                                                                                                                                                                                                                                 |
+| Library                | `AgentWorkspace.library`, `project::read_library`, `project::relevant_library`                                                                                                                                                                                                               |
+| Writing instructions   | `AgentWorkspace.instructions` (global) and `AgentWorkspace.project_instructions`; `agentSystemPrompt*` strings                                                                                                                                                                               |
+| AI remembered          | `backend/ai/memory.go`, `AgentWorkspace.Memories`, the memory pass (`memory_pass.go`), `memory_undo`, `memory_move`, `memory_delete` (into `.forgotten/`), `memory_restore`, `memory_remember`, `Memories.SelectFor`, `settings.rememberAutomatically`, `MemoryChip`, `revision-learning.ts` |
+| Skills                 | `AgentWorkspace.skills`, the `use_skill` tool, `import_agent_skill`, `ai::builtin`, `customize_builtin_skill`, `reset_builtin_skill`, `set_builtin_skill_enabled`                                                                                                                            |
+| Suggested next message | `suggest_next_message` (`backend/ai_suggest.go`), `useNextMessage` (`ai/chat/next-message.ts`), `FollowUpChips`, `settings.suggestNextMessage`                                                                                                                                               |
+| Global config folder   | `GLOBAL_DIR` (`textus/`), `global_agent_dir`, `agentWorkspaceLabel`                                                                                                                                                                                                                          |

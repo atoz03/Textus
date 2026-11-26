@@ -33,8 +33,8 @@ path: one transaction, one undo step, no direct-apply fallback.
 
 The composer's mode (`AgentMode`, see
 [ai-concepts.md](ai-concepts.md#not-a-file-modes)) decides what reaches
-this pipeline, and it is enforced in Rust, not only asked for in the prompt
-(`tools.rs`'s `builtin_tools`):
+this pipeline, and it is enforced in the backend, not only asked for in the
+prompt (`BuiltinTools` in `backend/ai/tools.go`):
 
 | Mode   | `propose_edit` |
 | ------ | -------------- |
@@ -55,7 +55,7 @@ With an image model set (Settings › Textus AI › Image model; none by
 default), Write also gets `generate_image`, whose call is a
 proposal too: an insertion of one Markdown image, or the `replace` of a
 picture already in the document. The tool starts the picture in the
-background (`ai/images.rs`'s `ImageRun::run_call`) and returns at once with
+background (`ImageRun.runCall`, `backend/ai/images_tool.go`) and returns at once with
 its id recorded in the call's arguments, so the reply goes on while the
 picture is made; the frontend waits for it (`ai_generated_image`, up to 200
 seconds) and shows the picture's frame in its place and shape meanwhile.
@@ -70,8 +70,8 @@ refusal like any other: no preview, and its card is the service's reason.
 
 New text with pictures writes each one into its text as a line of its own
 (`![alt](textus-picture:16:9 description)`); the backend starts the picture
-the moment that line has streamed in (`images/inline.rs`) and tells the
-frontend (`StreamEvent::Picture`), which draws the line as its frame
+the moment that line has streamed in (`backend/ai/images_inline.go`) and tells the
+frontend (a `picture` `StreamEvent`), which draws the line as its frame
 (`withBegunPictures`). The text and its pictures are one proposal.
 
 ## Where a proposal points: blocks
@@ -79,13 +79,13 @@ frontend (`StreamEvent::Picture`), which draws the line as its frame
 The blocks are the editor's own top-level nodes: the request carries them,
 each with its id and kind (`editor/markdown/doc-blocks.ts`, made by `doc-markdown.ts`'s
 `serializeBlocks`), and the backend shows the model each after its id
-(`[#k3f9] `, `ai/doc_blocks.rs`) without splitting the document itself - a
+(`[#k3f9] `, `backend/ai/docblocks.go`) without splitting the document itself - a
 list or a quote is one block, as it is one node. Every call that points
 into the document names its block instead of quoting it - `propose_edit`
 (`block`, `last_block` for a run), `add_comment` and `generate_image`
 (`block`) - with `anchor` only for a few words inside that block, which
 must occur there once. The backend fills in what the ids stand for, keeping
-them (`settle.rs`: `resolve_edit_arguments`, `resolve_target_arguments`),
+them (`ResolveEditArguments`, `ResolveTargetArguments` in `backend/ai/docblocks.go`),
 and checks them (`check_target`); the frontend places the call by the same
 ids (`matchTarget`), never by searching the document for its text, and a
 draft still streaming is resolved the same way (`resolveBlockEdit`,
@@ -135,11 +135,11 @@ ChatGPT's service holds back a step's parallel calls until the step ends,
 with no argument deltas: ten edits, or thirty notes, came at once after
 the model had finished (1.2.1). One call's arguments still stream.
 
-Past the model, nothing changed: the backend (`agent/lists.rs`) streams a
+Past the model, nothing changed: the backend (`backend/ai/agent_lists.go`) streams a
 list call on as one call per item, `<call>#<n>` (`ListStream`), splits
-the step the same way (`split_calls`, in `settle_step`), and joins the
+the step the same way (`SplitCalls`, in `SettleStep`), and joins the
 items back into the call the model made when the history goes back to it
-(`join_calls`). The tools, the history the frontend keeps and the
+(`JoinCalls`). The tools, the history the frontend keeps and the
 frontend itself see one call per edit or note, as before. An edit lands
 as soon as its `text` is whole (`ProposalStream`'s feed with `done`), not
 when the step's turns arrive after the last one.
@@ -398,8 +398,8 @@ fetch-fresh-document signal that precedes every detached send.
 ## Conversation layer
 
 `ai/chat/conversation/`, `ai/chat/cancelled-turns.ts`,
-`ai/revision/proposal-status.ts`, `ai/chat/useRevealedText.ts`; Rust side
-`src-tauri/src/ai/agent/` / `tools/`.
+`ai/revision/proposal-status.ts`, `ai/chat/useRevealedText.ts`; the
+backend's side `backend/ai/agent_*.go` and `tools*.go`.
 
 **Every send.** History travels to the backend in full; the document goes
 into the system prompt as markdown source (long documents truncate to an
@@ -409,8 +409,8 @@ decorations, absent from it. `annotateProposalStatuses` stamps each past
 proposal's tool result with its current status (undecided / accepted /
 rejected / invalid), computed fresh per send and never persisted; only call
 ids present in the status map are touched, so other tools and
-failed-validation proposals pass through unchanged. `agent.rs`'s
-instructions tell the model to trust the notes, never anchor to undecided
+failed-validation proposals pass through unchanged. The agent's
+instructions (`backend/ai/agent_prompt.go`) tell the model to trust the notes, never anchor to undecided
 text, and that proposing new edits replaces undecided ones automatically.
 
 **Stop (user-initiated).** Everything that already streamed is kept: the
@@ -483,7 +483,7 @@ the answer to a per-window store (`useMarginAvailable`).
 
 ## Undecided proposals outlive closing
 
-`kept-proposals.ts`, `useKeptProposals.ts`, `ai/kept_proposals.rs`.
+`kept-proposals.ts`, `useKeptProposals.ts`, `kept_proposals_read` and `kept_proposals_write` in `backend/ai_state.go`.
 
 A saved document's proposals that are neither accepted nor rejected are
 written down 0.4 s after they settle, and offered again when the document
@@ -500,7 +500,7 @@ file goes once the last of them is decided.
   `insert_at_cursor`) keeps where it wrote, and comes back only to the
   document it was made for, unchanged (a hash of its markdown).
 - **Pictures** made and waiting for Accept live only in the backend's
-  memory (`ai/images/pending.rs`); the backend keeps each one a kept
+  memory (`backend/ai/images_pending.go`); the backend keeps each one a kept
   proposal shows as a file beside its JSON, in `<that file>.pictures/`,
   and puts them back under their ids when the document opens. A proposal
   whose picture is still being made is kept once it is made. Only picture
@@ -517,7 +517,7 @@ file goes once the last of them is decided.
 | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ai/revision/proposal-stream.ts`                                    | Writing-phase machine: place/feed/finalize/discard, a call's result                                  |
 | `ai/revision/proposal-display.ts`                                   | How a draft is shown: typed in, or drawn again as it grows                                           |
-| `editor/markdown/doc-blocks.ts`, `src-tauri/src/ai/doc_blocks.rs`   | The editor's blocks with their ids and kinds, and what a call naming them stands for                 |
+| `editor/markdown/doc-blocks.ts`, `backend/ai/docblocks.go`          | The editor's blocks with their ids and kinds, and what a call naming them stands for                 |
 | `ai/revision/sentence-diff.ts`                                      | A rewrite's changes, and how finely each is decided (`regroup`)                                      |
 | `ai/revision/usePendingEdits.ts`                                    | Anchor resolution, accept/reject/rejectAll, status map, review navigation                            |
 | `ai/revision/pending-edit-plugin.ts`                                | Decorations, hover tint, typewriter + settle, the progress cursor, staleness and `rebase`, shortcuts |

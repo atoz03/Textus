@@ -45,26 +45,26 @@ topic, files ─► ① plan research ─► ② research helpers ─► dossier
 
 ## Where it lives
 
-Orchestration is Rust, `src-tauri/src/ai/paper/`; the frontend only shows
-it, lazily loaded. Each stage and helper is one run of
-`aicompat::agent::run_agent_loop` with its own steps and tools, the way
-`ai/agent/chapters.rs` runs its helpers.
+Orchestration is the Go backend's, `backend/ai/paper/` (its commands in
+`backend/ai_paper.go`); the frontend only shows it, lazily loaded. Each
+stage and helper is one run of `aicompat.Loop` with its own steps and
+tools.
 
 ### Built so far
 
-- **The model** (`paper/mod.rs`): `Paper` (topic, language, target length
+- **The model** (`paper/paper.go`): `Paper` (topic, language, target length
   in characters, its budget), `Dossier` of `Note`s, `Outline` of
   `OutlineSection`s with `FigurePlan`s (`generated`, `mermaid`, `chart`,
   `web`). The TypeScript shapes are generated into
   `src/platform/bindings/ai-paper.ts`.
-- **Genres** (`paper/genre.rs`): what kind of piece is written. A genre
+- **Genres** (`paper/genre.go`): what kind of piece is written. A genre
   is a `Profile` of the parts of the stages' prompts that differ by kind - what the research covers and prefers, the
   outline's order, the writers' voice, what the review reads for, what
   opens the piece - while each stage keeps its own checks. `Paper` and
   `PaperRequest` carry it; a paper kept before genres is a paper.
   A genre's words live in `paper/prompts/genres/<genre>.md`, one part
   under each heading; its name, lengths, frame and scale stay in
-  `genre.rs`.
+  `genre.go`.
   A **report** is a long read for the general reader, as the BBC or
   Reuters writes one: its research looks for people, cases, quotes and
   what happens next; its outline is ordered as a story with plain
@@ -72,8 +72,8 @@ it, lazily loaded. Each stage and helper is one run of
   few and pictured, and say in the sentence who says a thing, citing once
   a sentence; its review also reads for what a newcomer would stumble on;
   it opens on a headline and a bold standfirst, with no label, and ends
-  on its sources (`Frame::News`).
-  **Choosing** (`paper/choose.rs`): a request that names no genre is
+  on its sources (`News`, a `Frame`).
+  **Choosing** (`paper/choose.go`): a request that names no genre is
   read first by one tool-less step, told each genre's `when` and lengths,
   which replies with the genre and a length in characters - the length
   the user picked kept when it suits. Its reply is fitted to the genre's
@@ -87,10 +87,10 @@ it, lazily loaded. Each stage and helper is one run of
   characters) and a **thread** (numbered posts for X or Weibo, split by
   `---`, each post at most 280 characters, 140 in Chinese, Japanese and
   Korean - a soft check) research less and are written straight on: the
-  app approves their outline itself (`GenreForm::checkpoint`). A thread
+  app approves their outline itself (`GenreForm.Checkpoint`). A thread
   is one section, all under its headline, with no heading of its own
-  (`GenreForm::headings`), and opens on its headline alone
-  (`Frame::Headline`). The run's `genre` event and `ai_paper_status`
+  (`GenreForm.Headings`), and opens on its headline alone
+  (`Headline`). The run's `genre` event and `ai_paper_status`
   carry the `GenreForm`, so a card back after a restart knows them.
   A **brief** (300-1,500 characters) is a news agency's short story for
   quick or automated reporting: one to three questions on the latest
@@ -102,43 +102,43 @@ it, lazily loaded. Each stage and helper is one run of
   its outline goes strand by strand - a theme, an approach, a school -
   never study by study, and ends on the gaps; its writers compare and
   weigh studies rather than list them; at least a figure every three
-  sections; framed as a paper (`Frame::Academic`). An **analysis** is a
+  sections; framed as a paper (`Academic`). An **analysis** is a
   report for decision-makers - a market, industry or policy analysis, a
   调研报告: research prefers official statistics, filings and research
   firms (50, 60, 10, 4), every figure kept with its unit, year and who
   measured it; the outline puts the findings first and ends on
   recommendations that rest on them; it opens on a labelled executive
-  summary and ends on its sources (`Frame::Executive`). A paper no longer
+  summary and ends on its sources (`Executive`). A paper no longer
   takes a literature review.
-- **The research budget** (`paper/budget.rs`): searches, page reads,
+- **The research budget** (`paper/budget.go`): searches, page reads,
   scholarly lookups and generated pictures for the whole paper (40, 60,
   30, 6), with what is used. `SharedBudget` lets helpers running at once
-  spend one budget, and is what their `WebPlan`s count against
-  (`WebPlan::with_budget`); without one a request keeps chat's five
-  searches and five page reads (`web/budget.rs`).
-- **Events** (`paper/events.rs`): `PaperEvent` over a Tauri Channel - the
+  spend one budget, and is what their web plans (`web.Plan`) count against
+  (`Plan.WithBudget`); without one a request keeps chat's five
+  searches and five page reads (`web/budget.go`).
+- **Events** (`paper/events.go`): `paper.Event` over the command's stream - the
   phase, each section's state, the budget, the outline when it is ready,
   errors. Display only; what matters is on disk.
-- **On disk** (`paper/store.rs`): `papers/<id>/paper.json`,
+- **On disk** (`paper/store.go`): `papers/<id>/paper.json`,
   `dossier.json`, `outline.json` in the project's data folder in the
-  config folder (`ai/project_data.rs`), or in the scratch space
-  (`ai/scratch.rs`) without a project folder, each written
+  config folder (`backend/ai_project_data.go`), or in the scratch space
+  (`backend/ai_scratch.go`) without a project folder, each written
   atomically, so a stopped paper can resume and the user can read the
   research. An id is lowercase letters and digits only.
-- **Research** (`paper/research.rs`): one tool-less step plans 4-10
+- **Research** (`paper/research.go`): one tool-less step plans 4-10
   questions; a helper per question, four at once (their searches too),
   searches and reads and
   keeps findings with `add_note` - a claim, its evidence, an optional quote,
   its sources and leads to pictures or data. A note must cite a number a
   result has or a page's address, so nothing unsourced enters the dossier.
-  The helpers share one `WebPlan`: one source numbering for the paper (kept
-  as `Dossier::sources`, for the reference list) and one budget. The stages
-  run on the `Model` trait, so tests drive them with a scripted model.
-  Each question is kept as its helper ends (`research::Progress`), not
+  The helpers share one `web.Plan`: one source numbering for the paper (kept
+  as `Dossier.Sources`, for the reference list) and one budget. The stages
+  run on the `Model` interface, so tests drive them with a scripted model.
+  Each question is kept as its helper ends (`Progress`), not
   when all have.
-  **Grounding** (`paper/grounding.rs`): the paper's `WebPlan` keeps what
+  **Grounding** (`paper/grounding.go`): the paper's web plan (`web.Plan`) keeps what
   each source said when shown - a page's text, a result's snippet, a
-  paper's abstract (`WebPlan::seen`) - and a cited file is read for it. A
+  paper's abstract (`Plan.Seen`) - and a cited file is read for it. A
   note is checked against those words: a quote they don't have is refused
   (spacing and punctuation aside); a figure they don't give ("1,200" and
   "1200" alike; whole numbers under ten aside) is sent back once, and kept
@@ -150,34 +150,34 @@ it, lazily loaded. Each stage and helper is one run of
   gives a figure none of its cited sources' notes give (less their
   `unmatched` ones) is sent back to its writer - soft, as a length is, so a
   last try keeps it.
-- **Tools** (`research::Kit`): a helper runs on the agent's tool layer. One
+- **Tools** (`Kit`): a helper runs on the agent's tool layer. One
   `ToolRegistry` shared by every helper has the file tools (`read_file`,
   `find_files`, `search_files`), `search_references` when the project has a
   `references/` folder, and the plugins' and MCP servers' tools
-  (`agent::installed_tools`), all executed with `registry.execute` over one
+  (`paperKit` in `backend/ai_paper.go`), all executed by the registry over one
   `ToolContext`: an empty document, the project folder as `root`, the
   paper's folder as `scratch`. Each helper adds its own registry with the
-  web tools, ranked by its question, and `add_note` (`paper/notes.rs`), the
+  web tools, ranked by its question, and `add_note` (`paper/notes.go`), the
   one tool of research's own. Around both, each question's share of the
   budget and the card's activity and budget events.
-- **Sub-helpers** (`paper/delegate.rs`): a question's helper also has
+- **Sub-helpers** (`paper/delegate.go`): a question's helper also has
   `delegate_task`, which hands a narrower part of its question - a case, a
   data set, a dispute - to a helper of its own while it waits, at most twice
   (`MAX_HANDED`). The part's helper runs the same loop with `SUB_STEPS`
   steps and without `delegate_task`, so it hands nothing on; it keeps its
   notes with the question's, under its own sub-question, and spends the
-  question's share of the budget (`research::Desk`), so handing over costs
+  question's share of the budget (`desk`, `paper/helper.go`), so handing over costs
   no more than searching. The call's answer lists the notes it kept with
   their source numbers, so the helper doesn't note them again. A part isn't
   handed over once the question's share is used up, and a sub-helper that
   fails costs the part, not the question.
 - **Attached files**: the request names its `conversation`; the files the
   composer staged in that conversation's `attached/` are copied into the
-  paper's own `attached/` when it starts (`store::keep_attachments`), so a
+  paper's own `attached/` when it starts (`KeepAttachments`), so a
   paper going on still has them after the scratch folder is gone. The plan
   sees each one's opening; the helpers are told their paths and read them
   with `read_file`.
-- **Outline** (`paper/outline.rs`): the model hands it over with
+- **Outline** (`paper/outline.go`): the model hands it over with
   `submit_outline`, which checks it whole - a thesis, 3-12 sections with
   titles and key points, notes that exist, at least one figure for every
   two sections, no more generated pictures than the budget allows, lengths
@@ -185,7 +185,7 @@ it, lazily loaded. Each stage and helper is one run of
   else words) - and sends back every problem until it holds.
   `ai_paper_save_outline` keeps the user's edit, dropping notes the dossier
   doesn't have.
-- **Drafting** (`paper/draft.rs`, `ai_paper_draft`): a writer per section,
+- **Drafting** (`paper/draft.go`, `ai_paper_draft`): a writer per section,
   as many at once as the paper's model calls, given the thesis, what the other sections cover, and its
   notes with their sources' numbers and addresses. It hands the section over
   with `submit_section`, checked for length (60-150% of its target, prose
@@ -193,7 +193,7 @@ it, lazily loaded. Each stage and helper is one run of
   bare `[n]`) and its planned figures: a `mermaid block, a `chart block
   whose JSON the renderer can draw, a `textus-picture:` line, or a
   `<!-- textus-figure web: … -->` mark until a web picture is found. Its
-  diagrams and charts are then drawn (`paper/figures.rs`): the run sends
+  diagrams and charts are then drawn (`paper/figures.go`): the run sends
   them as `drawFigures`, the window draws each with Mermaid itself - which
   Pele falls back to and exports use - and the chart renderer
   (`ai/paper/figure-check.ts`), and answers with `ai_paper_figures_drawn`;
@@ -207,7 +207,7 @@ it, lazily loaded. Each stage and helper is one run of
   section. A section whose writer fails (its model's error; a section
   handed over at all is kept) starts no more; those under way are kept,
   then the draft stops, so the paper has no gap.
-- **At once** (`paper/throttle.rs`): every stage steps one `Throttled`
+- **At once** (`paper/throttle.go`): every stage steps one `Throttled`
   model - at most `paper_at_once` calls in flight, a provider's catalog
   data (Ollama 2, OpenAI 6), with no setting. A call refused for its rate
   or an overload (429, 502, 503, 529) gives up one slot for good (one is
@@ -216,12 +216,12 @@ it, lazily loaded. Each stage and helper is one run of
   results back in order. Finishing searches Commons four marks at a time
   and looks up six source titles at a time, writing the opening meanwhile.
   Nothing is spawned: a stop drops every call under way.
-- **Review** (`paper/review.rs`): once every section is drafted, a reader
+- **Review** (`paper/review.go`): once every section is drafted, a reader
   who sees them all reports with `report_issues` what only the whole shows -
   repetition, contradictions, an outline point no section makes, a figure
   never referred to, a claim stronger than its notes - at most three points
   a section. Beside it, at once, every cited sentence is checked against
-  its notes (`paper/claims.rs`): each section's sentences that cite are
+  its notes (`paper/claims.go`): each section's sentences that cite are
   paired, by code, with the notes on the sources they cite - claim,
   evidence, quote and the source's own passage - and a checker gives each
   a verdict, `supported`, `overstated`, `unsupported` or `wrong_source`,
@@ -229,8 +229,8 @@ it, lazily loaded. Each stage and helper is one run of
   review's points. Each faulted section is revised once by its writer, under the
   same checks; a revision that doesn't hold, or a review that fails, leaves
   the drafts. Only then are the sections sent, so no proposal is replaced.
-- **Finish** (`paper/finish.rs`): picture lines are begun with the user's
-  image model (`images::place_pictures`, up to its per-send limit, which
+- **Finish** (`paper/finish.go`): picture lines are begun with the user's
+  image model (`PlacePictures`, up to its per-send limit, which
   also caps the pictures the outline may plan) and become
   `textus-generated:` pictures; without an image model they are dropped.
   Then every diagram and chart is drawn once more, for sections no
@@ -279,7 +279,7 @@ it, lazily loaded. Each stage and helper is one run of
   the message as the paper's topic, of the kind picked beside the mode - **Choose for me** (the default) lets the model choose it and its length, a genre picked is written at the middle of its lengths -
   under the message box; it never reaches the chat agent, so it is no skill's mode and
   not a default. The conversation
-  gets the user's ask and a card (`write_paper` turns, which Rust keeps from
+  gets the user's ask and a card (`write_paper` turns, which the backend keeps from
   the model); the card follows the run from the paper store and shows the
   outline card while the run waits. Approve saves the edited outline and
   drafts straight into the document (`usePaperDocument`, `paper-write.ts`):
@@ -297,7 +297,7 @@ it, lazily loaded. Each stage and helper is one run of
   to come. A picture whose caption the user has removed is left out. The
   language is the topic's script's, else the UI's.
 
-- **Local sources** (`paper/sources.rs`): `add_note` may cite a file by
+- **Local sources** (`paper/sources.go`): `add_note` may cite a file by
   the path `read_file` reads it by - `attached/…` from the paper's folder, or
   any project file such as `references/…` - accepted when it resolves
   there. The file becomes a source like a page - its path percent-encoded
@@ -306,7 +306,7 @@ it, lazily loaded. Each stage and helper is one run of
   attached file by its name, a project file by name and path. With a
   `references/` folder the helpers are told to search it first.
 
-- **Web pictures** (`paper/web_figures.rs`, `web/commons.rs`): a writer marks
+- **Web pictures** (`paper/webfigures.go`, `web/commons.go`): a writer marks
   a `web` figure as `<!-- textus-figure web: caption | English search words
 -->`. Before the figures are numbered each mark becomes the best picture
   on Wikimedia Commons - Commons only, since a picture from any other page
@@ -341,12 +341,13 @@ it, lazily loaded. Each stage and helper is one run of
   had read DuckDuckGo's results pages); writers never write about the
   research and never number figures (a hard check catches "图 1" or
   "Figure 1"); untitled pages get their own title; a trailing slash no
-  longer splits a source. `paper/live.rs` runs a whole paper on a real provider
+  longer splits a source. `git show 8da2d2f0:src-tauri/src/ai/paper/live.rs`, a Rust live eval
+  ([ai-eval.md](ai-eval.md)), runs a whole paper on a real provider
   (`cargo test --lib live_paper -- --ignored --nocapture`), printing every
   rejection.
 
-- **Prompts and tuning** (`paper/prompts.rs`, `paper/prompts/`,
-  `paper/tuning.rs`): every stage's prompt is Markdown in
+- **Prompts and tuning** (`paper/prompts.go`, `paper/prompts/`,
+  `paper/tuning.go`): every stage's prompt is Markdown in
   `paper/prompts/<stage>.md` - a `## name` heading begins each prompt,
   its `{{key}}`s filled in by the code; a dotted `{{shared.zh-filler}}`
   or `{{genre.paper.cite}}` takes in another prompt as the files are
@@ -354,7 +355,7 @@ it, lazily loaded. Each stage and helper is one run of
   tests fill every prompt for every genre and fail on a key without a
   value or a value without a key. The numbers the stages are tuned by -
   the length bands, steps, how many run at once, the outline's figure
-  limits - are in `tuning.rs`, each with the run it came from; a
+  limits - are in `tuning.go`, each with the run it came from; a
   section's problems carry whether they are soft (`Problem { soft }`),
   so rewording a check can't change what is kept. To try other wording
   without building again, point `TEXTUS_PAPER_PROMPTS` at a folder laid

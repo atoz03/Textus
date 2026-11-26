@@ -1,39 +1,40 @@
 # The AI agent: one request, start to end
 
 How a message in the AI panel becomes a reply and proposals, and the rules
-that hold for every model. The pieces: the provider layer (`aicompat`),
-the agent loop (`ai/agent/`), the tools (`ai/tools/`, edits among them) and the proposal path ([ai-proposals.md](ai-proposals.md)).
+that hold for every model. The pieces, in the Go backend: the provider
+layer (`backend/ai/aicompat/`), the agent loop (`aicompat.Loop`, run by
+`backend/ai_agent.go`), the tools (`backend/ai/tools*.go`, edits among
+them) and the proposal path ([ai-proposals.md](ai-proposals.md)).
 The names the user sees are in [ai-concepts.md](ai-concepts.md).
 
 ## Layers
 
-| Layer     | Owns                                                             | Code                                                                 |
-| --------- | ---------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Providers | How each service is reached and what it differs in               | `crates/aicompat` (`capabilities.rs`, `providers/`), `ai/catalog.rs` |
-| Agent     | One request: the prompt, the steps, the tools run between them   | `ai/agent/`, `aicompat::agent::run_agent_loop`                       |
-| Edits     | Text for the document, as `propose_edit` calls                   | `ai/tools/edits.rs`, `ai/agent/settle.rs`                            |
-| Tools     | Reading, searching, comments, memory, skills, pictures (and MCP) | `ai/tools/`, `ai/images.rs`, `ai/web/`                               |
-| Proposals | A proposed change from its first character to Accept or Reject   | `src/ai/revision/` ([ai-proposals.md](ai-proposals.md))              |
+| Layer     | Owns                                                             | Code (`backend/`)                                                                    |
+| --------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Providers | How each service is reached and what it differs in               | `ai/aicompat/` (`capabilities.go`, the dialects), `ai/catalog.go` and `catalog.json` |
+| Agent     | One request: the prompt, the steps, the tools run between them   | `ai_agent.go`, `ai/agent_*.go`, `aicompat.Loop` (`ai/aicompat/loop.go`)              |
+| Edits     | Text for the document, as `propose_edit` calls                   | `ai/tools_edits.go`, `ai/agent_settle.go`                                            |
+| Tools     | Reading, searching, comments, memory, skills, pictures (and MCP) | `ai/tools*.go` (specs in `ai/agent_tools.json`), `ai/images*.go`, `ai/web/`          |
+| Proposals | A proposed change from its first character to Accept or Reject   | `src/ai/revision/` ([ai-proposals.md](ai-proposals.md))                              |
 
 Pure logic sits inside each layer; side effects - the network, files, the
-editor, the frontend channel - only at its edge (`agent/mod.rs`'s step and
+editor, the frontend channel - only at its edge (`ai_agent.go`'s `step` and
 `forward`, the tools' runners, the editor plugins).
 
-Every request - a chat message and each of Research's commands
-([ai-paper.md](ai-paper.md)) - opens one `agent::Session`
-(`agent/session.rs`) before it runs: Textus AI on, the provider from the
-catalog, its model from `route::agent_provider`, its own web search, the
-user's workspace and guidance, and the pictures' run. What it opens it
-from is one `agent::AgentRequest` - provider, model, document, project,
-conversation, search service, image model, request id: `ai_agent_message`
-builds it from its own parameters, and Research's `PaperRequest` and
-`DraftRequest` carry it flattened beside what they add, so their JSON stays
-one flat object.
+Every request - a chat message (`agentMessage` in `ai_agent.go`) and each
+of Research's commands ([ai-paper.md](ai-paper.md); `paperSession` in
+`ai_paper.go`) - starts the same way before it runs: Textus AI on, the
+provider from the catalog and its model, its own web search, the user's
+workspace and guidance, and the pictures' run. Research's requests name
+it with `agentRequest` - provider, model, document, project, conversation,
+search service, image model, request id - which `paperRequest` and
+`draftRequest` embed beside what they add, so their JSON stays one flat
+object.
 
-Every model step - the chat's, its chapter helpers', and Research's stages
-([ai-paper.md](ai-paper.md)) - goes through one trait, `agent::Model`
-(`agent/model.rs`): a provider steps through it on the desktop, a scripted
-model in tests. `Guided` wraps one with the user's writing guidance.
+A model step is a provider's `Step` (`aicompat.AgentProvider`): the chat
+calls it from `aicompat.Loop`, and Research's stages through
+`paper.Model` (`ai/paper/model.go`), which a provider fills on the desktop
+and a scripted model in tests.
 
 ## One request
 
@@ -48,7 +49,7 @@ model in tests. `Guided` wraps one with the user's writing guidance.
 
 A request also ends when the user stops it (what streamed stays; an edit
 cut off mid-call is dropped), on an error (shown with Retry where the send
-can be repeated), or after `MAX_STEPS` tool steps (the reply says so). While
+can be repeated), or after `maxSteps` tool steps (the reply says so). While
 nothing moves for five seconds, the thinking row counts the seconds
 (`ThinkingIndicator`), so a model that sends neither thinking nor text never
 looks stuck.
@@ -58,8 +59,8 @@ looks stuck.
 Every model hands in document text the same way: a `propose_edit` call
 naming the block by its id (`block`, and `last_block` for a run), with the
 new Markdown as `text` and `anchor` for a few words inside a block. Its
-description is in `tools/offered.rs`; the rules around it in
-`agent/prompt.rs`.
+description is in `backend/ai/agent_tools.json`; the rules around it in
+`backend/ai/agent_prompt.go`.
 
 1.2.0-rc.6 tried the other way - edits written in the reply as
 `<textus-edit>` tags, since a tool call's arguments don't stream on every
@@ -73,28 +74,28 @@ to be handled in the frontend: thinking shown while it waits, the text
 typed in once it comes, as for a streamed one.
 
 A step's calls run in order, with its edits moved before its comments
-(`settle_step`): a comment settles a request only once it has proposed a
-change (`tools::settles`), so "translated it" with a comment and no edit
+(`SettleStep`): a comment settles a request only once it has proposed a
+change (`settles` in `tools.go`), so "translated it" with a comment and no edit
 asks the model on instead of ending.
 
 ## Providers and models
 
-One row per provider in `capabilities.rs` and one entry per service in
-`catalog.rs` hold every difference; code never asks which vendor it is
+One row per provider in `aicompat/capabilities.go` and one entry per
+service in `catalog.json` hold every difference; code never asks which vendor it is
 talking to.
 
 - **Wire format**: OpenAI Responses, Anthropic Messages, OpenAI-compatible
   Chat Completions (most providers), Gemini.
 - **Thinking**: the format a provider takes it in, and per model
-  (`data/model-capabilities.json`, refreshed from models.dev) whether it
+  (`aicompat/model-capabilities.json`, refreshed from models.dev) whether it
   switches, has effort levels or a budget.
 - **Thinking levels**: the user has three - Fast (Quick Ask and the writing
   helpers), Auto (the lightbulb off) and Deep (on). Auto sends nothing,
   except where a provider's default thinks far longer than writing needs
-  (`auto_effort`: Doubao at `minimal`); Deep asks for `high` where there are
+  (`AutoEffort`: Doubao at `minimal`); Deep asks for `high` where there are
   levels, on where it only switches, never `xhigh` or `max`.
 - Vision, pictures (`image`), usage in a stream, and whether a step's
-  reasoning goes back with its calls (`replay_reasoning`).
+  reasoning goes back with its calls (`ReplayReasoning`).
 
 A provider is added as a catalog entry and a row; before a release, the
 agent matrix's core set runs on it
@@ -107,7 +108,7 @@ agent matrix's core set runs on it
   against the writing instructions and the style profile:
   [ai-concepts.md](ai-concepts.md#precedence).
 - **Memory** is decided after each exchange, apart from it
-  (`ai/memory/pass.rs`, the way mem0 keeps a chat's memory): one small
+  (`backend/ai/memory_pass.go`, the way mem0 keeps a chat's memory): one small
   request to the conversation's model sees the user's messages, the reply
   and what is already remembered, and answers with changes - add, update,
   forget - written by the same code as before. The request itself has no
