@@ -263,6 +263,8 @@ func extractDocument(path string) (string, error) {
 		return extract.DocxMarkdown(path)
 	case "pptx":
 		return extract.PptxMarkdown(path)
+	case "xlsx", "xlsm", "xlsb", "xls", "ods":
+		return extract.SpreadsheetMarkdown(path)
 	case "epub":
 		return extract.EpubMarkdown(path)
 	case "rtf":

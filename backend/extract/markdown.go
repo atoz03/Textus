@@ -306,19 +306,29 @@ func table(rows [][]string) string {
 		return ""
 	}
 	var out strings.Builder
+	padded := make([]string, width)
 	for i, row := range rows {
-		cells := make([]string, width)
-		for j := range cells {
-			if j < len(row) {
-				cells[j] = tableCell(row[j])
-			}
-		}
-		out.WriteString("| " + strings.Join(cells, " | ") + " |\n")
-		if i == 0 {
-			out.WriteString("|" + strings.Repeat(" --- |", width) + "\n")
-		}
+		clear(padded)
+		copy(padded, row)
+		tableRow(&out, padded, i == 0)
 	}
 	return strings.TrimRightFunc(out.String(), unicode.IsSpace)
+}
+
+// tableRow writes one row of a pipe table, and after the header the line
+// that makes it one.
+func tableRow(out *strings.Builder, row []string, header bool) {
+	if len(row) == 0 {
+		return
+	}
+	cells := make([]string, len(row))
+	for i, cell := range row {
+		cells[i] = tableCell(cell)
+	}
+	out.WriteString("| " + strings.Join(cells, " | ") + " |\n")
+	if header {
+		out.WriteString("|" + strings.Repeat(" --- |", len(row)) + "\n")
+	}
 }
 
 func tableCell(cell string) string {
