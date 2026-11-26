@@ -17,39 +17,40 @@ type xlsxBook struct {
 	strings []string
 }
 
-func xlsxSheets(z *zip.Reader) ([]*sheet, error) {
-	workbook, ok := zipEntry(z, "xl/workbook.xml")
+// xlsxSheets reads the workbook at part (xl/workbook.xml) and its sheets.
+func xlsxSheets(z *zip.Reader, part string) ([]*sheet, error) {
+	workbook, ok := zipEntry(z, part)
 	if !ok {
 		return nil, errSpreadsheet
 	}
-	data, _ := zipEntry(z, "xl/_rels/workbook.xml.rels")
-	r := parseRels(data)
+	dir, r := partRels(z, part)
 	var b xlsxBook
-	if target, ok := r.ofKind("sharedStrings"); ok {
-		data, _ := zipEntry(z, resolvePart("xl", target))
-		b.strings = xlsxStrings(data)
-	}
-	if target, ok := r.ofKind("styles"); ok {
-		data, _ := zipEntry(z, resolvePart("xl", target))
-		b.dates = xlsxDates(data)
-	}
+	b.strings = xlsxStrings(excelPart(z, dir, r, "sharedStrings", "sharedStrings.xml"))
+	b.dates = xlsxDates(excelPart(z, dir, r, "styles", "styles.xml"))
 	var names, parts []string
+	isWorkbook := false
 	x := newPull(workbook)
 	for n := x.next(); n.kind != nodeEnd; n = x.next() {
 		switch {
 		case n.kind != nodeOpen:
+		case n.tag.name == "workbook":
+			isWorkbook = true
 		case n.tag.name == "workbookPr":
 			v := n.tag.val("date1904")
 			b.date1904 = v == "1" || v == "true"
 		case n.tag.name == "sheet":
-			if part, ok := xlsxWorksheet(r, n.tag.val("id")); ok {
-				names, parts = append(names, n.tag.val("name")), append(parts, part)
+			if p, ok := xlsxWorksheet(r, dir, n.tag.val("id")); ok {
+				names, parts = append(names, n.tag.val("name")), append(parts, p)
 			}
 		}
 	}
+	if !isWorkbook {
+		// A Word or PowerPoint package named .xlsx.
+		return nil, errSpreadsheet
+	}
 	var sheets []*sheet
-	for i, part := range parts {
-		if data, ok := zipEntry(z, part); ok {
+	for i, p := range parts {
+		if data, ok := zipEntry(z, p); ok {
 			s := &sheet{name: names[i]}
 			b.read(data, s)
 			sheets = append(sheets, s)
@@ -59,11 +60,12 @@ func xlsxSheets(z *zip.Reader) ([]*sheet, error) {
 }
 
 // xlsxWorksheet is the part of the sheet whose relationship is id, when
-// it is a worksheet: a chart sheet has no cells.
-func xlsxWorksheet(r rels, id string) (string, bool) {
+// it is a worksheet: a chart sheet has no cells. dir is the workbook's
+// folder.
+func xlsxWorksheet(r rels, dir, id string) (string, bool) {
 	for _, x := range r {
 		if x.id == id && strings.HasSuffix(x.kind, "/worksheet") {
-			return resolvePart("xl", x.target), true
+			return resolvePart(dir, x.target), true
 		}
 	}
 	return "", false

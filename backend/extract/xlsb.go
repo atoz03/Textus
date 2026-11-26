@@ -30,31 +30,25 @@ type xlsbBook struct {
 	strings []string
 }
 
-func xlsbSheets(z *zip.Reader) ([]*sheet, error) {
-	workbook, ok := zipEntry(z, "xl/workbook.bin")
+// xlsbSheets reads the workbook at part (xl/workbook.bin) and its sheets.
+func xlsbSheets(z *zip.Reader, part string) ([]*sheet, error) {
+	workbook, ok := zipEntry(z, part)
 	if !ok {
 		return nil, errSpreadsheet
 	}
-	data, _ := zipEntry(z, "xl/_rels/workbook.bin.rels")
-	r := parseRels(data)
+	dir, r := partRels(z, part)
 	var b xlsbBook
-	if target, ok := r.ofKind("sharedStrings"); ok {
-		data, _ := zipEntry(z, resolvePart("xl", target))
-		records := xlsbRecords{data: data}
-		for kind, body, ok := records.next(); ok; kind, body, ok = records.next() {
-			if kind == xlsbSharedString && len(body) > 0 {
-				// Flags first: whether rich text and phonetic guides follow.
-				text, _, _ := xlsbString(body[1:])
-				b.strings = append(b.strings, text)
-			}
+	records := xlsbRecords{data: excelPart(z, dir, r, "sharedStrings", "sharedStrings.bin")}
+	for kind, body, ok := records.next(); ok; kind, body, ok = records.next() {
+		if kind == xlsbSharedString && len(body) > 0 {
+			// Flags first: whether rich text and phonetic guides follow.
+			text, _, _ := xlsbString(body[1:])
+			b.strings = append(b.strings, text)
 		}
 	}
-	if target, ok := r.ofKind("styles"); ok {
-		data, _ := zipEntry(z, resolvePart("xl", target))
-		b.readStyles(data)
-	}
+	b.readStyles(excelPart(z, dir, r, "styles", "styles.bin"))
 	var names, parts []string
-	records := xlsbRecords{data: workbook}
+	records = xlsbRecords{data: workbook}
 	for kind, body, ok := records.next(); ok; kind, body, ok = records.next() {
 		switch {
 		case kind == xlsbWorkbookProps && len(body) > 0:
@@ -63,14 +57,14 @@ func xlsbSheets(z *zip.Reader) ([]*sheet, error) {
 			// Its state and tab number, its relationship, its name.
 			id, n, ok1 := xlsbString(body[8:])
 			name, _, ok2 := xlsbString(body[8+n:])
-			if part, ok := xlsxWorksheet(r, id); ok1 && ok2 && ok {
-				names, parts = append(names, name), append(parts, part)
+			if p, ok := xlsxWorksheet(r, dir, id); ok1 && ok2 && ok {
+				names, parts = append(names, name), append(parts, p)
 			}
 		}
 	}
 	var sheets []*sheet
-	for i, part := range parts {
-		if data, ok := zipEntry(z, part); ok {
+	for i, p := range parts {
+		if data, ok := zipEntry(z, p); ok {
 			s := &sheet{name: names[i]}
 			b.read(data, s)
 			sheets = append(sheets, s)

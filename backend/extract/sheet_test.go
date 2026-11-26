@@ -198,10 +198,56 @@ func TestDatesCountFrom1904WhenTheWorkbookSays(t *testing.T) {
 	expect(t, text, "## Dates\n\n| 2025-10-13 | 44481 |\n| --- | --- |")
 }
 
+func TestAWorkbookIsFoundWhereItsPackageSays(t *testing.T) {
+	sheetRels := func(target string) string {
+		return `<Relationships>` + xlsxRel("rId1", "worksheet", target) + `</Relationships>`
+	}
+	// One workbook in each format, its parts where Excel puts them: the
+	// workbook first.
+	books := map[string][]part{
+		"xlsx": {
+			{"xl/workbook.xml", `<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Plan" sheetId="1" r:id="rId1"/></sheets></workbook>`},
+			{"xl/_rels/workbook.xml.rels", sheetRels("worksheets/sheet1.xml")},
+			{"xl/sharedStrings.xml", `<sst><si><t>Hello</t></si></sst>`},
+			{"xl/worksheets/sheet1.xml", `<worksheet><sheetData><row><c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>`},
+		},
+		"xlsb": {
+			{"xl/workbook.bin", string(xlsbRecord(156, biffU32(0), biffU32(1), xlsbText("rId1"), xlsbText("Plan")))},
+			{"xl/_rels/workbook.bin.rels", sheetRels("worksheets/sheet1.bin")},
+			{"xl/sharedStrings.bin", string(xlsbRecord(19, []byte{0}, xlsbText("Hello")))},
+			{"xl/worksheets/sheet1.bin", string(xlsbRecord(7, biffU32(0), biffU32(0), biffU32(0)))},
+		},
+	}
+	layouts := map[string]*strings.Replacer{
+		// Part names ignore case...
+		"cased": strings.NewReplacer("sharedStrings", "SharedStrings"),
+		// ...some tools write them with backslashes...
+		"backslashed": strings.NewReplacer("/", `\`),
+		// ...and the workbook is the part _rels/.rels names, wherever it is.
+		"renamed": strings.NewReplacer("xl/", "book/", "workbook.", "main."),
+		"flat":    strings.NewReplacer("xl/", ""),
+	}
+	for ext, parts := range books {
+		for layout, rename := range layouts {
+			workbook := strings.ReplaceAll(rename.Replace(parts[0].name), `\`, "/")
+			laid := []part{{rename.Replace("_rels/.rels"), `<Relationships>` + xlsxRel("rId1", "officeDocument", workbook) + `</Relationships>`}}
+			for _, p := range parts {
+				laid = append(laid, part{rename.Replace(p.name), p.xml})
+			}
+			text, err := SpreadsheetMarkdown(writeFile(t, layout+"."+ext, zipOf(laid...)))
+			if err != nil || text != "## Plan\n\n| Hello |\n| --- |" {
+				t.Errorf("%s.%s: %q, %v", layout, ext, text, err)
+			}
+		}
+	}
+}
+
 func TestAFileThatIsNoSpreadsheetSaysSo(t *testing.T) {
 	for name, data := range map[string][]byte{
 		"plain.xlsx": []byte("plain text"),
 		"word.xlsx":  zipOf(part{"word/document.xml", "<document/>"}),
+		"named.xlsx": zipOf(part{"_rels/.rels", `<Relationships>` + xlsxRel("rId1", "officeDocument", "word/document.xml") + `</Relationships>`},
+			part{"word/document.xml", "<document/>"}),
 		"text.ods": zipOf(part{"mimetype", "application/vnd.oasis.opendocument.text"},
 			part{"content.xml", "<office:document-content/>"}),
 	} {

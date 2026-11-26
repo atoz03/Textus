@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"io"
+	"path"
 	"strings"
 )
 
@@ -256,20 +257,44 @@ func resolvePart(dir, target string) string {
 // zipEntry is the bytes of one entry, or false when the archive lacks it
 // (most parts are optional) or it unpacks past maxPartBytes.
 func zipEntry(z *zip.Reader, name string) ([]byte, bool) {
-	for _, f := range z.File {
-		if f.Name != name {
-			continue
-		}
-		r, err := f.Open()
-		if err != nil {
-			return nil, false
-		}
-		defer r.Close()
-		data, err := io.ReadAll(io.LimitReader(r, maxPartBytes+1))
-		if err != nil || len(data) > maxPartBytes {
-			return nil, false
-		}
-		return data, true
+	f := zipFile(z, name)
+	if f == nil {
+		return nil, false
 	}
-	return nil, false
+	r, err := f.Open()
+	if err != nil {
+		return nil, false
+	}
+	defer r.Close()
+	data, err := io.ReadAll(io.LimitReader(r, maxPartBytes+1))
+	if err != nil || len(data) > maxPartBytes {
+		return nil, false
+	}
+	return data, true
+}
+
+// zipFile is the entry of a part, nil for none: the one by its name, else
+// one whose name differs only in case or in its slashes. Part names ignore
+// case, and some tools write them with backslashes (xl\workbook.xml).
+func zipFile(z *zip.Reader, name string) *zip.File {
+	var near *zip.File
+	loose := strings.ReplaceAll(name, `\`, "/")
+	for _, f := range z.File {
+		if f.Name == name {
+			return f
+		}
+		if near == nil && strings.EqualFold(strings.ReplaceAll(f.Name, `\`, "/"), loose) {
+			near = f
+		}
+	}
+	return near
+}
+
+// partRels is the folder a part is in, which its relationships' targets
+// are relative to, and those relationships: xl/workbook.xml's are in
+// xl/_rels/workbook.xml.rels.
+func partRels(z *zip.Reader, part string) (string, rels) {
+	dir, name := path.Split(part)
+	data, _ := zipEntry(z, dir+"_rels/"+name+".rels")
+	return dir, parseRels(data)
 }

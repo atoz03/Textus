@@ -8,7 +8,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -86,19 +85,43 @@ func spreadsheetSheets(path string) ([]*sheet, error) {
 	if err != nil {
 		return nil, errSpreadsheet
 	}
-	switch {
-	case hasPart(z, "xl/workbook.xml"):
-		return xlsxSheets(z)
-	case hasPart(z, "xl/workbook.bin"):
-		return xlsbSheets(z)
-	case hasPart(z, "content.xml"):
+	switch part := workbookPart(z); {
+	case strings.HasSuffix(strings.ToLower(part), ".bin"):
+		return xlsbSheets(z, part)
+	case part != "":
+		return xlsxSheets(z, part)
+	case zipFile(z, "content.xml") != nil:
 		return odsSheets(z)
 	}
 	return nil, errSpreadsheet
 }
 
-func hasPart(z *zip.Reader, name string) bool {
-	return slices.ContainsFunc(z.File, func(f *zip.File) bool { return f.Name == name })
+// workbookPart is the workbook of an Excel package: the part its
+// _rels/.rels names as the document, else where Excel puts it; "" for a
+// package without one.
+func workbookPart(z *zip.Reader) string {
+	data, _ := zipEntry(z, "_rels/.rels")
+	if target, ok := parseRels(data).ofKind("officeDocument"); ok {
+		if part := resolvePart("", target); zipFile(z, part) != nil {
+			return part
+		}
+	}
+	for _, part := range []string{"xl/workbook.xml", "xl/workbook.bin"} {
+		if zipFile(z, part) != nil {
+			return part
+		}
+	}
+	return ""
+}
+
+// excelPart is the part of a workbook its relationships name by kind,
+// else the one by Excel's name for it in the workbook's folder.
+func excelPart(z *zip.Reader, dir string, r rels, kind, name string) []byte {
+	if target, ok := r.ofKind(kind); ok {
+		name = target
+	}
+	data, _ := zipEntry(z, resolvePart(dir, name))
+	return data
 }
 
 // sheet is one sheet as read: its name, its first rows with text, and how
