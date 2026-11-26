@@ -2,7 +2,7 @@ package backend
 
 import (
 	"encoding/json/v2"
-	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -106,8 +106,8 @@ func atStatsEndpoint(u *url.URL, base string) bool {
 // checkRedirected fails for an answer from the endpoint itself rather than
 // the package it redirects to (a page where no endpoint is deployed, say).
 func checkRedirected(resp *http.Response) error {
-	if atStatsEndpoint(resp.Request.URL, statsEndpoint()) {
-		return errors.New("the install counter didn't redirect")
+	if at := resp.Request.URL; atStatsEndpoint(at, statsEndpoint()) {
+		return fmt.Errorf("the install counter didn't redirect (still at %s, proxy: %s)", at, proxyDisplay(at.String()))
 	}
 	return nil
 }
@@ -125,14 +125,25 @@ func countedOrDirect[T any](counted, direct string, get func(from string) (T, er
 
 // mayFollow is whether a redirect to next is followed: from the endpoint
 // only to direct, the package asked for; anywhere else as then allows.
+// The endpoint may redirect to a mirror host that serves the same path
+// (textus.md → textus.catvinci.com), so a path match on a trusted host is
+// taken too.
 func mayFollow(via []*http.Request, next *url.URL, direct, base string, then func(*url.URL) bool) bool {
 	if len(via) >= maxRedirects {
 		return false
 	}
 	if len(via) > 0 && atStatsEndpoint(via[len(via)-1].URL, base) {
-		return next.String() == direct
+		return next.String() == direct || samePackage(next, direct, then)
 	}
 	return then(next)
+}
+
+// samePackage is whether next is the package direct names on a host then
+// trusts: the endpoint may redirect across mirror hosts (textus.md ↔
+// textus.catvinci.com) that serve the same paths.
+func samePackage(next *url.URL, direct string, then func(*url.URL) bool) bool {
+	d, err := url.Parse(direct)
+	return err == nil && then(next) && next.EscapedPath() == d.EscapedPath()
 }
 
 // followRedirects is a CheckRedirect for downloading direct, perhaps

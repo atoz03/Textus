@@ -123,7 +123,7 @@ func fetchCatalog(ctx context.Context) (string, error) {
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			return "", fmt.Errorf("The plugin catalog answered %s.", resp.Status)
+			return "", fmt.Errorf("The plugin catalog %s", answered(resp))
 		}
 		body, err := readLimited(resp, maxCatalogIndexBytes)
 		switch {
@@ -136,6 +136,18 @@ func fetchCatalog(ctx context.Context) (string, error) {
 		}
 		return string(body), nil
 	})
+}
+
+// answered is what a failed answer was and where it came from: an
+// intercepting proxy answers with its own redirect, and "the mirror
+// failed" against "the proxy's portal answered" is the whole diagnosis.
+func answered(resp *http.Response) string {
+	pointed := resp.Header.Get("Location")
+	if pointed == "" {
+		pointed = "-"
+	}
+	at := resp.Request.URL.String()
+	return fmt.Sprintf("answered %s from %s (pointed at %s; proxy: %s).", resp.Status, at, pointed, proxyDisplay(at))
 }
 
 // downloadWith downloads target with client: a package, a README, an
@@ -158,7 +170,7 @@ func downloadWith(ctx context.Context, client *http.Client, target, what string)
 			return nil, err
 		}
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			return nil, fmt.Errorf("The download of %s answered %s.", what, resp.Status)
+			return nil, fmt.Errorf("The download of %s %s", what, answered(resp))
 		}
 		data, err := readLimited(resp, plugins.MaxPackageBytes)
 		switch {

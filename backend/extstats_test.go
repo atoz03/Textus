@@ -115,6 +115,24 @@ func TestFromTheEndpointOnlyThePackageAskedForIsFollowed(t *testing.T) {
 	}
 }
 
+func TestFromTheEndpointAMirrorHostServingTheSamePathIsFollowed(t *testing.T) {
+	u, _ := url.Parse(extStatsEndpoint + "download?id=a.b")
+	from := []*http.Request{{URL: u}}
+	downloadHost := func(u *url.URL) bool {
+		return u.Scheme == "https" && (u.Host == "textus.md" || u.Host == "textus.catvinci.com")
+	}
+	// The endpoint redirects to the other mirror host, same path.
+	mirror, _ := url.Parse("https://textus.catvinci.com/plugin-release/a.b-v1.0.0/a.b-1.0.0.zip")
+	if !mayFollow(from, mirror, packageURL, extStatsEndpoint, downloadHost) {
+		t.Error("the mirror host wasn't followed")
+	}
+	// A different path on a trusted host is not the package asked for.
+	wrongPath, _ := url.Parse("https://textus.catvinci.com/plugin-release/other/other.zip")
+	if mayFollow(from, wrongPath, packageURL, extStatsEndpoint, downloadHost) {
+		t.Error("another package was followed")
+	}
+}
+
 func TestACountedDownloadGoesThroughTheEndpointOnlyWhenItRedirects(t *testing.T) {
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
