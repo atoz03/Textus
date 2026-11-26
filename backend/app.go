@@ -135,24 +135,16 @@ func Run(shared Shared) error {
 
 	// Windows and Linux start a new process per opened file: the first one
 	// takes the others' documents. Not in development, so a dev build runs
-	// beside an installed Textus.
+	// beside an installed Textus. MyGo hands a launch over as soon as it
+	// runs, before the app is ready and a window can open: one made while
+	// Textus starts waits for WhenReady.
+	var launches untilReady
 	if !mygo.IsDev() && runtime.GOOS != "darwin" && os.Getenv("MYGO_GENERATE") == "" {
 		if !app.RequestSingleInstanceLock() {
 			return nil
 		}
 		app.OnSecondInstance(func(args []string, cwd string) {
-			paths := pathsFromArgv(args, cwd)
-			a.noteArgvPaths(paths)
-			switch {
-			case len(paths) > 0:
-				a.queuePathsToOpen(paths)
-			case a.lastEditor() == nil:
-				a.reopenWithoutWindows()
-			default:
-				if err := a.openNewWindow(); err != nil {
-					log.Printf("textus: cannot open a window: %v", err)
-				}
-			}
+			launches.run(func() { a.secondLaunch(args, cwd) })
 		})
 	}
 	// macOS hands documents over as open-file events. MyGo also passes the
@@ -196,6 +188,7 @@ func Run(shared Shared) error {
 		if a.readFlag(backgroundSetting) {
 			a.applyBackground(changeStartup)
 		}
+		launches.ready()
 	})
 	// Closing the last window leaves the app running on macOS, as Mac apps
 	// do, and elsewhere in background mode; it quits otherwise.
@@ -220,6 +213,55 @@ func Run(shared Shared) error {
 		}
 	})
 	return app.Run()
+}
+
+// secondLaunch takes a later launch's command line: its documents, or else
+// the session when no editor window is open, as a first launch would, and
+// a new window otherwise.
+func (a *App) secondLaunch(args []string, cwd string) {
+	paths := pathsFromArgv(args, cwd)
+	a.noteArgvPaths(paths)
+	switch {
+	case len(paths) > 0:
+		a.queuePathsToOpen(paths)
+	case a.lastEditor() == nil:
+		a.reopenWithoutWindows()
+	default:
+		if err := a.openNewWindow(); err != nil {
+			log.Printf("textus: cannot open a window: %v", err)
+		}
+	}
+}
+
+// untilReady holds what arrives before the app is ready and runs it, in
+// order, once it is.
+type untilReady struct {
+	mu      sync.Mutex
+	isReady bool
+	held    []func()
+}
+
+// run runs f now if the app is ready, else once it is.
+func (u *untilReady) run(f func()) {
+	u.mu.Lock()
+	if !u.isReady {
+		u.held = append(u.held, f)
+		u.mu.Unlock()
+		return
+	}
+	u.mu.Unlock()
+	f()
+}
+
+// ready runs what was held, and from then on runs at once.
+func (u *untilReady) ready() {
+	u.mu.Lock()
+	held := u.held
+	u.held, u.isReady = nil, true
+	u.mu.Unlock()
+	for _, f := range held {
+		f()
+	}
 }
 
 // exit ends the app once its windows are gone, or starts the version an
