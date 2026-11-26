@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -54,6 +55,27 @@ func TestAPathMustStayInTheFolder(t *testing.T) {
 		if _, err := Inside(root, out); err == nil {
 			t.Errorf("%s is taken for inside", out)
 		}
+	}
+}
+
+func TestWindowsTakesARootedPathForTheDrivesNotTheFolders(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("drives are Windows'")
+	}
+	tmp := t.TempDir()
+	root := filepath.Join(tmp, "notes")
+	write(t, filepath.Join(root, "a.md"), "a")
+	vol := filepath.VolumeName(tmp)
+	// \a.md is at the drive's root; C:a.md is in the drive's current folder.
+	for _, out := range []string{`\a.md`, "/a.md", vol + "a.md"} {
+		if _, err := Inside(root, out); err == nil {
+			t.Errorf("%s is taken for inside", out)
+		}
+	}
+	// The folder's own file, named from the drive's root, is inside.
+	rooted := strings.TrimPrefix(filepath.Join(root, "a.md"), vol)
+	if got, err := Inside(root, rooted); err != nil || !strings.EqualFold(filepath.VolumeName(got), vol) {
+		t.Errorf("%s: %s %v", rooted, got, err)
 	}
 }
 

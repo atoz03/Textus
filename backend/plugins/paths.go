@@ -60,7 +60,15 @@ func Inside(root, path string) (string, error) {
 		return "", fmt.Errorf("%s: %v", root, err)
 	}
 	full := path
-	if !filepath.IsAbs(path) {
+	switch {
+	case filepath.IsAbs(path):
+	case filepath.VolumeName(path) != "":
+		// Windows' C:a.md is in drive C's current folder, not root.
+		return "", errors.New("A path relative to a drive is refused.")
+	case path != "" && os.IsPathSeparator(path[0]):
+		// Windows' \a.md is at the root of the folder's drive.
+		full = filepath.Join(filepath.VolumeName(base), path)
+	default:
 		full = filepath.Join(base, path)
 	}
 	for _, p := range strings.FieldsFunc(path, isSep) {

@@ -203,10 +203,7 @@ func pathsFromArgv(args []string, cwd string) []string {
 				arg = strings.TrimPrefix(arg, `\`)
 			}
 		}
-		if !filepath.IsAbs(arg) {
-			arg = filepath.Join(cwd, arg)
-		}
-		out = append(out, arg)
+		out = append(out, resolveAgainst(cwd, arg))
 	}
 	return out
 }

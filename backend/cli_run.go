@@ -40,10 +40,21 @@ func classifiedCLI(args []string, exists func(string) bool) bool {
 }
 
 // resolveAgainst is arg against cwd with . and .. folded, so ./a.md names
-// the same file, and the same open tab, as its full path.
+// the same file, and the same open tab, as its full path. Windows also has
+// \a.md, at the root of cwd's drive, and D:a.md, in drive D's folder: cwd
+// when cwd is on D, else D's root, as for a shell that hasn't been there.
 func resolveAgainst(cwd, arg string) string {
 	if filepath.IsAbs(arg) {
 		return filepath.Clean(arg)
+	}
+	vol := filepath.VolumeName(arg)
+	switch {
+	case vol != "" && strings.EqualFold(vol, filepath.VolumeName(cwd)):
+		return filepath.Join(cwd, arg[len(vol):])
+	case vol != "":
+		return filepath.Join(vol+string(filepath.Separator), arg[len(vol):])
+	case arg != "" && os.IsPathSeparator(arg[0]):
+		return filepath.Join(filepath.VolumeName(cwd), arg)
 	}
 	return filepath.Join(cwd, arg)
 }

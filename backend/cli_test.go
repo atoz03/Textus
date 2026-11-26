@@ -3,6 +3,7 @@ package backend
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -169,6 +170,28 @@ func TestOpenHandsAbsolutePathsToTheApp(t *testing.T) {
 	want := []string{filepath.FromSlash("/w/x/a.md"), filepath.FromSlash("/w/b.md"), filepath.FromSlash("/c.md"), "textus://open?x"}
 	if !slices.Equal(app.opened[0], want) {
 		t.Errorf("opened %q", app.opened[0])
+	}
+}
+
+func TestWindowsResolvesAPathAgainstItsDrive(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("drives are Windows'")
+	}
+	for _, c := range []struct{ cwd, arg, want string }{
+		{`C:\w\x`, `\c.md`, `C:\c.md`},
+		{`C:\w\x`, "/c.md", `C:\c.md`},
+		{`C:\w\x`, "c:a.md", `C:\w\x\a.md`},
+		{`C:\w\x`, "D:a.md", `D:\a.md`},
+		{`C:\w\x`, `D:\a.md`, `D:\a.md`},
+		{`\\host\share\x`, `\c.md`, `\\host\share\c.md`},
+	} {
+		if got := resolveAgainst(c.cwd, c.arg); got != c.want {
+			t.Errorf("%s from %s: %s", c.arg, c.cwd, got)
+		}
+		// A launch's documents are found the same way.
+		if got := pathsFromArgv([]string{"Textus.exe", c.arg}, c.cwd); !slices.Equal(got, []string{c.want}) {
+			t.Errorf("launch with %s from %s: %q", c.arg, c.cwd, got)
+		}
 	}
 }
 
