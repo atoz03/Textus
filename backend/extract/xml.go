@@ -216,6 +216,17 @@ func (r rels) target(id string) (string, bool) {
 	return "", false
 }
 
+// ofKind is the first target whose relationship type ends with /kind
+// (notesSlide, footnotes).
+func (r rels) ofKind(kind string) (string, bool) {
+	for _, x := range r {
+		if x.kind[strings.LastIndex(x.kind, "/")+1:] == kind {
+			return x.target, true
+		}
+	}
+	return "", false
+}
+
 // resolvePart is a relationship target as the zip entry it names:
 // ../media/a.png from word/ is media/a.png.
 func resolvePart(dir, target string) string {

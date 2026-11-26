@@ -261,6 +261,8 @@ func extractDocument(path string) (string, error) {
 	switch fileExt(path) {
 	case "docx":
 		return extract.DocxMarkdown(path)
+	case "pptx":
+		return extract.PptxMarkdown(path)
 	case "html", "htm", "xhtml":
 		raw, err := os.ReadFile(path)
 		if err != nil {
