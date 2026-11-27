@@ -1,26 +1,26 @@
 {
   "add_comment": {
-    "description": "Pin feedback to passages without changing them - for reviews and critique (\"what's weak here\", \"check this draft\"). Every point of the reply goes in this one call's `comments`, in document order: name the block each is about by its id as `block`, and quote `anchor` only for a few words inside that block it is about. The user sees each comment as a card that jumps to its passage, so keep your reply to a short overall summary.",
+    "description": "Pin feedback to passages without changing them, for reviews and critique. Every point goes in this one call, in document order; the user sees each as a card at its passage, so your reply is a short overall summary.",
     "parameters": {
       "properties": {
         "comments": {
-          "description": "The points, one per passage (each word, when asked to gloss words), in document order",
+          "description": "One per point (each word, when glossing words)",
           "items": {
             "properties": {
               "anchor": {
-                "description": "Only for a few words inside that block: those words, verbatim. Left out, the comment is about the whole block.",
+                "description": "Only for a few words inside the block: those words, verbatim. Left out, the whole block.",
                 "type": "string"
               },
               "block": {
-                "description": "The id shown before the block the comment is about, like `k3f9` from `[#k3f9]`",
+                "description": "The block's id, `k3f9` for `[#k3f9]`",
                 "type": "string"
               },
               "comment": {
-                "description": "The feedback, in the user's language - specific and actionable",
+                "description": "Specific, actionable feedback, in the user's language",
                 "type": "string"
               },
               "suggestion": {
-                "description": "Only when the fix is a concrete rewrite: the anchor (or, without one, the whole block) as it should read, in markdown. The user can apply it in one click; leave it out for points that need the writer's own judgment.",
+                "description": "Only for a concrete rewrite: the anchor (or the whole block) as it should read, in markdown, which the user applies with one click. Left out where the writer must judge.",
                 "type": "string"
               }
             },
@@ -35,27 +35,27 @@
     }
   },
   "check_conventions": {
-    "description": "Check text against the document's writing conventions with a deterministic rules engine: punctuation and spacing (full-width marks in Chinese and Japanese, French no-break spaces, quotes, dashes, ellipses), numbers and dates, spelling lists, and consistency with the rest of the document, under the conventions profile in force (shown in the result). Pass `heading` or a line range for part of the document (default: all of it), or `text` to check a draft before you propose it. Returns findings grouped by rule with line numbers, the text, the fix and why. Use it to ground proofreading and convention fixes instead of guessing; it changes nothing.",
+    "description": "Check the document's writing conventions with a rules engine - punctuation and spacing (full-width CJK marks, French no-break spaces, quotes, dashes, ellipses), numbers and dates, spelling lists, consistency - under the profile in force: the whole document, a section by `heading`, a line range, or a draft `text`. Returns findings by rule, each with its line, text, fix and why; changes nothing.",
     "parameters": {
       "properties": {
         "end_line": {
-          "description": "Last line to check, inclusive.",
+          "description": "Last line, inclusive",
           "type": "integer"
         },
         "heading": {
-          "description": "Heading text of the section to check (case-insensitive, partial match). Takes precedence over the line range.",
+          "description": "Part of the section's heading; wins over a line range",
           "type": "string"
         },
         "start_line": {
-          "description": "First line to check, 1-based.",
+          "description": "First line, 1-based",
           "type": "integer"
         },
         "strict": {
-          "description": "Also report style hints (long sentences, wordy phrases, passive voice...). Default false.",
+          "description": "Also style hints: long sentences, wordiness, passive voice",
           "type": "boolean"
         },
         "text": {
-          "description": "A draft (markdown) to check instead of the document, judged against the document's own conventions.",
+          "description": "A draft (markdown) to check against the document's conventions",
           "type": "string"
         }
       },
@@ -63,7 +63,7 @@
     }
   },
   "edit_file": {
-    "description": "Change part of a file in the folder: `old` must appear in it exactly once, verbatim (read_file it first), and becomes `new`. Several changes to one file are several calls. Not for the open document - propose_edit changes that.",
+    "description": "Change part of a file in the folder: `old`, verbatim and found once in it (read_file it first), becomes `new`. One call per change. Not for the open document: propose_edit changes that.",
     "parameters": {
       "properties": {
         "new": {
@@ -71,7 +71,7 @@
           "type": "string"
         },
         "old": {
-          "description": "The text to replace, verbatim, enough of it to be unique",
+          "description": "The text to replace, verbatim, enough to be unique",
           "type": "string"
         },
         "path": {
@@ -84,11 +84,11 @@
     }
   },
   "find_files": {
-    "description": "Find files in the project folder by name - text files, and PDF, Word, PowerPoint, spreadsheet, EPUB and RTF files (case-insensitive; every word must appear in the path, so \"chapter 3\" finds drafts/chapter-3.md). Markdown and plain-text documents come first. Leave `name` out to list every file, to see what reference material there is; then read_file.",
+    "description": "Find files in the project folder by name: text files, and PDF, Word, PowerPoint, spreadsheet, EPUB and RTF files (case-insensitive; every word must be in the path, so \"chapter 3\" finds drafts/chapter-3.md), documents first. Without `name`, lists every file.",
     "parameters": {
       "properties": {
         "name": {
-          "description": "Part of the file's name or path; left out, every file",
+          "description": "Part of the file's name or path",
           "type": "string"
         }
       },
@@ -96,11 +96,11 @@
     }
   },
   "find_files+images": {
-    "description": "Find files in the project folder by name - text files, PDF, Word, PowerPoint, spreadsheet, EPUB and RTF files, and images, marked \"(image)\" (case-insensitive; every word must appear in the path, so \"chapter 3\" finds drafts/chapter-3.md). Markdown and plain-text documents come first. Leave `name` out to list every file, to see what reference material there is - notes, other chapters, pictures; then read_file.",
+    "description": "Find files in the project folder by name: text files, PDF, Word, PowerPoint, spreadsheet, EPUB and RTF files, and images, marked \"(image)\" (case-insensitive; every word must be in the path, so \"chapter 3\" finds drafts/chapter-3.md), documents first. Without `name`, lists every file.",
     "parameters": {
       "properties": {
         "name": {
-          "description": "Part of the file's name or path; left out, every file",
+          "description": "Part of the file's name or path",
           "type": "string"
         }
       },
@@ -108,16 +108,15 @@
     }
   },
   "measure_text": {
-    "description": "Count text exactly for a length limit - never estimate a count yourself. Metrics: x_weighted (X, limit 280: URLs count 23, CJK characters and emoji 2), bluesky (300 graphemes and 3,000 bytes), threads (500), instagram (2,200, at most 5 hashtags), mastodon (500 by default), linkedin (3,000, fold near 140), wechat_title (32), wechat_digest (120), wechat_content, xhs_title (20), xhs_body (1,000), weibo, govuk_title (65), govuk_summary (160), zh_academic_title (25 字), and plain chars, words, cjk_chars, utf8_bytes. Without `metric` it returns the basic counts. Use it on the exact text before proposing anything that must fit a platform's limit, and give the count in your reply. Not for new text with a length the user asked for: propose that directly - propose_edit's result gives its size.",
+    "description": "Count text exactly for a length limit; never estimate a count yourself. Limits: x_weighted 280 (URLs 23, CJK and emoji 2), bluesky 300 graphemes, threads 500, instagram 2,200 (at most 5 hashtags), mastodon 500, linkedin 3,000 (fold near 140), wechat_title 32, wechat_digest 120, xhs_title 20, xhs_body 1,000, govuk_title 65, govuk_summary 160, zh_academic_title 25 字; without `metric`, the basic counts. Not for a length the user asks for: write that straight into propose_edit, whose result gives its size.",
     "parameters": {
       "properties": {
         "metric": {
-          "description": "What to count, and against which limit.",
           "enum": "__METRICS__",
           "type": "string"
         },
         "text": {
-          "description": "The exact text to count, as it will be posted or used.",
+          "description": "The exact text, as it will be used",
           "type": "string"
         }
       },
@@ -126,36 +125,34 @@
     }
   },
   "propose_edit": {
-    "description": "Propose edits to the document. Each lands as the user set it - a revision they accept or reject, or written straight in (their message says so). Every edit of the reply goes in this one call's `edits`, one item per distinct edit, in document order. Every block of the document (a paragraph, a heading, a whole list, a quote, a table, a code block, a picture) starts with its id, like `[#k3f9]`: give the target's id as `block`, first, so the user sees at once where the edit goes. With `block` alone, `replace` swaps the whole block for `text`, `delete` removes it, and `insert_before`/`insert_after` add `text` as a new block next to it. With `anchor` - just the few words inside the block the edit is about, quoted exactly once there (quote a few more if they repeat) - `replace` swaps them for `text`, `delete` removes them, and `insert_before`/`insert_after` add `text` beside them, untouched: inside the paragraph when the anchor is a phrase or sentence within it (write `text` to read on from it: after a paragraph's last sentence, this continues the paragraph), as a new paragraph when `text` is block content (a heading, list, several paragraphs), and as a new line of the same table or list when the anchor is a whole row or list item line and `text` is another one. `replace_selection` swaps the user's selected text (the <selected-text> block in their message) for `text`; `insert_at_cursor` adds `text` exactly where their cursor is (only when their message carries a <cursor> block); `append` adds `text` at the end of the document - none of these needs an `anchor`. To rewrite a run of consecutive blocks in one replace, however long (a section, the whole document), give the first as `block`, the last as `last_block` and the rewritten run as `text`; the user still decides on each paragraph by itself. Pictures in the run stay as they are, written in `text` as they were: a text edit never changes or removes a picture. When the user asks for a picture to change too (its people, scene or style), redo it with generate_image by its block first, then propose the text, in the same reply - writing that you changed it is not changing it. `delete` by its block removes one. The ids aren't part of the text: never write them in `text` or `anchor`. Leave `block` out only for text you proposed earlier that the user hasn't decided on, which has no id: `anchor` then quotes it verbatim, once.",
+    "description": "Propose edits to the document; each lands as the user set it: a revision to accept or reject, or written straight in. Send every edit of the reply in this one call, in document order. Each block (paragraph, heading, whole list, quote, table, code block or picture) starts with its id, like `[#k3f9]`, which is never part of `text` or `anchor`. With `block` alone, `replace` swaps the block for `text`, `delete` removes it, and `insert_before`/`insert_after` add `text` as a new block beside it. With an `anchor` (found once in the block; quote more if it repeats), `replace` and `delete` act on it, and `insert_before`/`insert_after` add `text` beside it: within the paragraph when it is a phrase or sentence (after the last sentence, continuing the paragraph); as a new block when `text` is block content; as a new line of the table or list when it is a whole row or item line - how rows and items are added, `text` being only the new line(s), nested items keeping their indentation. `replace_selection` replaces the <selected-text>, `insert_at_cursor` adds `text` at the <cursor> (only when the message has one), and `append` adds it at the end; none takes an `anchor`. `last_block` extends one replace through consecutive blocks; the user still decides on each paragraph. Pictures in that run stay in `text` unchanged: a text edit never changes a picture; `delete` by its block removes one.",
     "parameters": {
       "properties": {
         "edits": {
-          "description": "Every edit of this reply, in document order",
           "items": {
             "properties": {
               "action": {
-                "description": "What kind of edit this is",
                 "enum": "__EDIT_ACTIONS__",
                 "type": "string"
               },
               "anchor": {
-                "description": "With `block`: only the few words inside that block the edit changes, quoted verbatim, once in the block - leave it out to change the whole block. Without `block` (only text you proposed that the user hasn't decided on): that text, quoted verbatim.",
+                "description": "The few words in the block the edit is about, verbatim; left out, the whole block. Without `block` (only for undecided text you proposed, which has no id): that text, verbatim.",
                 "type": "string"
               },
               "block": {
-                "description": "The id of the block the edit targets, as the document shows it before the block (`k3f9` for `[#k3f9]`). Write it first.",
+                "description": "The target block's id, `k3f9` for `[#k3f9]`. Write it first.",
                 "type": "string"
               },
               "last_block": {
-                "description": "Only to rewrite a run of consecutive blocks in one replace: the id of the last of them, `block` being the first; `text` is then the run rewritten.",
+                "description": "Only for one replace of consecutive blocks: the last one's id",
                 "type": "string"
               },
               "reason": {
-                "description": "One short sentence, in the language of your reply, on why this change - shown on the proposal card so the user can judge it at a glance (e.g. \"Cut the repeated point about cost\").",
+                "description": "Why, in one short sentence in your reply's language, shown on the proposal card (\"Cut the repeated point about cost\")",
                 "type": "string"
               },
               "text": {
-                "description": "The new content (markdown). Required for every action except `delete`.",
+                "description": "The new content, in markdown; for every action but `delete`",
                 "type": "string"
               }
             },
@@ -170,19 +167,19 @@
     }
   },
   "read_document": {
-    "description": "Read part of the document verbatim: a whole section by its heading (subsections included), or a range of lines from the outline. Use it before revising a passage you can't see in full. Each block comes back after its `[#id]`, as in the document section.",
+    "description": "Read part of the document verbatim, before revising a passage you can't see in full: a section by its heading, subsections included, or a range of lines from the outline. Blocks come back after their `[#id]`.",
     "parameters": {
       "properties": {
         "end_line": {
-          "description": "Last line to read, inclusive.",
+          "description": "Last line, inclusive",
           "type": "integer"
         },
         "heading": {
-          "description": "Heading text of the section to read (case-insensitive, partial match). Takes precedence over the line range.",
+          "description": "Part of the section's heading; wins over a line range",
           "type": "string"
         },
         "start_line": {
-          "description": "First line to read, 1-based (as in the outline and search results).",
+          "description": "First line, 1-based, as in the outline and search results",
           "type": "integer"
         }
       },
@@ -190,11 +187,11 @@
     }
   },
   "read_file": {
-    "description": "Read a text file, or the text of a PDF, Word, PowerPoint, spreadsheet, EPUB or RTF file (as Markdown), from the project folder, by the relative path find_files or search_files shows. A long file comes back in parts: the answer says which lines of how many it shows and where to read on; pass start_line and end_line to read a part - say, a few dozen lines around a line search_files found.",
+    "description": "Read a file of the project folder by the path find_files or search_files shows: a text file, or a PDF, Word, PowerPoint, spreadsheet, EPUB or RTF file as Markdown. A long file comes in parts, and the answer says which lines it shows; start_line and end_line read a part, such as a few dozen lines around a search_files match.",
     "parameters": {
       "properties": {
         "end_line": {
-          "description": "Last line to read, inclusive.",
+          "description": "Last line, inclusive",
           "type": "integer"
         },
         "path": {
@@ -202,7 +199,7 @@
           "type": "string"
         },
         "start_line": {
-          "description": "First line to read, 1-based (as in search_files results).",
+          "description": "First line, 1-based, as in search_files results",
           "type": "integer"
         }
       },
@@ -211,11 +208,11 @@
     }
   },
   "read_file+images": {
-    "description": "Read a text file, or the text of a PDF, Word, PowerPoint, spreadsheet, EPUB or RTF file (as Markdown), from the project folder, by the relative path find_files or search_files shows - or look at an image there (PNG, JPEG, GIF or WebP, up to 6 MB: a map, a photo, a chart, a scanned page). A long file comes back in parts: the answer says which lines of how many it shows and where to read on; pass start_line and end_line to read a part - say, a few dozen lines around a line search_files found.",
+    "description": "Read a file of the project folder by the path find_files or search_files shows: a text file, or a PDF, Word, PowerPoint, spreadsheet, EPUB or RTF file as Markdown - or look at an image (PNG, JPEG, GIF or WebP, up to 6 MB: a map, a photo, a chart, a scan). A long file comes in parts, and the answer says which lines it shows; start_line and end_line read a part, such as a few dozen lines around a search_files match.",
     "parameters": {
       "properties": {
         "end_line": {
-          "description": "Last line to read, inclusive.",
+          "description": "Last line, inclusive",
           "type": "integer"
         },
         "path": {
@@ -223,7 +220,7 @@
           "type": "string"
         },
         "start_line": {
-          "description": "First line to read, 1-based (as in search_files results).",
+          "description": "First line, 1-based, as in search_files results",
           "type": "integer"
         }
       },
@@ -232,11 +229,11 @@
     }
   },
   "search_conversations": {
-    "description": "Search the user's earlier conversations with you - about every document, newest first - when they refer to something said before that isn't in this conversation or in what you remember (\"the title we chose last time\", \"the names you suggested yesterday\"). Every word must be in one message or reply: search for a word or two that would be in it, in the language it was said in. Returns the passages found, with their conversation's title and date.",
+    "description": "Search the user's earlier conversations with you, about every document, newest first, when they refer to something said before that isn't in this conversation or in what you remember (\"the title we chose last time\"). Every word must be in one message or reply: search for a word or two it would contain, in its language. Returns the passages with their conversation's title and date.",
     "parameters": {
       "properties": {
         "query": {
-          "description": "A word or two that would be in what was said.",
+          "description": "A word or two that would be in what was said",
           "type": "string"
         }
       },
@@ -245,11 +242,11 @@
     }
   },
   "search_document": {
-    "description": "Search the document for a word or phrase (case-insensitive). Returns each matching line with its line number and its block's id, for an edit to name.",
+    "description": "Search the document for a word or phrase (case-insensitive): each matching line, with its number and its block's id.",
     "parameters": {
       "properties": {
         "query": {
-          "description": "Text to search for in the document",
+          "description": "Text to search for",
           "type": "string"
         }
       },
@@ -258,7 +255,7 @@
     }
   },
   "search_files": {
-    "description": "Search every text file and document (PDF, Word, PowerPoint, spreadsheet, EPUB, RTF) in the project folder for a word or phrase (case-insensitive), however long the file. Returns `path:line: text` matches - use it to find where a character, term or fact appears across chapters and notes, then read_file with start_line and end_line around the match for its context.",
+    "description": "Search every text file and document (PDF, Word, PowerPoint, spreadsheet, EPUB, RTF) in the project folder for a word or phrase (case-insensitive), however long the file, to find where a character, term or fact appears. Returns `path:line: text` matches; read_file around one for its context.",
     "parameters": {
       "properties": {
         "query": {
@@ -271,7 +268,7 @@
     }
   },
   "search_references": {
-    "description": "Search the user's reference library - the papers, books, reports and notes in the project's `{}/` folder - for the passages that best answer a question, ranked by relevance. Pass the words the sources would use; several words are fine and the best passages contain most of them. Each result is `path:first-last` and the passage: cite the source by its file name, and read_file with start_line and end_line for more around it. Prefer it to search_files for research in the references; search_files finds one exact phrase anywhere in the project.",
+    "description": "Search the user's reference library - the papers, books, reports and notes in the project's `{}/` folder - for the passages that best answer a question, best first. Pass the words the sources would use; several are fine. Each result is `path:first-last` and the passage: cite the source by its file name, and read_file around it for more. For research in the references, prefer it to search_files, which finds one exact phrase anywhere.",
     "parameters": {
       "properties": {
         "query": {
@@ -284,11 +281,11 @@
     }
   },
   "use_skill": {
-    "description": "Load the full instructions of one of the available skills (listed in the system prompt), or a reference pack a skill names. Call this before following a skill whenever the user's request matches its description, or when the user invokes it by name.",
+    "description": "Load a skill's full instructions (from the list in the system prompt, or app-guide), or a reference pack a skill names. Call it before following a skill whose description the request matches, or that the user names.",
     "parameters": {
       "properties": {
         "name": {
-          "description": "The skill's name, exactly as listed, or a reference pack such as standards-fr or standards-fr#dialogue",
+          "description": "The skill's name as listed, or a pack such as standards-fr or standards-fr#dialogue",
           "type": "string"
         }
       },
@@ -297,7 +294,7 @@
     }
   },
   "write_file": {
-    "description": "Create a file in the folder, or replace one's whole text. For a few changes to a file that exists, edit_file is cheaper and safer. Not for the open document - propose_edit changes that. Work across several files: first say in a line or two which files you will change and how, then make the changes without waiting for an answer.",
+    "description": "Create a file in the folder, or replace one's whole text; for a few changes to one, edit_file is safer. Not for the open document: propose_edit changes that. Changing several files: first say in a line or two which and how, then make the changes without waiting for an answer.",
     "parameters": {
       "properties": {
         "content": {
