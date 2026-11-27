@@ -1,7 +1,7 @@
 /**
  * Installed fonts, and the chosen text font served from its files when the
  * web view can't find it by name: WKWebView was seen not to find the fonts
- * in ~/Library/Fonts, though fontdb lists them.
+ * in ~/Library/Fonts, though the backend lists them.
  */
 
 import type { FontFamily } from "../platform/bindings/app";
@@ -27,7 +27,7 @@ export function draws(
 
 let families: Promise<FontFamily[]> | null = null;
 /** Read once per session: the list is a few hundred names and rarely
- *  changes while Textus runs. Shape from Rust's commands/fonts.rs. */
+ *  changes while Textus runs. Shape from backend/fonts.go. */
 export function fontFamilies(): Promise<FontFamily[]> {
   // Without the native side (the browser build) there is no list.
   families ??= systemIpc

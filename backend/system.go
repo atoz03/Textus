@@ -1,14 +1,11 @@
 package backend
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/json/jsontext"
 	"errors"
 	"os"
 	"os/exec"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -57,49 +54,6 @@ func goArch() string {
 		return "aarch64"
 	}
 	return runtime.GOARCH
-}
-
-type LocalName struct {
-	Language string `json:"language"`
-	Name     string `json:"name"`
-}
-
-type FontFile struct {
-	Path   string `json:"path"`
-	Weight int    `json:"weight"`
-	Italic bool   `json:"italic"`
-}
-
-type FontFamily struct {
-	Name  string      `json:"name"`
-	Local []LocalName `json:"local"`
-	Files []FontFile  `json:"files"`
-}
-
-// fontFamilies lists the installed families through fontconfig, where
-// there is one (Linux); elsewhere none, and Settings offers its own list.
-func fontFamilies() []FontFamily {
-	out, err := exec.Command("fc-list", "--format", "%{family}\n").Output()
-	if err != nil {
-		return []FontFamily{}
-	}
-	seen := map[string]bool{}
-	list := []FontFamily{}
-	sc := bufio.NewScanner(bytes.NewReader(out))
-	for sc.Scan() {
-		// "Noto Sans CJK SC,Noto Sans CJK SC Regular": the first name is
-		// the one CSS knows.
-		name := strings.TrimSpace(strings.SplitN(sc.Text(), ",", 2)[0])
-		name = strings.ReplaceAll(name, `\-`, "-")
-		key := strings.ToLower(name)
-		if name == "" || strings.HasPrefix(name, ".") || seen[key] {
-			continue
-		}
-		seen[key] = true
-		list = append(list, FontFamily{Name: name, Local: []LocalName{}, Files: []FontFile{}})
-	}
-	sort.Slice(list, func(i, j int) bool { return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name) })
-	return list
 }
 
 type MemoryState struct {

@@ -399,6 +399,7 @@ export type DragModifiers = {
  *  An installed family: the name CSS knows it by, what it is called in
  *  the CJK languages that name it themselves (微软雅黑 for Microsoft YaHei),
  *  and its files. Used by src/theme/supplied-font.ts and font-choices.ts.
+ *  backend/fonts.go FontFamily.
  */
 export type FontFamily = {
 	name: string,
